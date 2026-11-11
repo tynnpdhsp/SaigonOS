@@ -20,30 +20,30 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Kiểm thẻ nằm trên nhánh main
+      - name: Kiểm tra tag nằm trên branch main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements-dev.txt
-      - name: Cài công cụ từ tệp khóa
+      - name: Cài đặt công cụ từ lock file
         run: |
           pip install -r requirements-dev.txt
           pip install --no-deps -e .
       - name: Chạy lại toàn bộ kiểm tra
         run: make check
-      - name: Kiểm thẻ khớp phiên bản và lấy ghi chú từ CHANGELOG
+      - name: Kiểm tra tag khớp phiên bản và lấy release notes từ CHANGELOG
         run: python scripts/release_notes.py "$TAG" > "$RUNNER_TEMP/notes.md"
       - name: Đóng gói mã nguồn
         run: make dist VERSION="${TAG#v}"
-      - name: Lập bản nháp
+      - name: Tạo draft release
         run: |
           flags=()
           if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$TAG" --draft --verify-tag --title "SaigonOS ${TAG#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
-      - name: Đính tệp vào bản nháp
+      - name: Đính kèm file vào draft release
         run: gh release upload "$TAG" dist/*
-      - name: Công bố
+      - name: Công bố release
         run: gh release edit "$TAG" --draft=false
