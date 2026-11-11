@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Báo lỗi
+description: Báo cáo một lỗi của SaigonOS
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Mô tả lỗi
+      description: Mô tả lỗi gặp phải và kết quả mong đợi.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện lỗi
+      placeholder: |
+        1. Chạy lệnh ...
+        2. Mở trang ...
+        3. Lỗi xuất hiện ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản SaigonOS
+      description: Kết quả của lệnh `saigonos --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Môi trường
+      description: Hệ điều hành, phiên bản Python và Docker.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lỗi
+      description: Dán nguyên văn thông báo lỗi. Cần xóa mật khẩu và khóa bí mật trước khi gửi.
+      render: text

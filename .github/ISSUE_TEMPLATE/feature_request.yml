@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Đề xuất tính năng
+description: Đề xuất một tính năng mới hoặc một cải tiến
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vấn đề đang gặp phải
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Giải pháp mong muốn
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Các phương án thay thế đã cân nhắc

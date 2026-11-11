@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Cài đặt công cụ từ lock file
+        run: |
+          pip install -r requirements-dev.txt
+          pip install --no-deps -e .
+      - name: Kiểm tra giấy phép và chất lượng mã
+        run: make lint
+      - name: Kiểm tra lock file khớp với pyproject.toml
+        run: |
+          make lock
+          git diff --exit-code -- requirements.txt requirements-dev.txt
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Cài đặt công cụ từ lock file
+        run: |
+          pip install -r requirements-dev.txt
+          pip install --no-deps -e .
+      - name: Chạy kiểm thử và đo coverage
+        run: make test
+
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Đóng gói mã nguồn
+        run: make dist
+      - name: Giải nén, cài đặt bằng pip và chạy thử ở thư mục khác
+        working-directory: dist
+        run: |
+          sha256sum --check SHA256SUMS
+          name="$(basename saigonos-*.tar.gz .tar.gz)"
+          tar -xzf "$name.tar.gz" -C "$RUNNER_TEMP"
+          pip install "$RUNNER_TEMP/$name"
+          cd "$RUNNER_TEMP"
+          test "$(saigonos --version)" = "saigonos ${name#saigonos-}"
+
+  required:
+    if: always()
+    needs: [lint, test, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Kiểm tra mọi job ở trên đều đạt
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: for result in $RESULTS; do test "$result" = success; done
