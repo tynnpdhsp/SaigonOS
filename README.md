@@ -1,20 +1,20 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # SaigonOS
 
-SaigonOS là hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được ghép từ phần mềm nguồn mở và không có giao diện cho người dùng cuối. Ứng dụng chỉ cần viết giao diện rồi gọi vào lõi.
+SaigonOS là một hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được tích hợp từ các phần mềm nguồn mở và không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ cần xây dựng giao diện và gọi các dịch vụ của lõi.
 
-Lõi lo sẵn bốn việc:
+Lõi cung cấp bốn dịch vụ chính:
 
-- Đăng nhập một lần (SSO)
+- Định danh và đăng nhập một lần (Identity/SSO)
 - Cổng API (API Gateway)
-- Quản lý dữ liệu dạng bảng và dạng tệp
-- Quy trình
+- Quản trị dữ liệu có cấu trúc và phi cấu trúc
+- Động cơ luồng công việc (Workflow)
 
-Dự án đang dựng khung và chưa có bản phát hành. Thay đổi được ghi ở [CHANGELOG.md](CHANGELOG.md).
+Dự án đang ở giai đoạn xây dựng khung và chưa có release. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
-## Cài từ mã nguồn
+## Cài đặt từ mã nguồn
 
-Cần Python 3.11 trở lên. Nên cài trong một môi trường riêng, ví dụ conda:
+Yêu cầu Python 3.11 trở lên. Nên cài đặt trong một môi trường riêng, ví dụ môi trường conda:
 
 ```bash
 conda create -n saigonos python=3.12
@@ -25,14 +25,14 @@ pip install .
 saigonos --version
 ```
 
-## Tham gia
+## Tham gia phát triển
 
-- Báo lỗi hoặc đề xuất: mở [Issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose).
-- Đóng góp mã: xem [CONTRIBUTING.md](CONTRIBUTING.md).
-- Báo lỗ hổng bảo mật: xem [SECURITY.md](SECURITY.md).
+- Báo lỗi hoặc đề xuất tính năng: mở một [issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose).
+- Đóng góp mã nguồn: xem [CONTRIBUTING.md](CONTRIBUTING.md).
+- Báo cáo lỗ hổng bảo mật: xem [SECURITY.md](SECURITY.md).
 
 ## Giấy phép
 
-SaigonOS phát hành theo giấy phép [Apache-2.0](LICENSE). Mỗi tệp trong kho có một dòng `SPDX-License-Identifier` ở đầu và được kiểm bằng [REUSE](https://reuse.software/).
+SaigonOS được phát hành theo giấy phép [Apache-2.0](LICENSE). Mỗi file trong repo có một dòng `SPDX-License-Identifier` ở đầu. Công cụ [REUSE](https://reuse.software/) được dùng để kiểm tra các dòng này.
 
-Thư viện bên thứ ba và giấy phép của từng thư viện được kê ở [THIRD-PARTY.md](THIRD-PARTY.md).
+Danh sách thư viện bên thứ ba và giấy phép của từng thư viện được liệt kê trong [THIRD-PARTY.md](THIRD-PARTY.md).
