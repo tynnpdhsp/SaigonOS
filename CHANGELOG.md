@@ -17,5 +17,7 @@ File này ghi lại các thay đổi đáng chú ý của SaigonOS. Cách ghi tu
 - Realm `saigonos` của Keycloak được nạp từ file. Tài khoản có vai trò `admin` phải nhập OTP khi đăng nhập. Access token có thời hạn 60 giây.
 - Tuyến `/auth` tới Keycloak và tuyến `/api` tới PostgREST trên API Gateway. Tuyến `/api` kiểm tra access token và giới hạn tần suất gọi.
 - Lệnh `saigonos init` tạo thư mục làm việc gồm file `compose.yaml`, thư mục `config` và file `.env` chứa mật khẩu ngẫu nhiên. Khi chạy lại, các giá trị đã có trong file `.env` được giữ nguyên.
+- Lệnh `saigonos up` và `saigonos down` khởi động và dừng các dịch vụ bằng Docker Compose.
+- Lệnh `saigonos doctor` kiểm tra trạng thái từng dịch vụ và API Gateway.
 
 [Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/commits/main
