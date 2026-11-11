@@ -35,6 +35,23 @@ Lệnh này thực hiện các bước sau:
 
 Để tự động sửa định dạng mã, chạy `make format`.
 
+## Kiểm thử tích hợp
+
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 2 GB.
+
+```bash
+make integration
+```
+
+Lệnh này thực hiện các bước sau:
+
+- Tạo một thư mục làm việc tạm bằng `saigonos init` với hai cổng còn trống.
+- Khởi động hệ thống bằng `saigonos up`.
+- Chạy các kiểm thử trong thư mục `tests/integration`.
+- Xóa container và dữ liệu bằng `saigonos down --volumes`.
+
+Một lượt chạy mất khoảng 2 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+
 ## Quy ước
 
 - Mỗi file mới phải bắt đầu bằng một dòng `SPDX-License-Identifier` với giá trị `Apache-2.0`. Dòng này được viết dưới dạng comment theo cú pháp của loại file đó.
