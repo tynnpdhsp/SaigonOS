@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: check lint format test lock third-party clean
+.PHONY: check lint format test lock third-party dist clean
 
+VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 UV_COMPILE = uv pip compile --quiet pyproject.toml --python-version 3.11 --custom-compile-command "make lock"
 SPDX_TAG = SPDX-License-Identifier
 
@@ -26,6 +27,12 @@ lock:
 
 third-party:
 	python scripts/third_party.py
+
+dist:
+	rm -rf dist
+	mkdir dist
+	git archive --format=tar.gz --prefix=saigonos-$(VERSION)/ -o dist/saigonos-$(VERSION).tar.gz HEAD
+	cd dist && sha256sum saigonos-$(VERSION).tar.gz > SHA256SUMS
 
 clean:
 	rm -rf build dist htmlcov .coverage coverage.xml .pytest_cache .ruff_cache
