@@ -7,6 +7,7 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
+from saigonos.doctor import gateway_checks, service_checks
 from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_PORT, init_home, read_url
 
 PORT = click.IntRange(1, 65535)
@@ -129,3 +130,22 @@ def up(ctx: click.Context, home: Path) -> None:
 @click.pass_context
 def down(ctx: click.Context, home: Path, volumes: bool) -> None:
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
+
+
+@main.command(help="Kiểm tra trạng thái các dịch vụ và API Gateway.")
+@home_option
+@click.pass_context
+def doctor(ctx: click.Context, home: Path) -> None:
+    try:
+        checks = [*service_checks(home), *gateway_checks(read_url(home))]
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    width = max(len(check.name) for check in checks)
+    for check in checks:
+        mark = click.style("ĐẠT", fg="green") if check.ok else click.style("LỖI", fg="red")
+        click.echo(f"{mark}  {check.name:<{width}}  {check.detail}")
+    failed = sum(not check.ok for check in checks)
+    if failed:
+        click.echo(f"Có {failed} mục lỗi.")
+        ctx.exit(1)
+    click.echo("Hệ thống hoạt động bình thường.")

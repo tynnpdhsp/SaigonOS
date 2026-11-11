@@ -48,7 +48,7 @@ def test_down_returns_exit_code_of_compose(home, cli, docker):
     assert cli("down", "--home", home).exit_code == 1
 
 
-@pytest.mark.parametrize("command", ["up", "down"])
+@pytest.mark.parametrize("command", ["up", "down", "doctor"])
 @pytest.mark.parametrize("missing", ["compose.yaml", ".env"])
 def test_commands_need_initialized_home(home, cli, docker, command, missing):
     (home / missing).unlink()
@@ -60,7 +60,7 @@ def test_commands_need_initialized_home(home, cli, docker, command, missing):
     assert docker.calls == []
 
 
-@pytest.mark.parametrize("command", ["up", "down"])
+@pytest.mark.parametrize("command", ["up", "down", "doctor"])
 def test_commands_need_docker(home, cli, tmp_path, monkeypatch, command):
     monkeypatch.setenv("PATH", str(tmp_path))
 
