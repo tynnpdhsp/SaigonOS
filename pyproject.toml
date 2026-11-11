@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 [project]
 name = "saigonos"
 version = "0.1.0.dev0"
-description = "Lõi dùng chung cho ứng dụng chuyển đổi số, ghép từ phần mềm nguồn mở"
+description = "Hệ điều hành chuyển đổi số (DX-OS) nguồn mở"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
