@@ -138,6 +138,32 @@ class Stack:
     def api(self, token=None):
         return send("GET", f"{self.url}/api/", token=token)
 
+    def rotate_keys(self):
+        component = {
+            "name": f"rsa-{secrets.token_hex(4)}",
+            "providerId": "rsa-generated",
+            "providerType": "org.keycloak.keys.KeyProvider",
+            "parentId": json.loads(self.admin("GET", "").body)["id"],
+            "config": {"priority": ["200"], "algorithm": ["RS256"]},
+        }
+        reply = self.admin("POST", "/components", component)
+        assert reply.status == 201, reply.body
+
+    def container(self, service):
+        return self.compose("ps", "--all", "--quiet", service)
+
+    def inspect(self, container, template):
+        command = [self.docker, "inspect", "--format", template, container]
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+        return result.stdout.strip()
+
+    def kill(self, container):
+        pid = self.inspect(container, "{{.State.Pid}}")
+        image = self.inspect(self.container("postgres"), "{{.Config.Image}}")
+        options = ["--rm", "--pid=host", "--privileged", "--entrypoint", "kill"]
+        command = [self.docker, "run", *options, image, "-9", pid]
+        subprocess.run(command, check=True, capture_output=True, timeout=60)
+
 
 @pytest.fixture(scope="session")
 def stack(tmp_path_factory, request):
