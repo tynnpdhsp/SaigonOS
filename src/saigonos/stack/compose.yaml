@@ -103,6 +103,59 @@ services:
     entrypoint: ["sh", "-c"]
     command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/load-routes.lua /config/routes/*.json"]
 
+  jwks:
+    image: postgres:18.6-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
+      PGHOST: postgres
+      PGDATABASE: saigonos
+      PGUSER: authenticator
+      PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
+    volumes:
+      - jwks:/jwks
+      - ./config/postgrest:/config:ro
+    # tmpfs thay cho volume vô danh mà image postgres tự tạo ở đường dẫn này
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["sh", "/config/fetch-jwks.sh"]
+
+  postgrest:
+    image: postgrest/postgrest:v16.5
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jwks:
+        condition: service_completed_successfully
+      routes:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGDATABASE: saigonos
+      PGUSER: authenticator
+      PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
+      PGRST_DB_SCHEMAS: api
+      PGRST_JWT_SECRET: "@/jwks/jwks.json"
+      PGRST_JWT_ROLE_CLAIM_KEY: '$$.realm_access.roles[?(@ == "authenticated")]'
+      PGRST_ADMIN_SERVER_HOST: 127.0.0.1
+      PGRST_ADMIN_SERVER_PORT: 3001
+    volumes:
+      - jwks:/jwks:ro
+    healthcheck:
+      test: ["CMD", "postgrest", "--ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
 volumes:
   postgres-data:
   etcd-data:
+  jwks:
