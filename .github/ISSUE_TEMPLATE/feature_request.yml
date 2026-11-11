@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Đề xuất tính năng
+description: Đề xuất một tính năng mới hoặc một cải tiến
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Bạn đang gặp vấn đề gì
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Bạn muốn SaigonOS làm gì
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Cách khác bạn đã thử
