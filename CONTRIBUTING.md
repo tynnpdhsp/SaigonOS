@@ -1,15 +1,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Đóng góp cho SaigonOS
 
-Cảm ơn bạn đã quan tâm đến SaigonOS. Mọi đóng góp đi qua Issue và pull request trên GitHub.
+Cảm ơn bạn đã quan tâm đến SaigonOS. Mọi đóng góp được tiếp nhận qua issue và pull request trên GitHub.
 
 ## Báo lỗi và đề xuất
 
-Mở [Issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose) rồi chọn mẫu phù hợp. Lỗ hổng bảo mật thì không mở Issue, hãy làm theo [SECURITY.md](SECURITY.md).
+Để báo lỗi hoặc đề xuất tính năng, hãy mở một [issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose) và chọn mẫu phù hợp. Riêng lỗ hổng bảo mật thì không báo qua issue mà làm theo hướng dẫn trong [SECURITY.md](SECURITY.md).
 
 ## Chuẩn bị môi trường
 
-Cần Python 3.11 trở lên, Git và make.
+Yêu cầu Python 3.11 trở lên, Git và make.
 
 ```bash
 git clone https://github.com/tynnpdhsp/SaigonOS.git
@@ -26,35 +26,42 @@ pip install --no-deps -e .
 make check
 ```
 
-Lệnh này chạy `reuse lint`, `ruff`, so bảng giấy phép và chạy `pytest` có đo độ phủ. Muốn tự sửa định dạng mã thì chạy `make format`.
+Lệnh này thực hiện các bước sau:
+
+- Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
+- Kiểm tra lỗi và định dạng mã bằng `ruff`.
+- Đối chiếu [THIRD-PARTY.md](THIRD-PARTY.md) với lock file.
+- Chạy kiểm thử bằng `pytest` và đo độ phủ mã.
+
+Để tự động sửa định dạng mã, chạy `make format`.
 
 ## Quy ước
 
-- Mỗi tệp mới mở đầu bằng một dòng `SPDX-License-Identifier` với giá trị `Apache-2.0`, viết trong chú thích của loại tệp đó.
-- Tính năng mới phải kèm kiểm thử.
-- Commit viết một dòng theo [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), ví dụ `feat(cli): thêm lệnh doctor`.
-- Mỗi thay đổi làm trên một nhánh riêng rồi mở pull request vào `main`. CI xanh mới được merge.
-- Thay đổi mà người dùng thấy được thì ghi vào mục "Chưa phát hành" của [CHANGELOG.md](CHANGELOG.md).
+- Mỗi file mới phải bắt đầu bằng một dòng `SPDX-License-Identifier` với giá trị `Apache-2.0`. Dòng này được viết dưới dạng comment theo cú pháp của loại file đó.
+- Tính năng mới phải có kiểm thử đi kèm.
+- Mỗi commit message chỉ gồm một dòng theo quy ước [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Ví dụ: `feat(cli): thêm lệnh doctor`.
+- Mỗi thay đổi được thực hiện trên một branch riêng, sau đó mở pull request vào `main`. Pull request chỉ được merge khi CI chạy thành công.
+- Những thay đổi ảnh hưởng đến người dùng được ghi vào mục "Chưa phát hành" của [CHANGELOG.md](CHANGELOG.md).
 
 ## Thêm thư viện
 
-Chỉ dùng thư viện có giấy phép nguồn mở được OSI công nhận. Không chép mã của dự án khác vào kho.
+Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công nhận. Không sao chép mã nguồn của dự án khác vào repo.
 
-1. Khai thư viện trong `pyproject.toml`.
-2. Chạy `make lock` để sinh lại tệp khóa.
-3. Chạy `pip install -r requirements-dev.txt` để cài đúng phiên bản đã khóa.
-4. Chạy `make third-party` để sinh lại [THIRD-PARTY.md](THIRD-PARTY.md).
+1. Khai báo thư viện trong `pyproject.toml`.
+2. Chạy `make lock` để tạo lại lock file.
+3. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
+4. Chạy `make third-party` để tạo lại [THIRD-PARTY.md](THIRD-PARTY.md).
 
-Bước 4 báo "Giấy phép ngoài danh sách cho phép" khi giấy phép của thư viện chưa nằm trong danh sách cho phép ở `scripts/third_party.py`. Lúc đó hãy mở Issue để bàn trước khi thêm.
+Ở bước 4, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/third_party.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
 
-## Phát hành
+## Phát hành phiên bản mới
 
-Phần này dành cho người giữ kho.
+Phần này dành cho maintainer của repo.
 
-1. Đổi `version` trong `pyproject.toml` thành số phiên bản mới rồi chạy lại `pip install --no-deps -e .`.
-2. Trong [CHANGELOG.md](CHANGELOG.md), đổi mục "Chưa phát hành" thành `## [X.Y.Z] - YYYY-MM-DD`. Thêm một mục "Chưa phát hành" trống lên trên và sửa các đường dẫn ở cuối tệp.
-3. Mở pull request, chờ CI xanh rồi merge.
-4. Gắn thẻ trên `main` rồi đẩy thẻ:
+1. Cập nhật `version` trong `pyproject.toml` thành số phiên bản mới, sau đó chạy lại `pip install --no-deps -e .`.
+2. Trong [CHANGELOG.md](CHANGELOG.md), đổi tiêu đề mục "Chưa phát hành" thành `## [X.Y.Z] - YYYY-MM-DD`. Thêm một mục "Chưa phát hành" trống ở phía trên và cập nhật các đường dẫn ở cuối file.
+3. Mở pull request và merge sau khi CI chạy thành công.
+4. Tạo tag trên `main` rồi push tag lên GitHub:
 
 ```bash
 git switch main
@@ -63,8 +70,15 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-CI sẽ chạy lại mọi kiểm tra, đóng gói `saigonos-X.Y.Z.tar.gz` kèm `SHA256SUMS`, lập bản nháp, đính tệp rồi công bố. Bản đã công bố không sửa được. Vì vậy chỉ đẩy thẻ khi CI trên `main` đã xanh.
+Khi nhận được tag mới, CI thực hiện các bước sau:
+
+- Chạy lại toàn bộ kiểm tra.
+- Đóng gói `saigonos-X.Y.Z.tar.gz` kèm file `SHA256SUMS`.
+- Tạo draft release và đính kèm hai file trên.
+- Công bố release.
+
+Release sau khi công bố sẽ không thể chỉnh sửa. Do đó, chỉ push tag khi CI trên `main` đã chạy thành công.
 
 ## Giấy phép của phần đóng góp
 
-Phần bạn đóng góp được phát hành theo giấy phép Apache-2.0, giống phần còn lại của dự án.
+Mọi đóng góp được phát hành theo giấy phép Apache-2.0, giống như phần còn lại của dự án.
