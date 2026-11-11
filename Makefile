@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: check lint format test lock third-party dist clean
+.PHONY: check lint format test lock dependencies dist clean
 
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 UV_COMPILE = uv pip compile --quiet pyproject.toml --python-version 3.11 --custom-compile-command "make lock"
@@ -11,7 +11,7 @@ lint:
 	reuse lint
 	ruff check .
 	ruff format --check .
-	python scripts/third_party.py --check
+	python scripts/dependencies.py --check
 
 format:
 	ruff check --fix .
@@ -25,8 +25,8 @@ lock:
 	$(UV_COMPILE) --group dev -c requirements.txt -o requirements-dev.txt
 	sed -i '1i # $(SPDX_TAG): Apache-2.0' requirements.txt requirements-dev.txt
 
-third-party:
-	python scripts/third_party.py
+dependencies:
+	python scripts/dependencies.py
 
 dist:
 	rm -rf dist

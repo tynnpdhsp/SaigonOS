@@ -35,4 +35,4 @@ saigonos --version
 
 SaigonOS được phát hành theo giấy phép [Apache-2.0](LICENSE). Mỗi file trong repo có một dòng `SPDX-License-Identifier` ở đầu. Công cụ [REUSE](https://reuse.software/) được dùng để kiểm tra các dòng này.
 
-Danh sách thư viện bên thứ ba và giấy phép của từng thư viện được liệt kê trong [THIRD-PARTY.md](THIRD-PARTY.md).
+Danh sách thư viện bên thứ ba và giấy phép của từng thư viện được liệt kê trong [DEPENDENCIES.md](DEPENDENCIES.md).

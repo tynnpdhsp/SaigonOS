@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK_FILE = ROOT / "requirements.txt"
-TABLE_FILE = ROOT / "THIRD-PARTY.md"
+TABLE_FILE = ROOT / "DEPENDENCIES.md"
 
 ALLOWED_LICENSES = {"Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "PSF-2.0"}
 VERIFIED_LICENSES: dict[str, str] = {}
@@ -17,9 +17,9 @@ VERIFIED_LICENSES: dict[str, str] = {}
 SPDX_TAG = "SPDX-License-Identifier"
 HEADER = f"""\
 <!-- {SPDX_TAG}: Apache-2.0 -->
-# Phần mềm bên thứ ba
+# Thư viện và gói phụ thuộc
 
-File này do lệnh `make third-party` tạo ra. Không sửa trực tiếp file này.
+File này do lệnh `make dependencies` tạo ra. Không sửa trực tiếp file này.
 
 SaigonOS không sao chép mã nguồn của dự án khác vào repo. Bảng dưới đây liệt kê mọi thư viện \
 được cài đặt cùng SaigonOS. Danh sách được lấy từ `requirements.txt`. Các công cụ phát triển \
@@ -33,7 +33,7 @@ cài đặt cùng SaigonOS.
 """
 
 
-class ThirdPartyError(Exception):
+class DependencyError(Exception):
     pass
 
 
@@ -62,7 +62,7 @@ def resolve_license(name: str, reported: str) -> str:
     license_expression = VERIFIED_LICENSES.get(name, reported)
     identifiers = set(re.findall(r"[^\s()]+", license_expression)) - {"AND", "OR", "WITH"}
     if not identifiers or not identifiers <= ALLOWED_LICENSES:
-        raise ThirdPartyError(f"Giấy phép ngoài danh sách cho phép: {name} khai báo '{reported}'.")
+        raise DependencyError(f"Giấy phép ngoài danh sách cho phép: {name} khai báo '{reported}'.")
     return license_expression
 
 
@@ -73,7 +73,7 @@ def build_table(lock_file: Path = LOCK_FILE) -> str:
     for name, version in sorted(locked.items()):
         found = installed.get(name, {}).get("Version", "chưa cài đặt")
         if found != version:
-            raise ThirdPartyError(
+            raise DependencyError(
                 f"{name}: lock file ghi {version} nhưng môi trường có {found}. "
                 "Hãy chạy pip install -r requirements-dev.txt."
             )
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         table = build_table()
-    except ThirdPartyError as error:
+    except DependencyError as error:
         print(error, file=sys.stderr)
         return 1
     if not arguments.check:
@@ -102,11 +102,11 @@ def main(argv: list[str] | None = None) -> int:
         difflib.unified_diff(
             current.splitlines(keepends=True),
             table.splitlines(keepends=True),
-            "THIRD-PARTY.md",
+            "DEPENDENCIES.md",
             "bảng tạo lại",
         )
     )
-    print("THIRD-PARTY.md không khớp với lock file. Hãy chạy make third-party.", file=sys.stderr)
+    print("DEPENDENCIES.md không khớp với lock file. Hãy chạy make dependencies.", file=sys.stderr)
     return 1
 
 
