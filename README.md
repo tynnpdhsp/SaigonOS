@@ -1,14 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # SaigonOS
 
-SaigonOS là một hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được tích hợp từ các phần mềm nguồn mở và không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ cần xây dựng giao diện và gọi các dịch vụ của lõi.
+SaigonOS là một hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được xây dựng từ các phần mềm nguồn mở và không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ cần phát triển phần giao diện và gọi các dịch vụ của lõi.
 
 Lõi cung cấp bốn dịch vụ chính:
 
-- Định danh và đăng nhập một lần (Identity/SSO)
+- Quản lý định danh và đăng nhập một lần (Identity/SSO)
 - Cổng API (API Gateway)
-- Quản trị dữ liệu có cấu trúc và phi cấu trúc
-- Động cơ luồng công việc (Workflow)
+- Quản lý dữ liệu có cấu trúc và phi cấu trúc
+- Luồng công việc (Workflow)
 
 Dự án đang ở giai đoạn xây dựng khung và chưa có release. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 

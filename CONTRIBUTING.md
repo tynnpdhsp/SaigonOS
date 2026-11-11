@@ -31,7 +31,7 @@ Lệnh này thực hiện các bước sau:
 - Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
 - Kiểm tra lỗi và định dạng mã bằng `ruff`.
 - Đối chiếu [THIRD-PARTY.md](THIRD-PARTY.md) với lock file.
-- Chạy kiểm thử bằng `pytest` và đo độ phủ mã.
+- Chạy kiểm thử bằng `pytest` và đo coverage.
 
 Để tự động sửa định dạng mã, chạy `make format`.
 
