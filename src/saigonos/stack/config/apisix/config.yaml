@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+apisix:
+  dns_resolver_valid: 30
+  status:
+    ip: 127.0.0.1
+    port: 7085
+
+nginx_config:
+  worker_processes: 4
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key:
+      - name: admin
+        key: ${{APISIX_ADMIN_KEY}}
+        role: admin
+    allow_admin:
+      - 127.0.0.0/8
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  etcd:
+    host:
+      - http://etcd:2379
