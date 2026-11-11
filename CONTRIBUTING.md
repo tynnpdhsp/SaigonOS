@@ -48,11 +48,12 @@ Lệnh này thực hiện các bước sau:
 Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công nhận. Không sao chép mã nguồn của dự án khác vào repo.
 
 1. Khai báo thư viện trong `pyproject.toml`.
-2. Chạy `make lock` để tạo lại lock file.
-3. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
-4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
+2. Thêm một mô tả ngắn cho thư viện vào `DESCRIPTIONS` trong `scripts/dependencies.py`.
+3. Chạy `make lock` để tạo lại lock file.
+4. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
+5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
-Ở bước 4, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
+Ở bước 5, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
 
 ## Phát hành phiên bản mới
 

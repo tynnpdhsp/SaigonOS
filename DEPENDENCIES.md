@@ -1,12 +1,39 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Thư viện và gói phụ thuộc
 
-File này do lệnh `make dependencies` tạo ra. Không sửa trực tiếp file này.
+File này liệt kê các thư viện và công cụ mà SaigonOS sử dụng. Mỗi dòng ghi phiên bản, giấy phép, mô tả và nguồn tải. File do lệnh `make dependencies` tạo ra từ lock file và các thư viện đã cài đặt. Không sửa trực tiếp file này.
 
-SaigonOS không sao chép mã nguồn của dự án khác vào repo. Bảng dưới đây liệt kê mọi thư viện được cài đặt cùng SaigonOS. Danh sách được lấy từ `requirements.txt`. Các công cụ phát triển trong `requirements-dev.txt` chỉ dùng khi phát triển và khi chạy CI. Các công cụ này không được cài đặt cùng SaigonOS.
+## Thư viện đi kèm sản phẩm
 
-## Thư viện Python
+Các thư viện này được cài đặt cùng SaigonOS. Danh sách được lấy từ `requirements.txt`, kể cả phụ thuộc gián tiếp.
 
-| Tên | Phiên bản | Giấy phép | Nguồn |
-|---|---|---|---|
-| click | 8.5.1 | BSD-3-Clause | https://pypi.org/project/click/8.5.1/ |
+| Thư viện | Phiên bản | Giấy phép | Mô tả | Nguồn |
+|---|---|---|---|---|
+| click | 8.5.1 | BSD-3-Clause | Xây dựng giao diện dòng lệnh cho lệnh `saigonos` | https://pypi.org/project/click/8.5.1/ |
+
+## Công cụ phát triển
+
+Các công cụ này chỉ dùng khi phát triển và khi chạy CI. Chúng không được cài đặt cùng SaigonOS. Bảng chỉ liệt kê công cụ khai báo trực tiếp trong `pyproject.toml`. Phụ thuộc gián tiếp của chúng nằm trong `requirements-dev.txt`.
+
+| Công cụ | Phiên bản | Giấy phép | Mô tả | Nguồn |
+|---|---|---|---|---|
+| packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | Đọc và so sánh số phiên bản | https://pypi.org/project/packaging/26.3/ |
+| pip-licenses | 5.5.5 | MIT | Đọc giấy phép của các thư viện đã cài đặt | https://pypi.org/project/pip-licenses/5.5.5/ |
+| pytest | 9.2.0 | MIT | Chạy kiểm thử | https://pypi.org/project/pytest/9.2.0/ |
+| pytest-cov | 7.1.0 | MIT | Đo coverage khi chạy kiểm thử | https://pypi.org/project/pytest-cov/7.1.0/ |
+| reuse | 6.3.0 | Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later | Kiểm tra thông tin giấy phép của mọi file | https://pypi.org/project/reuse/6.3.0/ |
+| ruff | 0.17.4 | MIT | Kiểm tra lỗi và định dạng mã Python | https://pypi.org/project/ruff/0.17.4/ |
+| uv | 0.13.7 | MIT OR Apache-2.0 | Tạo lock file từ `pyproject.toml` | https://pypi.org/project/uv/0.13.7/ |
+
+## Gói đính kèm
+
+- Bản phát hành `saigonos-X.Y.Z.tar.gz` chỉ chứa mã nguồn của SaigonOS.
+- Các thư viện ở trên được pip tải từ PyPI khi cài đặt.
+- SaigonOS không sao chép và không sửa mã nguồn của dự án khác.
+
+## Quy tắc về giấy phép
+
+- Mỗi thư viện giữ nguyên giấy phép gốc.
+- Thư viện đi kèm sản phẩm chỉ được dùng các giấy phép Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT và PSF-2.0.
+- Công cụ phát triển được dùng thêm CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later. Các công cụ này không được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
+- Lệnh `make lint` báo lỗi khi gặp giấy phép khác.
