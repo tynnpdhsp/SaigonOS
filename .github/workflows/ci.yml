@@ -57,7 +57,7 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install --no-deps -e .
-      - name: Chạy kiểm thử và đo độ phủ mã
+      - name: Chạy kiểm thử và đo coverage
         run: make test
 
   package:
