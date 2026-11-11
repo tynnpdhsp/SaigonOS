@@ -3,16 +3,16 @@
 
 ## Phiên bản được hỗ trợ
 
-Chỉ bản phát hành mới nhất được vá lỗi bảo mật.
+Chỉ release mới nhất được vá lỗi bảo mật.
 
-## Báo lỗ hổng
+## Báo cáo lỗ hổng
 
-Đừng mở Issue công khai. Hãy báo riêng qua trang [Report a vulnerability](https://github.com/tynnpdhsp/SaigonOS/security/advisories/new) của kho.
+Không báo cáo lỗ hổng qua issue công khai. Hãy báo cáo riêng qua trang [Report a vulnerability](https://github.com/tynnpdhsp/SaigonOS/security/advisories/new) của repo.
 
-Báo cáo nên có:
+Báo cáo nên bao gồm:
 
-- Phiên bản SaigonOS và cách bạn cài
-- Các bước tái hiện
+- Phiên bản SaigonOS và cách cài đặt
+- Các bước tái hiện lỗi
 - Hậu quả có thể xảy ra
 
-Chúng tôi phản hồi trong 7 ngày. Lỗi sửa xong sẽ được ghi vào [CHANGELOG.md](CHANGELOG.md) và ghi nhận người báo nếu bạn đồng ý.
+Nhóm phát triển sẽ phản hồi trong vòng 7 ngày. Mỗi lỗi đã khắc phục được ghi vào [CHANGELOG.md](CHANGELOG.md). Người báo cáo được ghi nhận tên nếu đồng ý.
