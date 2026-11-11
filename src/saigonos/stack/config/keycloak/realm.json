@@ -2,5 +2,28 @@
   "realm": "saigonos",
   "displayName": "SaigonOS",
   "enabled": true,
-  "accessTokenLifespan": 60
+  "accessTokenLifespan": 60,
+  "bruteForceProtected": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["vi", "en"],
+  "defaultLocale": "vi",
+  "roles": {
+    "realm": [
+      {
+        "name": "authenticated",
+        "description": "Người dùng đã đăng nhập"
+      },
+      {
+        "name": "admin",
+        "description": "Quản trị hệ thống, bắt buộc đăng nhập bằng OTP",
+        "composite": true,
+        "composites": {
+          "client": {
+            "realm-management": ["realm-admin"]
+          }
+        }
+      }
+    ]
+  },
+  "defaultRoles": ["authenticated"]
 }
