@@ -12,5 +12,6 @@ Tệp này ghi các thay đổi đáng chú ý của SaigonOS. Cách ghi theo [K
 - Tệp khóa phiên bản thư viện `requirements.txt` và `requirements-dev.txt`.
 - Tài liệu khung: README, hướng dẫn đóng góp, chính sách bảo mật, mẫu Issue.
 - Bảng giấy phép thư viện bên thứ ba `THIRD-PARTY.md`, sinh bằng `make third-party`.
+- Gói mã nguồn `.tar.gz` kèm `SHA256SUMS`, tự tạo khi đẩy thẻ phiên bản.
 
 [Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/commits/main

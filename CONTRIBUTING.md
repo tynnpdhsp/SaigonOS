@@ -47,6 +47,24 @@ Chỉ dùng thư viện có giấy phép nguồn mở được OSI công nhận.
 
 Bước 4 báo "Giấy phép lạ" khi giấy phép của thư viện chưa nằm trong danh sách cho phép ở `scripts/third_party.py`. Lúc đó hãy mở Issue để bàn trước khi thêm.
 
+## Phát hành
+
+Phần này dành cho người giữ kho.
+
+1. Đổi `version` trong `pyproject.toml` thành số phiên bản mới rồi chạy lại `pip install --no-deps -e .`.
+2. Trong [CHANGELOG.md](CHANGELOG.md), đổi mục "Chưa phát hành" thành `## [X.Y.Z] - YYYY-MM-DD`. Thêm một mục "Chưa phát hành" trống lên trên và sửa các đường dẫn ở cuối tệp.
+3. Mở pull request, chờ CI xanh rồi merge.
+4. Gắn thẻ trên `main` rồi đẩy thẻ:
+
+```bash
+git switch main
+git pull
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+CI sẽ chạy lại mọi kiểm tra, đóng gói `saigonos-X.Y.Z.tar.gz` kèm `SHA256SUMS`, lập bản nháp, đính tệp rồi công bố. Bản đã công bố không sửa được. Vì vậy chỉ đẩy thẻ khi CI trên `main` đã xanh.
+
 ## Giấy phép của phần đóng góp
 
 Phần bạn đóng góp được phát hành theo giấy phép Apache-2.0, giống phần còn lại của dự án.
