@@ -5,6 +5,7 @@ import shutil
 import socket
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from http.client import HTTPConnection
 from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
@@ -130,6 +131,12 @@ class Stack:
             "POST", f"{self.url}/auth/realms/{REALM}/protocol/openid-connect/token", form=form
         )
 
+    def refresh(self, refresh_token):
+        form = {"grant_type": "refresh_token", "client_id": CLIENT, "refresh_token": refresh_token}
+        return send(
+            "POST", f"{self.url}/auth/realms/{REALM}/protocol/openid-connect/token", form=form
+        )
+
     def token(self, user):
         reply = self.login(user)
         assert reply.status == 200, reply.body
@@ -137,6 +144,24 @@ class Stack:
 
     def api(self, token=None):
         return send("GET", f"{self.url}/api/", token=token)
+
+    def burst(self, token, calls, workers=8):
+        def worker(count):
+            connection = HTTPConnection(urlsplit(self.url).netloc, timeout=30)
+            statuses = []
+            try:
+                for _ in range(count):
+                    connection.request("GET", "/api/", headers={"Authorization": f"Bearer {token}"})
+                    response = connection.getresponse()
+                    response.read()
+                    statuses.append(response.status)
+            finally:
+                connection.close()
+            return statuses
+
+        with ThreadPoolExecutor(workers) as pool:
+            results = pool.map(worker, [calls // workers] * workers)
+            return [status for statuses in results for status in statuses]
 
     def rotate_keys(self):
         component = {

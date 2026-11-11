@@ -78,3 +78,29 @@ def test_killed_service_restarts_by_itself(stack):
 
     wait_for(lambda: stack.inspect(container, state) == f"{restarts + 1} healthy")
     assert stack.api(stack.token(user)).status == 200
+
+
+def test_disabled_account_loses_access_within_60_seconds(stack):
+    user = stack.new_user()
+    tokens = json.loads(stack.login(user).body)
+    claims = decode(tokens["access_token"].split(".")[1])
+    assert stack.api(tokens["access_token"]).status == 200
+
+    assert stack.admin("PUT", f"/users/{user.id}", {"enabled": False}).status == 204
+
+    assert stack.login(user).status == 400
+    assert stack.refresh(tokens["refresh_token"]).status == 400
+    assert claims["exp"] - claims["iat"] <= 60
+    time.sleep(max(0, claims["exp"] - time.time()) + 1)
+    assert stack.api(tokens["access_token"]).status == 401
+
+
+def test_burst_of_calls_gets_429(stack):
+    token = stack.token(stack.new_user())
+    time.sleep(float(stack.api(token).headers["X-RateLimit-Reset"]) + 0.5)
+
+    statuses = stack.burst(token, calls=400)
+
+    assert statuses.count(200) == 300
+    assert statuses.count(429) == 100
+    assert "Gọi API quá nhiều lần" in stack.api(token).body.decode()
