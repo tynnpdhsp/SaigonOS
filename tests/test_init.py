@@ -14,11 +14,6 @@ STACK = files("saigonos").joinpath("stack")
 SETTING_KEYS = ["SAIGONOS_URL", "SAIGONOS_HTTP_PORT", "SAIGONOS_ADMIN_PORT", *SECRET_KEYS]
 
 
-@pytest.fixture(autouse=True)
-def no_home_variable(monkeypatch):
-    monkeypatch.delenv("SAIGONOS_HOME", raising=False)
-
-
 @pytest.fixture
 def home(tmp_path):
     return tmp_path / "home"
@@ -198,6 +193,7 @@ def test_home_comes_from_environment_variable(home, monkeypatch):
 
     assert result.exit_code == 0
     assert (home / ".env").exists()
+    assert result.output.endswith("Để khởi động, chạy lệnh: saigonos up\n")
 
 
 def test_default_home_is_in_user_home_directory(tmp_path, monkeypatch):
@@ -207,14 +203,15 @@ def test_default_home_is_in_user_home_directory(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert (tmp_path / "saigonos" / "compose.yaml").exists()
+    assert result.output.endswith("Để khởi động, chạy lệnh: saigonos up\n")
 
 
-def test_start_hint_quotes_home_path(tmp_path):
+def test_start_hint_repeats_home_given_on_command_line(tmp_path):
     home = tmp_path / "thư mục"
 
     result = init("--home", home)
 
-    assert f"cd '{home}' && docker compose up -d --wait\n" in result.output
+    assert result.output.endswith(f"Để khởi động, chạy lệnh: saigonos up --home '{home}'\n")
 
 
 def test_unwritable_home_is_reported(tmp_path):

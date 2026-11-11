@@ -55,6 +55,7 @@ select = ["E", "W", "F", "I", "UP", "B", "S", "SIM", "C4", "PTH", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["S603"]
+"src/saigonos/compose.py" = ["S603"]
 "tests/*" = ["S101"]
 
 [tool.pytest.ini_options]

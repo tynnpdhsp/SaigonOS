@@ -32,6 +32,30 @@ def local_url(port: str) -> str:
     return "http://localhost" if port == "80" else f"http://localhost:{port}"
 
 
+def read_env_lines(home: Path) -> list[str]:
+    env_file = home / ".env"
+    return env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+
+
+def parse_env(lines: list[str]) -> dict[str, str]:
+    pairs = (line.partition("=") for line in lines)
+    return {key.strip(): value.strip() for key, separator, value in pairs if separator}
+
+
+def set_value(lines: list[str], key: str, value: str) -> None:
+    matches = [index for index, line in enumerate(lines) if line.partition("=")[0].strip() == key]
+    if matches:
+        lines[matches[-1]] = f"{key}={value}"
+    else:
+        lines.append(f"{key}={value}")
+
+
+def read_url(home: Path) -> str:
+    env = parse_env(read_env_lines(home))
+    http_port = env.get("SAIGONOS_HTTP_PORT") or str(DEFAULT_HTTP_PORT)
+    return env.get("SAIGONOS_URL") or local_url(http_port)
+
+
 def copy_tree(source: Traversable, target: Path) -> None:
     for entry in source.iterdir():
         path = target / entry.name
@@ -59,15 +83,8 @@ def init_home(
     admin_port: int | None = None,
 ) -> Initialized:
     home.mkdir(parents=True, exist_ok=True)
-    env_file = home / ".env"
-    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
-    current: dict[str, str] = {}
-    positions: dict[str, int] = {}
-    for index, line in enumerate(lines):
-        key, separator, value = line.partition("=")
-        if separator:
-            current[key.strip()] = value.strip()
-            positions[key.strip()] = index
+    lines = read_env_lines(home)
+    current = parse_env(lines)
 
     old_http_port = current.get("SAIGONOS_HTTP_PORT") or str(DEFAULT_HTTP_PORT)
     new_http_port = str(http_port or old_http_port)
@@ -85,13 +102,9 @@ def init_home(
         values[key] = new_secret() if key in missing else current[key]
 
     for key, value in values.items():
-        if current.get(key) == value:
-            continue
-        if key in positions:
-            lines[positions[key]] = f"{key}={value}"
-        else:
-            lines.append(f"{key}={value}")
-    write_private(env_file, "\n".join(lines) + "\n")
+        if current.get(key) != value:
+            set_value(lines, key, value)
+    write_private(home / ".env", "\n".join(lines) + "\n")
 
     copy_tree(files("saigonos").joinpath("stack"), home)
     return Initialized(url=url, new_secrets=len(missing))

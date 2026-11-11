@@ -4,9 +4,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import click
+from click.core import ParameterSource
 
-from saigonos import __version__
-from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_PORT, init_home
+from saigonos import __version__, compose
+from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_PORT, init_home, read_url
 
 PORT = click.IntRange(1, 65535)
 
@@ -85,7 +86,10 @@ def main() -> None:
         f"Mặc định là {DEFAULT_ADMIN_PORT}."
     ),
 )
-def init(home: Path, url: str | None, http_port: int | None, admin_port: int | None) -> None:
+@click.pass_context
+def init(
+    ctx: click.Context, home: Path, url: str | None, http_port: int | None, admin_port: int | None
+) -> None:
     try:
         result = init_home(home, url, http_port, admin_port)
     except OSError as error:
@@ -96,5 +100,32 @@ def init(home: Path, url: str | None, http_port: int | None, admin_port: int | N
         click.echo(f"Đã tạo {result.new_secrets} mật khẩu ngẫu nhiên trong file .env.")
     else:
         click.echo("Các mật khẩu trong file .env được giữ nguyên.")
-    start = f"cd {shlex.quote(str(home))} && docker compose up -d --wait"
+    start = "saigonos up"
+    if ctx.get_parameter_source("home") is ParameterSource.COMMANDLINE:
+        start += f" --home {shlex.quote(str(home))}"
     click.echo(f"Để khởi động, chạy lệnh: {start}")
+
+
+def run_compose(ctx: click.Context, home: Path, *args: str) -> None:
+    try:
+        code = compose.run(home, *args)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    if code != 0:
+        ctx.exit(code)
+
+
+@main.command(help="Khởi động các dịch vụ bằng Docker Compose và chờ đến khi sẵn sàng.")
+@home_option
+@click.pass_context
+def up(ctx: click.Context, home: Path) -> None:
+    run_compose(ctx, home, "up", "-d", "--wait")
+    click.echo(f"Địa chỉ truy cập: {read_url(home)}")
+
+
+@main.command(help="Dừng và xóa các container. Dữ liệu được giữ lại.")
+@home_option
+@click.option("--volumes", is_flag=True, help="Xóa cả dữ liệu trong các volume.")
+@click.pass_context
+def down(ctx: click.Context, home: Path, volumes: bool) -> None:
+    run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
