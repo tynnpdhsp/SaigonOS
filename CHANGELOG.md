@@ -11,5 +11,6 @@ Tệp này ghi các thay đổi đáng chú ý của SaigonOS. Cách ghi theo [K
 - Giấy phép Apache-2.0 với dòng SPDX ở đầu mọi tệp, kiểm bằng REUSE.
 - Tệp khóa phiên bản thư viện `requirements.txt` và `requirements-dev.txt`.
 - Tài liệu khung: README, hướng dẫn đóng góp, chính sách bảo mật, mẫu Issue.
+- Bảng giấy phép thư viện bên thứ ba `THIRD-PARTY.md`, sinh bằng `make third-party`.
 
 [Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/commits/main

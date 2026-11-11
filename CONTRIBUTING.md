@@ -26,7 +26,7 @@ pip install --no-deps -e .
 make check
 ```
 
-Lệnh này chạy `reuse lint`, `ruff` và `pytest` có đo độ phủ. Muốn tự sửa định dạng mã thì chạy `make format`.
+Lệnh này chạy `reuse lint`, `ruff`, so bảng giấy phép và chạy `pytest` có đo độ phủ. Muốn tự sửa định dạng mã thì chạy `make format`.
 
 ## Quy ước
 
@@ -42,6 +42,10 @@ Chỉ dùng thư viện có giấy phép nguồn mở được OSI công nhận.
 
 1. Khai thư viện trong `pyproject.toml`.
 2. Chạy `make lock` để sinh lại tệp khóa.
+3. Chạy `pip install -r requirements-dev.txt` để cài đúng phiên bản đã khóa.
+4. Chạy `make third-party` để sinh lại [THIRD-PARTY.md](THIRD-PARTY.md).
+
+Bước 4 báo "Giấy phép lạ" khi giấy phép của thư viện chưa nằm trong danh sách cho phép ở `scripts/third_party.py`. Lúc đó hãy mở Issue để bàn trước khi thêm.
 
 ## Giấy phép của phần đóng góp
 
