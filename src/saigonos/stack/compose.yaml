@@ -89,6 +89,20 @@ services:
       start_period: 60s
       start_interval: 2s
 
+  routes:
+    image: apache/apisix:3.19.0-ubuntu
+    restart: "no"
+    depends_on:
+      apisix:
+        condition: service_healthy
+    environment:
+      APISIX_ADMIN_URL: http://apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
+    volumes:
+      - ./config/apisix:/config:ro
+    entrypoint: ["sh", "-c"]
+    command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/load-routes.lua /config/routes/*.json"]
+
 volumes:
   postgres-data:
   etcd-data:
