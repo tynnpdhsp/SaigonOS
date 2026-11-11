@@ -3,4 +3,4 @@ blank_issues_enabled: true
 contact_links:
   - name: Báo lỗ hổng bảo mật
     url: https://github.com/tynnpdhsp/SaigonOS/security/advisories/new
-    about: Lỗ hổng bảo mật thì báo riêng ở đây, đừng mở Issue công khai.
+    about: Lỗ hổng bảo mật được báo cáo riêng tại đây, không qua issue công khai.

@@ -1,23 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Báo lỗi
-description: Báo một lỗi của SaigonOS
+description: Báo cáo một lỗi của SaigonOS
 labels: [bug]
 body:
   - type: textarea
     id: what-happened
     attributes:
-      label: Chuyện gì đã xảy ra
-      description: Mô tả lỗi bạn gặp và điều bạn mong đợi.
+      label: Mô tả lỗi
+      description: Mô tả lỗi gặp phải và kết quả mong đợi.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Các bước tái hiện
+      label: Các bước tái hiện lỗi
       placeholder: |
         1. Chạy lệnh ...
         2. Mở trang ...
-        3. Thấy lỗi ...
+        3. Lỗi xuất hiện ...
     validations:
       required: true
   - type: input
@@ -35,6 +35,6 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Nhật ký lỗi
-      description: Dán nguyên văn thông báo lỗi. Nhớ xóa mật khẩu và khóa bí mật.
+      label: Log lỗi
+      description: Dán nguyên văn thông báo lỗi. Cần xóa mật khẩu và khóa bí mật trước khi gửi.
       render: text

@@ -6,16 +6,16 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Bạn đang gặp vấn đề gì
+      label: Vấn đề đang gặp phải
     validations:
       required: true
   - type: textarea
     id: solution
     attributes:
-      label: Bạn muốn SaigonOS làm gì
+      label: Giải pháp mong muốn
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Cách khác bạn đã thử
+      label: Các phương án thay thế đã cân nhắc
