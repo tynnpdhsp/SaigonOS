@@ -16,7 +16,7 @@ CHANGELOG = """\
 
 ### Thêm
 
-- Kho tệp.
+- Lưu trữ file.
 
 ### Sửa
 
@@ -54,7 +54,7 @@ def test_released_versions_skip_unreleased_section():
 def test_notes_stop_at_next_version():
     notes = release_notes.find_notes(CHANGELOG, Version("0.2.0"))
 
-    assert notes == "### Thêm\n\n- Kho tệp.\n\n### Sửa\n\n- Lỗi đăng nhập.\n"
+    assert notes == "### Thêm\n\n- Lưu trữ file.\n\n### Sửa\n\n- Lỗi đăng nhập.\n"
 
 
 def test_notes_of_last_section_leave_out_link_definitions():
@@ -70,23 +70,23 @@ def test_matching_tag_prints_notes(project, capsys):
     project("0.2.0")
 
     assert release_notes.main(["v0.2.0"]) == 0
-    assert capsys.readouterr().out.startswith("### Thêm\n\n- Kho tệp.")
+    assert capsys.readouterr().out.startswith("### Thêm\n\n- Lưu trữ file.")
 
 
 def test_prerelease_tag_matches_normalized_version(project, capsys):
     project("1.0.0rc1", CHANGELOG.replace("[0.2.0]", "[1.0.0-rc.1]"))
 
     assert release_notes.main(["v1.0.0-rc.1"]) == 0
-    assert capsys.readouterr().out.startswith("### Thêm\n\n- Kho tệp.")
+    assert capsys.readouterr().out.startswith("### Thêm\n\n- Lưu trữ file.")
 
 
 @pytest.mark.parametrize(
     ("version", "tag", "message"),
     [
-        ("0.2.0", "v0.1.0", "không khớp phiên bản 0.2.0"),
-        ("0.3.0.dev0", "v0.3.0", "không khớp phiên bản 0.3.0.dev0"),
+        ("0.2.0", "v0.1.0", "không khớp với phiên bản 0.2.0"),
+        ("0.3.0.dev0", "v0.3.0", "không khớp với phiên bản 0.3.0.dev0"),
         ("0.3.0", "v0.3.0", "chưa có mục cho phiên bản 0.3.0"),
-        ("0.2.0", "moi-nhat", "không phải số phiên bản hợp lệ"),
+        ("0.2.0", "moi-nhat", "không phải là số phiên bản hợp lệ"),
     ],
 )
 def test_wrong_tag_is_rejected(project, capsys, version, tag, message):

@@ -19,11 +19,12 @@ HEADER = f"""\
 <!-- {SPDX_TAG}: Apache-2.0 -->
 # Phần mềm bên thứ ba
 
-Tệp này do lệnh `make third-party` sinh ra. Đừng sửa tay.
+File này do lệnh `make third-party` tạo ra. Không sửa trực tiếp file này.
 
-SaigonOS không chép mã của dự án khác vào kho. Bảng dưới kê mọi thư viện được cài cùng SaigonOS, \
-lấy từ `requirements.txt`. Công cụ phát triển ở `requirements-dev.txt` chỉ chạy lúc phát triển \
-và trong CI, không nằm trong gói cài đặt.
+SaigonOS không sao chép mã nguồn của dự án khác vào repo. Bảng dưới đây liệt kê mọi thư viện \
+được cài đặt cùng SaigonOS. Danh sách được lấy từ `requirements.txt`. Các công cụ phát triển \
+trong `requirements-dev.txt` chỉ dùng khi phát triển và khi chạy CI. Các công cụ này không được \
+cài đặt cùng SaigonOS.
 
 ## Thư viện Python
 
@@ -61,7 +62,7 @@ def resolve_license(name: str, reported: str) -> str:
     license_expression = VERIFIED_LICENSES.get(name, reported)
     identifiers = set(re.findall(r"[^\s()]+", license_expression)) - {"AND", "OR", "WITH"}
     if not identifiers or not identifiers <= ALLOWED_LICENSES:
-        raise ThirdPartyError(f"Giấy phép lạ: {name} ghi '{reported}'.")
+        raise ThirdPartyError(f"Giấy phép ngoài danh sách cho phép: {name} khai báo '{reported}'.")
     return license_expression
 
 
@@ -70,11 +71,11 @@ def build_table(lock_file: Path = LOCK_FILE) -> str:
     installed = read_installed(sorted(locked))
     rows = []
     for name, version in sorted(locked.items()):
-        found = installed.get(name, {}).get("Version", "chưa cài")
+        found = installed.get(name, {}).get("Version", "chưa cài đặt")
         if found != version:
             raise ThirdPartyError(
-                f"{name}: tệp khóa ghi {version}, môi trường có {found}. "
-                "Chạy pip install -r requirements-dev.txt."
+                f"{name}: lock file ghi {version} nhưng môi trường có {found}. "
+                "Hãy chạy pip install -r requirements-dev.txt."
             )
         license_expression = resolve_license(name, installed[name]["License"])
         source = f"https://pypi.org/project/{name}/{version}/"
@@ -83,8 +84,8 @@ def build_table(lock_file: Path = LOCK_FILE) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Sinh bảng giấy phép phần mềm bên thứ ba.")
-    parser.add_argument("--check", action="store_true", help="chỉ so sánh, không ghi tệp")
+    parser = argparse.ArgumentParser(description="Tạo bảng giấy phép phần mềm bên thứ ba.")
+    parser.add_argument("--check", action="store_true", help="chỉ so sánh, không ghi file")
     arguments = parser.parse_args(argv)
     try:
         table = build_table()
@@ -102,10 +103,10 @@ def main(argv: list[str] | None = None) -> int:
             current.splitlines(keepends=True),
             table.splitlines(keepends=True),
             "THIRD-PARTY.md",
-            "bảng sinh lại",
+            "bảng tạo lại",
         )
     )
-    print("THIRD-PARTY.md lệch với tệp khóa. Chạy make third-party.", file=sys.stderr)
+    print("THIRD-PARTY.md không khớp với lock file. Hãy chạy make third-party.", file=sys.stderr)
     return 1
 
 

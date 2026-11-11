@@ -53,16 +53,16 @@ def find_notes(changelog: str, version: Version) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="In ghi chú phát hành của một thẻ phiên bản.")
-    parser.add_argument("tag", help="thẻ phiên bản, ví dụ v0.1.0")
+    parser = argparse.ArgumentParser(description="In release notes của một tag phiên bản.")
+    parser.add_argument("tag", help="tag phiên bản, ví dụ v0.1.0")
     tag = parser.parse_args(argv).tag
     try:
         version = parse_version(tag)
         if version is None:
-            raise ReleaseError(f"Thẻ {tag} không phải số phiên bản hợp lệ.")
+            raise ReleaseError(f"Tag {tag} không phải là số phiên bản hợp lệ.")
         if version != project_version():
             raise ReleaseError(
-                f"Thẻ {tag} không khớp phiên bản {project_version()} trong pyproject.toml."
+                f"Tag {tag} không khớp với phiên bản {project_version()} trong pyproject.toml."
             )
         notes = find_notes(CHANGELOG_FILE.read_text(encoding="utf-8"), version)
     except ReleaseError as error:

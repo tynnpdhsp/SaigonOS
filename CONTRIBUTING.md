@@ -45,7 +45,7 @@ Chỉ dùng thư viện có giấy phép nguồn mở được OSI công nhận.
 3. Chạy `pip install -r requirements-dev.txt` để cài đúng phiên bản đã khóa.
 4. Chạy `make third-party` để sinh lại [THIRD-PARTY.md](THIRD-PARTY.md).
 
-Bước 4 báo "Giấy phép lạ" khi giấy phép của thư viện chưa nằm trong danh sách cho phép ở `scripts/third_party.py`. Lúc đó hãy mở Issue để bàn trước khi thêm.
+Bước 4 báo "Giấy phép ngoài danh sách cho phép" khi giấy phép của thư viện chưa nằm trong danh sách cho phép ở `scripts/third_party.py`. Lúc đó hãy mở Issue để bàn trước khi thêm.
 
 ## Phát hành
 

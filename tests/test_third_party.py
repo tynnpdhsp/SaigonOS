@@ -34,7 +34,7 @@ def test_allowed_license_is_kept(reported):
     "reported", ["GPL-3.0-or-later", "BSD License", "UNKNOWN", "MIT OR Proprietary", ""]
 )
 def test_unknown_license_is_rejected(reported):
-    with pytest.raises(third_party.ThirdPartyError, match="Giấy phép lạ"):
+    with pytest.raises(third_party.ThirdPartyError, match="ngoài danh sách cho phép"):
         third_party.resolve_license("demo", reported)
 
 
@@ -60,7 +60,7 @@ def test_empty_lock_gives_table_without_rows(tmp_path):
 def test_lock_that_differs_from_environment_is_rejected(tmp_path):
     lock_file = write_lock(tmp_path, "click==0.0.1\n")
 
-    with pytest.raises(third_party.ThirdPartyError, match=r"tệp khóa ghi 0\.0\.1"):
+    with pytest.raises(third_party.ThirdPartyError, match=r"lock file ghi 0\.0\.1"):
         third_party.build_table(lock_file)
 
 
@@ -80,7 +80,7 @@ def test_check_fails_when_table_differs(table_file, capsys):
     table_file.write_text("bảng cũ\n", encoding="utf-8")
 
     assert third_party.main(["--check"]) == 1
-    assert "lệch" in capsys.readouterr().err
+    assert "không khớp với lock file" in capsys.readouterr().err
     assert table_file.read_text(encoding="utf-8") == "bảng cũ\n"
 
 
@@ -88,5 +88,5 @@ def test_check_fails_on_unknown_license(monkeypatch, table_file, capsys):
     monkeypatch.setattr(third_party, "ALLOWED_LICENSES", set())
 
     assert third_party.main(["--check"]) == 1
-    assert "Giấy phép lạ" in capsys.readouterr().err
+    assert "ngoài danh sách cho phép" in capsys.readouterr().err
     assert not table_file.exists()
