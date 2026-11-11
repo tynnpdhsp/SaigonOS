@@ -1,0 +1,6 @@
+{
+  "realm": "saigonos",
+  "displayName": "SaigonOS",
+  "enabled": true,
+  "accessTokenLifespan": 60
+}
