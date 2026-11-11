@@ -81,6 +81,8 @@ jobs:
           pip install "$RUNNER_TEMP/$name"
           cd "$RUNNER_TEMP"
           test "$(saigonos --version)" = "saigonos ${name#saigonos-}"
+          saigonos init --home "$RUNNER_TEMP/home"
+          docker compose --project-directory "$RUNNER_TEMP/home" config --quiet
 
   required:
     if: always()
