@@ -16,7 +16,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 
 - Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
 - Python 3.11 trở lên và pip.
-- Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên.
+- Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các dịch vụ.
 
@@ -43,6 +43,8 @@ saigonos init
 ```
 
 Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
+
+Hệ thống dùng hai cổng 9080 và 9180. Nếu một trong hai cổng đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
 ### 3. Khởi động các dịch vụ
 
