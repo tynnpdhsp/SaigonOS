@@ -4,3 +4,8 @@ version = 1
 [[annotations]]
 path = "**"
 SPDX-FileCopyrightText = "2026 SaigonOS contributors"
+
+[[annotations]]
+path = "**/*.json"
+SPDX-FileCopyrightText = "2026 SaigonOS contributors"
+SPDX-License-Identifier = "Apache-2.0"

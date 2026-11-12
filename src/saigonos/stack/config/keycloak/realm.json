@@ -1,0 +1,151 @@
+{
+  "realm": "saigonos",
+  "displayName": "SaigonOS",
+  "enabled": true,
+  "accessTokenLifespan": 60,
+  "bruteForceProtected": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["vi", "en"],
+  "defaultLocale": "vi",
+  "roles": {
+    "realm": [
+      {
+        "name": "authenticated",
+        "description": "Người dùng đã đăng nhập"
+      },
+      {
+        "name": "admin",
+        "description": "Quản trị hệ thống, bắt buộc đăng nhập bằng OTP",
+        "composite": true,
+        "composites": {
+          "client": {
+            "realm-management": ["realm-admin"]
+          }
+        }
+      }
+    ]
+  },
+  "defaultRoles": ["authenticated"],
+  "browserFlow": "saigonos browser",
+  "authenticationFlows": [
+    {
+      "alias": "saigonos browser",
+      "description": "Đăng nhập trên trình duyệt, bắt buộc OTP với vai trò admin",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20
+        },
+        {
+          "flowAlias": "saigonos browser forms",
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30
+        }
+      ]
+    },
+    {
+      "alias": "saigonos browser forms",
+      "description": "Tên đăng nhập, mật khẩu và OTP",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "flowAlias": "saigonos browser admin otp",
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20
+        },
+        {
+          "flowAlias": "saigonos browser optional otp",
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 30
+        }
+      ]
+    },
+    {
+      "alias": "saigonos browser admin otp",
+      "description": "Vai trò admin bắt buộc nhập OTP",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "authenticatorConfig": "saigonos admin role",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20
+        }
+      ]
+    },
+    {
+      "alias": "saigonos browser optional otp",
+      "description": "Người dùng khác nhập OTP nếu đã tự thiết lập",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "authenticatorConfig": "saigonos not admin role",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "authenticator": "conditional-user-configured",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 30
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "saigonos admin role",
+      "config": {
+        "condUserRole": "admin"
+      }
+    },
+    {
+      "alias": "saigonos not admin role",
+      "config": {
+        "condUserRole": "admin",
+        "negate": "true"
+      }
+    }
+  ]
+}

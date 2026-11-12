@@ -20,6 +20,13 @@ def write_lock(tmp_path, content, name="requirements.txt"):
     return lock_file
 
 
+def write_stack(tmp_path, *references):
+    stack_file = tmp_path / "compose.yaml"
+    services = [f"  s{index}:\n    image: {image}\n" for index, image in enumerate(references)]
+    stack_file.write_text("services:\n" + "".join(services), encoding="utf-8")
+    return stack_file
+
+
 def test_read_lock_returns_pinned_versions(tmp_path):
     lock_file = write_lock(
         tmp_path,
@@ -89,12 +96,13 @@ def test_footer_states_allowed_licenses():
 
     assert "Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT và PSF-2.0" in table
     assert "CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later" in table
+    assert "Apache-2.0, MIT và PostgreSQL" in table
 
 
 def test_empty_lock_gives_product_table_without_rows(tmp_path):
     table = dependencies.build_table(write_lock(tmp_path, ""))
 
-    assert dependencies.RUNTIME_SECTION + dependencies.DEV_SECTION in table
+    assert dependencies.RUNTIME_SECTION + dependencies.IMAGE_SECTION in table
 
 
 def test_indirect_dependency_gets_generic_description(tmp_path):
@@ -134,6 +142,65 @@ def test_package_that_is_not_installed_is_rejected(tmp_path):
         dependencies.build_table(lock_file)
 
 
+def test_read_images_returns_each_image_once(tmp_path):
+    stack_file = write_stack(tmp_path, "demo/b:2.0", "quay.io/demo/a:v1.0", "demo/b:2.0")
+
+    assert dependencies.read_images(stack_file) == ["demo/b:2.0", "quay.io/demo/a:v1.0"]
+
+
+def test_table_lists_every_image_of_the_stack():
+    table = dependencies.build_table()
+
+    references = dependencies.read_images(dependencies.STACK_FILE)
+    assert references
+    for reference in references:
+        name, _, tag = reference.rpartition(":")
+        image = dependencies.IMAGES[reference]
+        assert f"| {name} | {tag} | {image.license} | {image.description} |" in table
+    assert table.index(dependencies.RUNTIME_SECTION) < table.index(dependencies.IMAGE_SECTION)
+    assert table.index(dependencies.IMAGE_SECTION) < table.index(dependencies.DEV_SECTION)
+
+
+@pytest.mark.parametrize("reference", ["demo/new:1.0", "postgres:19.0-alpine"])
+def test_undeclared_image_is_rejected(tmp_path, reference):
+    stack_file = write_stack(tmp_path, *dependencies.IMAGES, reference)
+
+    with pytest.raises(dependencies.DependencyError, match="chưa được khai báo"):
+        dependencies.build_table(stack_file=stack_file)
+
+
+@pytest.mark.parametrize("reference", ["postgres", "postgres:latest", "localhost:5000/postgres"])
+def test_image_without_pinned_version_is_rejected(monkeypatch, reference):
+    image = dependencies.Image("MIT", "Mô tả", "https://example.org/demo")
+    monkeypatch.setattr(dependencies, "IMAGES", {reference: image})
+
+    with pytest.raises(dependencies.DependencyError, match="chưa cố định phiên bản"):
+        dependencies.build_image_rows([reference])
+
+
+def test_declared_image_missing_from_stack_is_rejected(tmp_path):
+    kept = sorted(dependencies.IMAGES)[1:]
+
+    with pytest.raises(dependencies.DependencyError, match=r"không còn trong compose\.yaml"):
+        dependencies.build_table(stack_file=write_stack(tmp_path, *kept))
+
+
+def test_image_license_outside_allowed_list_is_rejected(monkeypatch):
+    image = dependencies.Image("SSPL-1.0", "Mô tả", "https://example.org/demo/tree/v7.0")
+    monkeypatch.setattr(dependencies, "IMAGES", {"demo/db:7.0": image})
+
+    with pytest.raises(dependencies.DependencyError, match="ngoài danh sách cho phép"):
+        dependencies.build_image_rows(["demo/db:7.0"])
+
+
+def test_image_source_of_another_version_is_rejected(monkeypatch):
+    image = dependencies.Image("MIT", "Mô tả", "https://example.org/demo/tree/v6.9")
+    monkeypatch.setattr(dependencies, "IMAGES", {"demo/db:7.0-alpine": image})
+
+    with pytest.raises(dependencies.DependencyError, match="không dẫn tới mã nguồn"):
+        dependencies.build_image_rows(["demo/db:7.0-alpine"])
+
+
 def test_generated_table_passes_check(table_file):
     assert dependencies.main([]) == 0
     assert dependencies.main(["--check"]) == 0
@@ -145,6 +212,14 @@ def test_check_fails_when_table_differs(table_file, capsys):
     assert dependencies.main(["--check"]) == 1
     assert "không khớp với lock file" in capsys.readouterr().err
     assert table_file.read_text(encoding="utf-8") == "bảng cũ\n"
+
+
+def test_check_fails_on_undeclared_image(monkeypatch, table_file, capsys):
+    monkeypatch.delitem(dependencies.IMAGES, "postgres:18.6-alpine")
+
+    assert dependencies.main(["--check"]) == 1
+    assert "Image postgres:18.6-alpine chưa được khai báo" in capsys.readouterr().err
+    assert not table_file.exists()
 
 
 def test_check_fails_on_unknown_license(monkeypatch, table_file, capsys):

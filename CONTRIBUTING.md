@@ -30,10 +30,27 @@ Lệnh này thực hiện các bước sau:
 
 - Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
 - Kiểm tra lỗi và định dạng mã bằng `ruff`.
-- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file.
+- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file và file `compose.yaml`.
 - Chạy kiểm thử bằng `pytest` và đo coverage.
 
 Để tự động sửa định dạng mã, chạy `make format`.
+
+## Kiểm thử tích hợp
+
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 2 GB.
+
+```bash
+make integration
+```
+
+Lệnh này thực hiện các bước sau:
+
+- Tạo một thư mục làm việc tạm bằng `saigonos init` với hai cổng còn trống.
+- Khởi động hệ thống bằng `saigonos up`.
+- Chạy các kiểm thử trong thư mục `tests/integration`.
+- Xóa container và dữ liệu bằng `saigonos down --volumes`.
+
+Một lượt chạy mất khoảng 2 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
@@ -54,6 +71,17 @@ Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công n
 5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
 Ở bước 5, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
+
+## Thêm hoặc đổi phiên bản image Docker
+
+Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công nhận. Mỗi image phải ghi rõ phiên bản và không dùng tag `latest`.
+
+1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`.
+2. Đọc file giấy phép trong mã nguồn của đúng phiên bản đó.
+3. Khai báo image trong `IMAGES` ở `scripts/dependencies.py`. Mỗi image cần giấy phép, mô tả và địa chỉ mã nguồn của phiên bản đó.
+4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
+
+Lệnh `make lint` báo lỗi khi một image trong `compose.yaml` chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
 
 ## Phát hành phiên bản mới
 

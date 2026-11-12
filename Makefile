@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: check lint format test lock dependencies dist clean
+.PHONY: check lint format test integration lock dependencies dist clean
 
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 UV_COMPILE = uv pip compile --quiet pyproject.toml --python-version 3.11 --custom-compile-command "make lock"
@@ -19,6 +19,9 @@ format:
 
 test:
 	pytest --cov
+
+integration:
+	pytest -m integration -v
 
 lock:
 	$(UV_COMPILE) -o requirements.txt
