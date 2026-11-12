@@ -10,19 +10,19 @@ Lõi cung cấp bốn dịch vụ chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Quản lý dữ liệu phi cấu trúc và luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Phần quản lý dữ liệu phi cấu trúc và luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
-## Yêu cầu
+## Yêu cầu hệ thống
 
 - Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
 - Python 3.11 trở lên và pip.
 - Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên.
 - Git.
-- Các image Docker chiếm khoảng 2 GB dung lượng đĩa. Các dịch vụ dùng khoảng 1 GB RAM.
+- Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các dịch vụ.
 
 ## Cài đặt
 
-Việc cài đặt chỉ cần pip và Docker Compose. Mọi giá trị cấu hình đều có mặc định, do đó không cần sửa file nào bằng tay.
+Việc cài đặt chỉ cần pip và Docker Compose. Mọi cấu hình đều có giá trị mặc định. Do đó, không cần chỉnh sửa file cấu hình nào.
 
 ### 1. Cài đặt package `saigonos`
 
@@ -42,7 +42,7 @@ pip install .
 saigonos init
 ```
 
-Lệnh này tạo thư mục `~/saigonos` gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
+Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
 ### 3. Khởi động các dịch vụ
 
@@ -51,7 +51,7 @@ cd ~/saigonos
 docker compose up -d --wait
 ```
 
-Ở lần chạy đầu tiên, Docker tải các image nên cần chờ vài phút. Những lần sau, các dịch vụ sẵn sàng sau khoảng một phút.
+Ở lần chạy đầu tiên, Docker tải các image nên lệnh mất vài phút. Ở những lần sau, lệnh mất khoảng một phút.
 
 ### 4. Kiểm tra hệ thống
 
@@ -59,7 +59,7 @@ docker compose up -d --wait
 saigonos doctor
 ```
 
-Khi mọi dịch vụ hoạt động, lệnh in ra kết quả như sau:
+Khi mọi dịch vụ hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
 ĐẠT  apisix     đang chạy
@@ -76,10 +76,12 @@ Hệ thống hoạt động bình thường.
 
 ## Truy cập hệ thống
 
+Với cấu hình mặc định, hệ thống có các địa chỉ sau:
+
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
 | http://localhost:9080/auth/admin/ | Trang quản trị của Keycloak | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
-| http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Admin key là giá trị `APISIX_ADMIN_KEY` |
+| http://127.0.0.1:9180/ui/ | Trang quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://localhost:9080/api/ | REST API của PostgREST | Access token do Keycloak cấp |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
@@ -108,9 +110,9 @@ saigonos up
 
 ## Khởi động và dừng
 
-Lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư mục làm việc. Có thể dùng trực tiếp Docker Compose với kết quả tương đương.
+Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư mục làm việc. Có thể dùng trực tiếp các lệnh Docker Compose tương ứng.
 
-| Việc cần làm | Lệnh `saigonos` | Lệnh Docker Compose trong `~/saigonos` |
+| Thao tác | Lệnh `saigonos` | Lệnh Docker Compose trong `~/saigonos` |
 |---|---|---|
 | Khởi động | `saigonos up` | `docker compose up -d --wait` |
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
