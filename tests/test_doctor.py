@@ -103,7 +103,7 @@ def test_doctor_stops_when_compose_fails(home, cli, docker):
         (
             "unless-stopped",
             {"State": "running", "Health": "unhealthy"},
-            (False, "không đạt kiểm tra sức khỏe"),
+            (False, "không đạt healthcheck"),
         ),
         (
             "unless-stopped",

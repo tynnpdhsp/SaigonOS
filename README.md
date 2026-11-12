@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # SaigonOS
 
-SaigonOS là một hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được xây dựng từ các phần mềm nguồn mở và không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ cần phát triển phần giao diện và gọi các dịch vụ của lõi.
+SaigonOS là một hệ điều hành chuyển đổi số (DX-OS) nguồn mở. Phần lõi được xây dựng từ các phần mềm nguồn mở và không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ cần phát triển phần giao diện và gọi các service của lõi.
 
-Lõi cung cấp bốn dịch vụ chính:
+Lõi cung cấp bốn service chính:
 
 - Quản lý định danh và đăng nhập một lần (Identity/SSO)
 - Cổng API (API Gateway)
@@ -18,7 +18,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Python 3.11 trở lên và pip.
 - Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
-- Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các dịch vụ.
+- Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các service.
 
 ## Cài đặt
 
@@ -48,7 +48,7 @@ Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file
 
 Hệ thống dùng hai cổng 9080 và 9180. Nếu một trong hai cổng đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
-### 3. Khởi động các dịch vụ
+### 3. Khởi động các service
 
 ```bash
 cd ~/saigonos
@@ -63,7 +63,7 @@ docker compose up -d --wait
 saigonos doctor
 ```
 
-Khi mọi dịch vụ hoạt động bình thường, lệnh in ra kết quả sau:
+Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
 ĐẠT  apisix     đang chạy
@@ -84,8 +84,8 @@ Với cấu hình mặc định, hệ thống có các địa chỉ sau:
 
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
-| http://localhost:9080/auth/admin/ | Trang quản trị của Keycloak | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
-| http://127.0.0.1:9180/ui/ | Trang quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
+| http://localhost:9080/auth/admin/ | Admin Console của Keycloak | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
+| http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://localhost:9080/api/ | REST API của PostgREST | Access token do Keycloak cấp |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:

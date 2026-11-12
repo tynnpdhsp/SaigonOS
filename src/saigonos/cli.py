@@ -116,7 +116,7 @@ def run_compose(ctx: click.Context, home: Path, *args: str) -> None:
         ctx.exit(code)
 
 
-@main.command(help="Khởi động các dịch vụ bằng Docker Compose và chờ đến khi sẵn sàng.")
+@main.command(help="Khởi động các service bằng Docker Compose và chờ đến khi sẵn sàng.")
 @home_option
 @click.pass_context
 def up(ctx: click.Context, home: Path) -> None:
@@ -132,7 +132,7 @@ def down(ctx: click.Context, home: Path, volumes: bool) -> None:
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
 
 
-@main.command(help="Kiểm tra trạng thái các dịch vụ và API Gateway.")
+@main.command(help="Kiểm tra trạng thái các service và API Gateway.")
 @home_option
 @click.pass_context
 def doctor(ctx: click.Context, home: Path) -> None:
