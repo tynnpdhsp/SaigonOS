@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "saigonos"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Hệ điều hành chuyển đổi số (DX-OS) nguồn mở"
 readme = "README.md"
 requires-python = ">=3.11"

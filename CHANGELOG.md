@@ -5,6 +5,8 @@ File này ghi lại các thay đổi đáng chú ý của SaigonOS. Cách ghi tu
 
 ## [Chưa phát hành]
 
+## [0.1.0] - 2026-11-12
+
 ### Thêm
 
 - Package Python `saigonos` có lệnh `saigonos --version`.
@@ -21,4 +23,5 @@ File này ghi lại các thay đổi đáng chú ý của SaigonOS. Cách ghi tu
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng dịch vụ và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/commits/main
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0
