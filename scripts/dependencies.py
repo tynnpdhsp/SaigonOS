@@ -132,7 +132,7 @@ def footer() -> str:
     return f"""
 ## Gói đính kèm
 
-- Bản phát hành `saigonos-X.Y.Z.tar.gz` chỉ chứa mã nguồn của SaigonOS.
+- File release `saigonos-X.Y.Z.tar.gz` chỉ chứa mã nguồn của SaigonOS.
 - Các thư viện ở trên được pip tải từ PyPI khi cài đặt.
 - Các image ở trên được Docker tải về khi khởi động lần đầu. SaigonOS dùng nguyên image gốc. \
 Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu hình.
