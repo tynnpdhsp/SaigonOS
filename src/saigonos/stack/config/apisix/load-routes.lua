@@ -27,7 +27,7 @@ for _, path in ipairs(arg) do
         fail("Không kết nối được Admin API của APISIX: " .. err)
     end
     if response.status >= 300 then
-        fail("Không nạp được tuyến " .. name .. ": " .. response.body)
+        fail("Không nạp được route " .. name .. ": " .. response.body)
     end
-    print("Đã nạp tuyến " .. name)
+    print("Đã nạp route " .. name)
 end
