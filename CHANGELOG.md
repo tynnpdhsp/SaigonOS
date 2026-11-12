@@ -3,6 +3,8 @@
 
 File này ghi lại các thay đổi đáng chú ý của SaigonOS. Cách ghi tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Số phiên bản tuân theo [Semantic Versioning](https://semver.org/lang/vi/).
 
+Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chưa có trong release nào.
+
 ## [Chưa phát hành]
 
 ## [0.1.0] - 2026-11-12
