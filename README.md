@@ -36,6 +36,8 @@ cd SaigonOS
 pip install .
 ```
 
+Mã nguồn của từng phiên bản cũng có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Tải file `saigonos-X.Y.Z.tar.gz`, giải nén rồi chạy `pip install .` trong thư mục vừa giải nén.
+
 ### 2. Tạo thư mục làm việc
 
 ```bash
