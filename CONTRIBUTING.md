@@ -30,7 +30,7 @@ Lệnh này thực hiện các bước sau:
 
 - Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
 - Kiểm tra lỗi và định dạng mã bằng `ruff`.
-- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file.
+- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file và file `compose.yaml`.
 - Chạy kiểm thử bằng `pytest` và đo coverage.
 
 Để tự động sửa định dạng mã, chạy `make format`.
@@ -71,6 +71,17 @@ Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công n
 5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
 Ở bước 5, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
+
+## Thêm hoặc đổi phiên bản image Docker
+
+Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công nhận. Mỗi image phải ghi rõ phiên bản và không dùng tag `latest`.
+
+1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`.
+2. Đọc file giấy phép trong mã nguồn của đúng phiên bản đó.
+3. Khai báo image trong `IMAGES` ở `scripts/dependencies.py`. Mỗi image cần giấy phép, mô tả và địa chỉ mã nguồn của phiên bản đó.
+4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
+
+Lệnh `make lint` báo lỗi khi một image trong `compose.yaml` chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
 
 ## Phát hành phiên bản mới
 
