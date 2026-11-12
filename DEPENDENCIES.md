@@ -13,7 +13,9 @@ Các thư viện này được cài đặt cùng SaigonOS. Danh sách được l
 
 ## Phần mềm chạy trong container
 
-Các phần mềm này chạy trong container riêng. Danh sách image được lấy từ file `src/saigonos/stack/compose.yaml`. Image không ghi tên máy chủ được tải từ Docker Hub. Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấy phép được kiểm tra tại mã nguồn của đúng phiên bản đó, theo địa chỉ ở cột nguồn. Hệ điều hành nền và các thư viện khác trong image giữ giấy phép riêng.
+Các phần mềm này chạy trong container riêng. Danh sách image được lấy từ file `src/saigonos/stack/compose.yaml`. Image không ghi địa chỉ máy chủ được tải từ Docker Hub.
+
+Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấy phép được kiểm tra tại mã nguồn của đúng phiên bản đó. Địa chỉ mã nguồn nằm ở cột nguồn. Hệ điều hành nền và các thư viện khác trong image giữ giấy phép riêng.
 
 | Image | Phiên bản | Giấy phép | Mô tả | Nguồn |
 |---|---|---|---|---|
@@ -41,7 +43,7 @@ Các công cụ này chỉ dùng khi phát triển và khi chạy CI. Chúng kh�
 
 - Bản phát hành `saigonos-X.Y.Z.tar.gz` chỉ chứa mã nguồn của SaigonOS.
 - Các thư viện ở trên được pip tải từ PyPI khi cài đặt.
-- Các image ở trên được Docker tải về khi khởi động lần đầu. SaigonOS dùng nguyên image gốc và chỉ cấu hình qua biến môi trường và file cấu hình.
+- Các image ở trên được Docker tải về khi khởi động lần đầu. SaigonOS dùng nguyên image gốc. Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu hình.
 - SaigonOS không sao chép và không sửa mã nguồn của dự án khác.
 
 ## Quy tắc về giấy phép
