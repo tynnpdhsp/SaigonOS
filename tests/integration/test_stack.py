@@ -30,6 +30,13 @@ def test_doctor_reports_working_stack(stack):
     assert "Hệ thống hoạt động bình thường." in result.stdout
 
 
+def test_gateway_ports_listen_on_loopback_only(stack):
+    env = stack.env
+
+    assert stack.compose("port", "apisix", "9080") == f"127.0.0.1:{env['SAIGONOS_HTTP_PORT']}"
+    assert stack.compose("port", "apisix", "9180") == f"127.0.0.1:{env['SAIGONOS_ADMIN_PORT']}"
+
+
 def test_api_rejects_call_without_token(stack):
     assert stack.api().status == 401
 

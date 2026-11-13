@@ -6,6 +6,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import NamedTuple
 
+DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 SECRET_KEYS = (
@@ -94,6 +95,7 @@ def init_home(
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
     values = {
         "SAIGONOS_URL": url,
+        "SAIGONOS_HTTP_HOST": current.get("SAIGONOS_HTTP_HOST") or DEFAULT_HTTP_HOST,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
     }
