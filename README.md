@@ -80,7 +80,7 @@ Hệ thống hoạt động bình thường.
 
 ## Truy cập hệ thống
 
-Với cấu hình mặc định, hệ thống có các địa chỉ sau:
+Với cấu hình mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt và có các địa chỉ sau:
 
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
@@ -112,6 +112,15 @@ Ví dụ, để đổi cổng HTTP thành 8080:
 saigonos init --http-port 8080
 saigonos up
 ```
+
+Ví dụ, để các máy khác trong mạng nội bộ truy cập được hệ thống qua địa chỉ `192.168.1.10` của máy cài đặt:
+
+```bash
+saigonos init --http-host 0.0.0.0 --url http://192.168.1.10:9080
+saigonos up
+```
+
+Keycloak chỉ chấp nhận kết nối HTTP từ các địa chỉ IP trong mạng nội bộ. Để phục vụ người dùng qua Internet, hãy làm theo mục [Triển khai sau reverse proxy HTTPS](#triển-khai-sau-reverse-proxy-https).
 
 ## Khởi động và dừng
 
