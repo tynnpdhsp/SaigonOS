@@ -10,6 +10,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thêm
 
 - Tùy chọn `--http-host` của lệnh `saigonos init` đặt địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. Giá trị `0.0.0.0` cho phép truy cập từ máy khác.
+- Hướng dẫn triển khai sau reverse proxy HTTPS và hướng dẫn cập nhật phiên bản trong README.
 
 ### Thay đổi
 

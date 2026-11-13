@@ -180,6 +180,37 @@ saigonos doctor
 
 Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được reverse proxy và chứng chỉ.
 
+## Cập nhật phiên bản
+
+Các thay đổi của từng phiên bản được ghi trong [CHANGELOG.md](CHANGELOG.md). Khi cập nhật, dữ liệu và các mật khẩu trong file `.env` được giữ nguyên.
+
+### 1. Dừng các service
+
+```bash
+saigonos down
+```
+
+### 2. Cài đặt phiên bản mới của package `saigonos`
+
+Trong thư mục `SaigonOS` đã tạo bằng lệnh `git clone`:
+
+```bash
+git pull
+pip install .
+```
+
+Nếu cài đặt từ file release, tải file `saigonos-X.Y.Z.tar.gz` của phiên bản mới, giải nén rồi chạy `pip install .` trong thư mục vừa giải nén.
+
+### 3. Cập nhật thư mục làm việc và khởi động lại
+
+```bash
+saigonos init
+saigonos up
+saigonos doctor
+```
+
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới.
+
 ## Tham gia phát triển
 
 - Báo lỗi hoặc đề xuất tính năng: mở một [issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose).
