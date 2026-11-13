@@ -80,7 +80,7 @@ Hệ thống hoạt động bình thường.
 
 ## Truy cập hệ thống
 
-Với cấu hình mặc định, hệ thống có các địa chỉ sau:
+Với cấu hình mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt và có các địa chỉ sau:
 
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
@@ -101,6 +101,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
 | `--home` | `~/saigonos` | Thư mục làm việc. Có thể đặt bằng biến môi trường `SAIGONOS_HOME` |
+| `--http-host` | `127.0.0.1` | Địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. Với giá trị mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt |
 | `--http-port` | `9080` | Cổng HTTP của API Gateway |
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
@@ -112,6 +113,17 @@ saigonos init --http-port 8080
 saigonos up
 ```
 
+Ví dụ, để các máy khác trong mạng nội bộ truy cập được hệ thống qua địa chỉ `192.168.1.10` của máy cài đặt:
+
+```bash
+saigonos init --http-host 0.0.0.0 --url http://192.168.1.10:9080
+saigonos up
+```
+
+Chỉ nên dùng cách này trong một mạng nội bộ đáng tin cậy. Kết nối HTTP không được mã hóa. API Gateway cũng tin header `X-Forwarded-For` do máy trong mạng nội bộ gửi tới. Do đó, một máy trong mạng nội bộ có thể khai báo một địa chỉ IP khác với địa chỉ thật.
+
+Keycloak chỉ chấp nhận kết nối HTTP từ các địa chỉ IP trong mạng nội bộ. Để phục vụ người dùng qua Internet, hãy làm theo mục [Triển khai sau reverse proxy HTTPS](#triển-khai-sau-reverse-proxy-https).
+
 ## Khởi động và dừng
 
 Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư mục làm việc. Có thể dùng trực tiếp các lệnh Docker Compose tương ứng.
@@ -121,6 +133,85 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 | Khởi động | `saigonos up` | `docker compose up -d --wait` |
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
+
+## Triển khai sau reverse proxy HTTPS
+
+Để phục vụ người dùng qua Internet, SaigonOS cần chạy sau một reverse proxy có HTTPS, ví dụ Nginx. Reverse proxy nhận kết nối HTTPS từ người dùng và chuyển tiếp tới cổng HTTP của API Gateway trên cùng máy.
+
+### 1. Đặt địa chỉ truy cập
+
+```bash
+saigonos init --url https://dx.example.com
+saigonos up
+```
+
+Trong đó `dx.example.com` là tên miền của hệ thống. Cổng HTTP vẫn chỉ lắng nghe trên địa chỉ `127.0.0.1`. Do đó, người dùng chỉ truy cập được hệ thống qua reverse proxy.
+
+### 2. Cấu hình reverse proxy
+
+Ví dụ, với Nginx và chứng chỉ do Certbot lấy từ Let's Encrypt:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name dx.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/dx.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dx.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:9080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+    }
+}
+```
+
+Reverse proxy phải gửi đủ các header trong ví dụ trên. API Gateway dùng các header này để xác định địa chỉ mà người dùng truy cập và địa chỉ IP của người dùng. API Gateway chỉ tin các header này khi kết nối đến từ một địa chỉ IP trong mạng nội bộ, gồm các dải `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` và `192.168.0.0/16`.
+
+Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người dùng không thể tự khai báo một địa chỉ IP khác.
+
+### 3. Kiểm tra hệ thống
+
+```bash
+saigonos doctor
+```
+
+Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ.
+
+## Cập nhật phiên bản
+
+Các thay đổi của từng phiên bản được ghi trong [CHANGELOG.md](CHANGELOG.md). Khi cập nhật, dữ liệu và các mật khẩu trong file `.env` được giữ nguyên.
+
+### 1. Dừng các service
+
+```bash
+saigonos down
+```
+
+### 2. Cài đặt phiên bản mới của package `saigonos`
+
+Trong thư mục `SaigonOS` đã tạo bằng lệnh `git clone`:
+
+```bash
+git pull
+pip install .
+```
+
+Nếu cài đặt từ file release, tải file `saigonos-X.Y.Z.tar.gz` của phiên bản mới, giải nén rồi chạy `pip install .` trong thư mục vừa giải nén.
+
+### 3. Cập nhật thư mục làm việc và khởi động lại
+
+```bash
+saigonos init
+saigonos up
+saigonos doctor
+```
+
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới.
 
 ## Tham gia phát triển
 

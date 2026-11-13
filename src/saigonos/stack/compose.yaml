@@ -77,8 +77,12 @@ services:
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
     ports:
-      - ${SAIGONOS_HTTP_PORT:?}:9080
-      - 127.0.0.1:${SAIGONOS_ADMIN_PORT:?}:9180
+      - host_ip: ${SAIGONOS_HTTP_HOST:?}
+        published: ${SAIGONOS_HTTP_PORT:?}
+        target: 9080
+      - host_ip: 127.0.0.1
+        published: ${SAIGONOS_ADMIN_PORT:?}
+        target: 9180
     volumes:
       - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     healthcheck:

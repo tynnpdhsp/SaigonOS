@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import re
 import secrets
 import shutil
 import socket
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from http.client import HTTPConnection
 from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
@@ -14,6 +16,7 @@ import pytest
 
 REALM = "saigonos"
 CLIENT = "kiem-thu"
+OUTSIDE_SUBNETS = [f"198.51.100.{start}/28" for start in range(0, 256, 16)]
 
 
 class Reply(NamedTuple):
@@ -34,9 +37,9 @@ def free_port():
         return listener.getsockname()[1]
 
 
-def send(method, url, token=None, form=None, body=None):
+def send(method, url, token=None, form=None, body=None, headers=None):
     parts = urlsplit(url)
-    headers = {}
+    headers = dict(headers or {})
     payload = None
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
@@ -142,8 +145,14 @@ class Stack:
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
 
-    def api(self, token=None):
-        return send("GET", f"{self.url}/api/", token=token)
+    def api(self, token=None, headers=None):
+        return send("GET", f"{self.url}/api/", token=token, headers=headers)
+
+    def discovery(self, headers=None):
+        path = f"/auth/realms/{REALM}/.well-known/openid-configuration"
+        reply = send("GET", f"{self.url}{path}", headers=headers)
+        assert reply.status == 200, reply.body
+        return json.loads(reply.body)
 
     def burst(self, token, calls, workers=8):
         def worker(count):
@@ -188,6 +197,38 @@ class Stack:
         options = ["--rm", "--pid=host", "--privileged", "--entrypoint", "kill"]
         command = [self.docker, "run", *options, image, "-9", pid]
         subprocess.run(command, check=True, capture_output=True, timeout=60)
+
+    def run_docker(self, *args, check=True):
+        command = [self.docker, *args]
+        result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0 or not check, result.stderr
+        return result
+
+    @contextmanager
+    def outside_network(self):
+        network = f"{self.home.name}-outside"
+        gateway = self.container("apisix")
+        self.run_docker("network", "create", "--subnet", secrets.choice(OUTSIDE_SUBNETS), network)
+        try:
+            self.run_docker("network", "connect", "--alias", "gateway", network, gateway)
+            yield network
+        finally:
+            self.run_docker("network", "disconnect", "--force", network, gateway, check=False)
+            self.run_docker("network", "rm", network, check=False)
+
+    def outside_status(self, network, path, headers=None):
+        image = self.inspect(self.container("postgres"), "{{.Config.Image}}")
+        options = ["--rm", "--network", network, "--entrypoint", "wget"]
+        fields = []
+        for name, value in (headers or {}).items():
+            fields += ["--header", f"{name}: {value}"]
+        url = f"http://gateway:9080{path}"
+        result = self.run_docker(
+            "run", *options, image, "-S", "-O", "/dev/null", *fields, url, check=False
+        )
+        status = re.search(r"HTTP/\S+ (\d{3})", result.stderr)
+        assert status, result.stderr
+        return int(status[1])
 
 
 @pytest.fixture(scope="session")

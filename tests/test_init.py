@@ -11,7 +11,13 @@ from saigonos.cli import main
 from saigonos.home import SECRET_KEYS
 
 STACK = files("saigonos").joinpath("stack")
-SETTING_KEYS = ["SAIGONOS_URL", "SAIGONOS_HTTP_PORT", "SAIGONOS_ADMIN_PORT", *SECRET_KEYS]
+SETTING_KEYS = [
+    "SAIGONOS_URL",
+    "SAIGONOS_HTTP_HOST",
+    "SAIGONOS_HTTP_PORT",
+    "SAIGONOS_ADMIN_PORT",
+    *SECRET_KEYS,
+]
 
 
 @pytest.fixture
@@ -65,12 +71,14 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     generated = [env[key] for key in SECRET_KEYS]
     assert list(env) == SETTING_KEYS
     assert env["SAIGONOS_URL"] == "http://localhost:9080"
+    assert env["SAIGONOS_HTTP_HOST"] == "127.0.0.1"
     assert env["SAIGONOS_HTTP_PORT"] == "9080"
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
     assert not (home / ".env.tmp").exists()
     assert "Địa chỉ truy cập: http://localhost:9080\n" in result.output
+    assert "Địa chỉ lắng nghe: 127.0.0.1:9080\n" in result.output
     assert f"Đã tạo {len(SECRET_KEYS)} mật khẩu ngẫu nhiên" in result.output
 
 
@@ -128,6 +136,25 @@ def test_init_fills_only_missing_and_empty_values(home):
     assert f"Đã tạo {len(SECRET_KEYS) - 1} mật khẩu ngẫu nhiên" in result.output
 
 
+def test_init_adds_http_host_to_env_of_older_version(home):
+    init("--home", home)
+    env_file = home / ".env"
+    older = [
+        line
+        for line in env_file.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("SAIGONOS_HTTP_HOST=")
+    ]
+    env_file.write_text("\n".join(older) + "\n", encoding="utf-8")
+
+    result = init("--home", home)
+
+    assert result.exit_code == 0
+    assert env_file.read_text(encoding="utf-8").splitlines() == [
+        *older,
+        "SAIGONOS_HTTP_HOST=127.0.0.1",
+    ]
+
+
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
 
@@ -152,6 +179,29 @@ def test_url_follows_http_port_until_set_explicitly(home):
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
     assert env["SAIGONOS_HTTP_PORT"] == "8001"
+
+
+def test_http_host_is_kept_until_set_again(home):
+    result = init("--home", home, "--http-host", "192.168.1.10")
+    assert read_env(home)["SAIGONOS_HTTP_HOST"] == "192.168.1.10"
+    assert "Địa chỉ lắng nghe: 192.168.1.10:9080\n" in result.output
+
+    result = init("--home", home, "--http-port", 8000)
+    assert read_env(home)["SAIGONOS_HTTP_HOST"] == "192.168.1.10"
+    assert "Địa chỉ lắng nghe: 192.168.1.10:8000\n" in result.output
+
+    result = init("--home", home, "--http-host", "0:0:0:0:0:0:0:1")
+    assert read_env(home)["SAIGONOS_HTTP_HOST"] == "::1"
+    assert "Địa chỉ lắng nghe: [::1]:8000\n" in result.output
+
+
+@pytest.mark.parametrize("host", ["localhost", "256.0.0.1", "127.0.0.1:9080", "10.0.0.0/8", ""])
+def test_invalid_http_host_is_rejected(home, host):
+    result = init("--home", home, "--http-host", host)
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--http-host'" in result.output
+    assert not home.exists()
 
 
 @pytest.mark.parametrize(

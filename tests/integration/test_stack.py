@@ -7,6 +7,10 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+REALM_PATH = "/auth/realms/saigonos"
+DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
+TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
+
 
 def encode(data):
     return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
@@ -28,6 +32,54 @@ def test_doctor_reports_working_stack(stack):
 
     assert result.returncode == 0, result.stdout
     assert "Hệ thống hoạt động bình thường." in result.stdout
+
+
+def test_gateway_ports_listen_on_loopback_only(stack):
+    env = stack.env
+
+    assert stack.compose("port", "apisix", "9080") == f"127.0.0.1:{env['SAIGONOS_HTTP_PORT']}"
+    assert stack.compose("port", "apisix", "9180") == f"127.0.0.1:{env['SAIGONOS_ADMIN_PORT']}"
+
+
+def test_keycloak_uses_address_of_direct_call(stack):
+    discovery = stack.discovery()
+
+    assert discovery["issuer"] == f"{stack.url}{REALM_PATH}"
+    assert discovery["token_endpoint"] == f"{stack.url}{TOKEN_PATH}"
+
+
+def test_keycloak_uses_address_sent_by_reverse_proxy(stack):
+    proxy = {
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "dx.example.com",
+        "X-Forwarded-Port": "443",
+    }
+
+    discovery = stack.discovery(headers=proxy)
+
+    assert discovery["token_endpoint"] == f"https://dx.example.com{TOKEN_PATH}"
+
+
+def test_rate_limit_counts_address_sent_by_reverse_proxy(stack):
+    token = stack.token(stack.new_user())
+
+    def remaining(address):
+        reply = stack.api(token, headers={"X-Forwarded-For": address})
+        assert reply.status == 200, reply.body
+        return int(reply.headers["X-RateLimit-Remaining"])
+
+    counts = [remaining("203.0.113.7"), remaining("203.0.113.7"), remaining("203.0.113.8")]
+
+    assert counts == [299, 298, 299]
+
+
+def test_caller_outside_local_network_cannot_pose_as_local_address(stack):
+    with stack.outside_network() as network:
+        reached = stack.outside_status(network, "/api/")
+        forged = stack.outside_status(network, DISCOVERY_PATH, {"X-Forwarded-For": "10.0.0.5"})
+
+    assert reached == 401
+    assert forged == 403
 
 
 def test_api_rejects_call_without_token(stack):

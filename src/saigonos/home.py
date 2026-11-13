@@ -6,6 +6,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import NamedTuple
 
+DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 SECRET_KEYS = (
@@ -21,6 +22,7 @@ SECRET_LENGTH = 32
 
 class Initialized(NamedTuple):
     url: str
+    listen: str
     new_secrets: int
 
 
@@ -30,6 +32,10 @@ def new_secret() -> str:
 
 def local_url(port: str) -> str:
     return "http://localhost" if port == "80" else f"http://localhost:{port}"
+
+
+def listen_address(host: str, port: str) -> str:
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 def read_env_lines(home: Path) -> list[str]:
@@ -79,6 +85,7 @@ def write_private(path: Path, text: str) -> None:
 def init_home(
     home: Path,
     url: str | None = None,
+    http_host: str | None = None,
     http_port: int | None = None,
     admin_port: int | None = None,
 ) -> Initialized:
@@ -91,9 +98,11 @@ def init_home(
     old_url = current.get("SAIGONOS_URL") or local_url(old_http_port)
     if url is None:
         url = local_url(new_http_port) if old_url == local_url(old_http_port) else old_url
+    new_http_host = http_host or current.get("SAIGONOS_HTTP_HOST") or DEFAULT_HTTP_HOST
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
     values = {
         "SAIGONOS_URL": url,
+        "SAIGONOS_HTTP_HOST": new_http_host,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
     }
@@ -107,4 +116,5 @@ def init_home(
     write_private(home / ".env", "\n".join(lines) + "\n")
 
     copy_tree(files("saigonos").joinpath("stack"), home)
-    return Initialized(url=url, new_secrets=len(missing))
+    listen = listen_address(new_http_host, new_http_port)
+    return Initialized(url=url, listen=listen, new_secrets=len(missing))

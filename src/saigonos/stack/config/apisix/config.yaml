@@ -1,12 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 apisix:
   dns_resolver_valid: 30
+  trusted_addresses:
+    - 127.0.0.0/8
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
   status:
     ip: 127.0.0.1
     port: 7085
 
 nginx_config:
   worker_processes: 4
+  http:
+    real_ip_header: X-Forwarded-For
+    real_ip_recursive: "on"
+    real_ip_from:
+      - "unix:"
+      - 127.0.0.0/8
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
 
 deployment:
   role: traditional
