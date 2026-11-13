@@ -8,6 +8,7 @@ import pytest
 pytestmark = pytest.mark.integration
 
 REALM_PATH = "/auth/realms/saigonos"
+DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
 
 
@@ -70,6 +71,15 @@ def test_rate_limit_counts_address_sent_by_reverse_proxy(stack):
     counts = [remaining("203.0.113.7"), remaining("203.0.113.7"), remaining("203.0.113.8")]
 
     assert counts == [299, 298, 299]
+
+
+def test_caller_outside_local_network_cannot_pose_as_local_address(stack):
+    with stack.outside_network() as network:
+        reached = stack.outside_status(network, "/api/")
+        forged = stack.outside_status(network, DISCOVERY_PATH, {"X-Forwarded-For": "10.0.0.5"})
+
+    assert reached == 401
+    assert forged == 403
 
 
 def test_api_rejects_call_without_token(stack):
