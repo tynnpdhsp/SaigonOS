@@ -180,7 +180,7 @@ Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người d�
 saigonos doctor
 ```
 
-Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được reverse proxy và chứng chỉ.
+Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ.
 
 ## Cập nhật phiên bản
 
