@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.1.1] - 2026-11-13
+
 ### Thêm
 
 - Tùy chọn `--http-host` của lệnh `saigonos init` đặt địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. Giá trị `0.0.0.0` cho phép truy cập từ máy khác.
@@ -38,5 +40,6 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.1.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
 [0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0
