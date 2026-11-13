@@ -120,6 +120,8 @@ saigonos init --http-host 0.0.0.0 --url http://192.168.1.10:9080
 saigonos up
 ```
 
+Chỉ nên dùng cách này trong một mạng nội bộ đáng tin cậy. Kết nối HTTP không được mã hóa. API Gateway cũng tin header `X-Forwarded-For` do máy trong mạng nội bộ gửi tới. Do đó, một máy trong mạng nội bộ có thể khai báo một địa chỉ IP khác với địa chỉ thật.
+
 Keycloak chỉ chấp nhận kết nối HTTP từ các địa chỉ IP trong mạng nội bộ. Để phục vụ người dùng qua Internet, hãy làm theo mục [Triển khai sau reverse proxy HTTPS](#triển-khai-sau-reverse-proxy-https).
 
 ## Khởi động và dừng
