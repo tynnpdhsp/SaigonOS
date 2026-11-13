@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from saigonos.cli import main
-from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_PORT
+from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
 BLOCK_LINES = [
@@ -46,6 +46,7 @@ def test_readme_options_exist_in_cli():
 
 
 def test_readme_states_the_default_values():
+    assert f"| `--http-host` | `{DEFAULT_HTTP_HOST}` |" in README
     assert f"| `--http-port` | `{DEFAULT_HTTP_PORT}` |" in README
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README

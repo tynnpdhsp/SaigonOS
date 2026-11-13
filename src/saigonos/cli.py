@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import shlex
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -8,7 +9,13 @@ from click.core import ParameterSource
 
 from saigonos import __version__, compose
 from saigonos.doctor import gateway_checks, service_checks
-from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_PORT, init_home, read_url
+from saigonos.home import (
+    DEFAULT_ADMIN_PORT,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+    init_home,
+    read_url,
+)
 
 PORT = click.IntRange(1, 65535)
 
@@ -46,6 +53,17 @@ def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None)
     return f"{parts.scheme}://{parts.netloc.lower()}"
 
 
+def normalize_host(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return str(ip_address(value))
+    except ValueError:
+        raise click.BadParameter(
+            "giá trị phải là một địa chỉ IP, ví dụ 127.0.0.1 hoặc 0.0.0.0."
+        ) from None
+
+
 @click.group(
     help="Quản trị lõi SaigonOS từ dòng lệnh.",
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -75,6 +93,15 @@ def main() -> None:
     ),
 )
 @click.option(
+    "--http-host",
+    callback=normalize_host,
+    help=(
+        "Địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. "
+        f"Mặc định là {DEFAULT_HTTP_HOST}, chỉ truy cập được từ chính máy cài đặt. "
+        "Giá trị 0.0.0.0 cho phép truy cập từ máy khác."
+    ),
+)
+@click.option(
     "--http-port",
     type=PORT,
     help=f"Cổng HTTP của API Gateway trên máy cài đặt. Mặc định là {DEFAULT_HTTP_PORT}.",
@@ -89,14 +116,22 @@ def main() -> None:
 )
 @click.pass_context
 def init(
-    ctx: click.Context, home: Path, url: str | None, http_port: int | None, admin_port: int | None
+    ctx: click.Context,
+    home: Path,
+    url: str | None,
+    http_host: str | None,
+    http_port: int | None,
+    admin_port: int | None,
 ) -> None:
     try:
-        result = init_home(home, url, http_port, admin_port)
+        result = init_home(
+            home, url=url, http_host=http_host, http_port=http_port, admin_port=admin_port
+        )
     except OSError as error:
         raise click.ClickException(f"Không ghi được vào {home}: {error.strerror}") from error
     click.echo(f"Thư mục làm việc: {home}")
     click.echo(f"Địa chỉ truy cập: {result.url}")
+    click.echo(f"Địa chỉ lắng nghe: {result.listen}")
     if result.new_secrets:
         click.echo(f"Đã tạo {result.new_secrets} mật khẩu ngẫu nhiên trong file .env.")
     else:

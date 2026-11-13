@@ -101,6 +101,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
 | `--home` | `~/saigonos` | Thư mục làm việc. Có thể đặt bằng biến môi trường `SAIGONOS_HOME` |
+| `--http-host` | `127.0.0.1` | Địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. Với giá trị mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt |
 | `--http-port` | `9080` | Cổng HTTP của API Gateway |
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
