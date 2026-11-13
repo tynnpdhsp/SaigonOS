@@ -34,9 +34,9 @@ def free_port():
         return listener.getsockname()[1]
 
 
-def send(method, url, token=None, form=None, body=None):
+def send(method, url, token=None, form=None, body=None, headers=None):
     parts = urlsplit(url)
-    headers = {}
+    headers = dict(headers or {})
     payload = None
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
@@ -142,8 +142,14 @@ class Stack:
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
 
-    def api(self, token=None):
-        return send("GET", f"{self.url}/api/", token=token)
+    def api(self, token=None, headers=None):
+        return send("GET", f"{self.url}/api/", token=token, headers=headers)
+
+    def discovery(self, headers=None):
+        path = f"/auth/realms/{REALM}/.well-known/openid-configuration"
+        reply = send("GET", f"{self.url}{path}", headers=headers)
+        assert reply.status == 200, reply.body
+        return json.loads(reply.body)
 
     def burst(self, token, calls, workers=8):
         def worker(count):
