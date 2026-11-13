@@ -132,6 +132,54 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
 
+## Triển khai sau reverse proxy HTTPS
+
+Để phục vụ người dùng qua Internet, SaigonOS cần chạy sau một reverse proxy có HTTPS, ví dụ Nginx. Reverse proxy nhận kết nối HTTPS từ người dùng và chuyển tiếp tới cổng HTTP của API Gateway trên cùng máy.
+
+### 1. Đặt địa chỉ truy cập
+
+```bash
+saigonos init --url https://dx.example.com
+saigonos up
+```
+
+Trong đó `dx.example.com` là tên miền của hệ thống. Cổng HTTP vẫn chỉ lắng nghe trên địa chỉ `127.0.0.1`. Do đó, người dùng chỉ truy cập được hệ thống qua reverse proxy.
+
+### 2. Cấu hình reverse proxy
+
+Ví dụ, với Nginx và chứng chỉ do Certbot lấy từ Let's Encrypt:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name dx.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/dx.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dx.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:9080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+    }
+}
+```
+
+Reverse proxy phải gửi đủ các header trong ví dụ trên. API Gateway dùng các header này để xác định địa chỉ mà người dùng truy cập và địa chỉ IP của người dùng. API Gateway chỉ tin các header này khi kết nối đến từ một địa chỉ IP trong mạng nội bộ, gồm các dải `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` và `192.168.0.0/16`.
+
+Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người dùng không thể tự khai báo một địa chỉ IP khác.
+
+### 3. Kiểm tra hệ thống
+
+```bash
+saigonos doctor
+```
+
+Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được reverse proxy và chứng chỉ.
+
 ## Tham gia phát triển
 
 - Báo lỗi hoặc đề xuất tính năng: mở một [issue](https://github.com/tynnpdhsp/SaigonOS/issues/new/choose).
