@@ -41,6 +41,13 @@ def test_gateway_ports_listen_on_loopback_only(stack):
     assert stack.compose("port", "apisix", "9180") == f"127.0.0.1:{env['SAIGONOS_ADMIN_PORT']}"
 
 
+def test_caddy_does_not_run_by_default(stack):
+    services = stack.compose("ps", "--all", "--services").split()
+
+    assert "apisix" in services
+    assert "caddy" not in services
+
+
 def test_keycloak_uses_address_of_direct_call(stack):
     discovery = stack.discovery()
 
