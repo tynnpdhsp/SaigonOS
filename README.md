@@ -107,6 +107,8 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
 
+Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.
+
 Ví dụ, để đổi cổng HTTP thành 8080:
 
 ```bash

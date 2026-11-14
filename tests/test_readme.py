@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from saigonos.cli import main
-from saigonos.home import DEFAULT_ADMIN_PORT, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from saigonos.home import (
+    APISIX_INTERNAL_PORTS,
+    DEFAULT_ADMIN_PORT,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+)
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
 BLOCK_LINES = [
@@ -68,6 +73,12 @@ def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
 
     assert finished
     assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
+
+
+def test_readme_lists_ports_that_http_port_cannot_use():
+    *first, last = APISIX_INTERNAL_PORTS
+
+    assert f"Cổng HTTP không được trùng các cổng {', '.join(first)} và {last}." in README
 
 
 def test_readme_links_point_to_existing_sections():
