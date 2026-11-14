@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+{
+	admin off
+	http_port {$CADDY_HTTP_PORT}
+}
+
+{$SAIGONOS_URL} {
+	header >Strict-Transport-Security max-age=31536000
+	reverse_proxy 127.0.0.1:{$SAIGONOS_HTTP_PORT} {
+		header_up X-Forwarded-Port {http.request.local.port}
+	}
+}
+
+http://127.0.0.1 {
+	respond 204
+}

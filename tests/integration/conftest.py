@@ -1,27 +1,34 @@
 # SPDX-License-Identifier: Apache-2.0
+import hashlib
+import ipaddress
 import json
 import re
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPMessage
 from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
 
 import pytest
 
+from saigonos.doctor import caddy_root_certificate
+
 REALM = "saigonos"
 CLIENT = "kiem-thu"
 OUTSIDE_SUBNETS = [f"198.51.100.{start}/28" for start in range(0, 256, 16)]
+PUBLIC_SUBNETS = {"IPv4": "192.0.2.0/28", "IPv6": "2001:db8:5a1:9::/64"}
 
 
 class Reply(NamedTuple):
     status: int
-    headers: dict
+    headers: HTTPMessage
     body: bytes
 
 
@@ -31,13 +38,28 @@ class User(NamedTuple):
     password: str
 
 
+class Connection(HTTPConnection):
+    def __init__(self, url, context=None, address=None, timeout=30):
+        parts = urlsplit(url)
+        secure = parts.scheme == "https"
+        self.default_port = 443 if secure else 80
+        super().__init__(parts.hostname, parts.port or self.default_port, timeout=timeout)
+        self.context = (context or ssl.create_default_context()) if secure else None
+        self.address = address
+
+    def connect(self):
+        self.sock = socket.create_connection((self.address or self.host, self.port), self.timeout)
+        if self.context is not None:
+            self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
+
+
 def free_port():
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return listener.getsockname()[1]
 
 
-def send(method, url, token=None, form=None, body=None, headers=None):
+def send(method, url, token=None, form=None, body=None, headers=None, context=None, address=None):
     parts = urlsplit(url)
     headers = dict(headers or {})
     payload = None
@@ -49,11 +71,12 @@ def send(method, url, token=None, form=None, body=None, headers=None):
     if body is not None:
         headers["Content-Type"] = "application/json"
         payload = json.dumps(body)
-    connection = HTTPConnection(parts.netloc, timeout=30)
+    target = parts.path + (f"?{parts.query}" if parts.query else "")
+    connection = Connection(url, context, address)
     try:
-        connection.request(method, parts.path, body=payload, headers=headers)
+        connection.request(method, target or "/", body=payload, headers=headers)
         response = connection.getresponse()
-        return Reply(response.status, dict(response.getheaders()), response.read())
+        return Reply(response.status, response.headers, response.read())
     finally:
         connection.close()
 
@@ -62,6 +85,7 @@ class Stack:
     def __init__(self, home):
         self.home = home
         self.docker = shutil.which("docker")
+        self.context = None
 
     def saigonos(self, *args):
         command = [sys.executable, "-m", "saigonos", *args, "--home", str(self.home)]
@@ -83,6 +107,9 @@ class Stack:
     def url(self):
         return self.env["SAIGONOS_URL"]
 
+    def call(self, method, url, **options):
+        return send(method, url, context=self.context, **options)
+
     def admin(self, method, path, body=None):
         form = {
             "grant_type": "password",
@@ -90,12 +117,14 @@ class Stack:
             "username": "admin",
             "password": self.env["KEYCLOAK_ADMIN_PASSWORD"],
         }
-        reply = send(
+        reply = self.call(
             "POST", f"{self.url}/auth/realms/master/protocol/openid-connect/token", form=form
         )
         assert reply.status == 200, reply.body
         token = json.loads(reply.body)["access_token"]
-        return send(method, f"{self.url}/auth/admin/realms/{REALM}{path}", token=token, body=body)
+        return self.call(
+            method, f"{self.url}/auth/admin/realms/{REALM}{path}", token=token, body=body
+        )
 
     def create_client(self):
         client = {
@@ -130,13 +159,13 @@ class Stack:
             "username": user.name,
             "password": user.password,
         }
-        return send(
+        return self.call(
             "POST", f"{self.url}/auth/realms/{REALM}/protocol/openid-connect/token", form=form
         )
 
     def refresh(self, refresh_token):
         form = {"grant_type": "refresh_token", "client_id": CLIENT, "refresh_token": refresh_token}
-        return send(
+        return self.call(
             "POST", f"{self.url}/auth/realms/{REALM}/protocol/openid-connect/token", form=form
         )
 
@@ -145,18 +174,18 @@ class Stack:
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
 
-    def api(self, token=None, headers=None):
-        return send("GET", f"{self.url}/api/", token=token, headers=headers)
+    def api(self, token=None, headers=None, address=None):
+        return self.call("GET", f"{self.url}/api/", token=token, headers=headers, address=address)
 
-    def discovery(self, headers=None):
+    def discovery(self, headers=None, address=None):
         path = f"/auth/realms/{REALM}/.well-known/openid-configuration"
-        reply = send("GET", f"{self.url}{path}", headers=headers)
+        reply = self.call("GET", f"{self.url}{path}", headers=headers, address=address)
         assert reply.status == 200, reply.body
         return json.loads(reply.body)
 
     def burst(self, token, calls, workers=8):
         def worker(count):
-            connection = HTTPConnection(urlsplit(self.url).netloc, timeout=30)
+            connection = Connection(self.url, self.context)
             statuses = []
             try:
                 for _ in range(count):
@@ -222,7 +251,7 @@ class Stack:
         fields = []
         for name, value in (headers or {}).items():
             fields += ["--header", f"{name}: {value}"]
-        url = f"http://gateway:9080{path}"
+        url = f"http://gateway:{self.env['SAIGONOS_HTTP_PORT']}{path}"
         result = self.run_docker(
             "run", *options, image, "-S", "-O", "/dev/null", *fields, url, check=False
         )
@@ -230,17 +259,68 @@ class Stack:
         assert status, result.stderr
         return int(status[1])
 
+    @contextmanager
+    def public_network(self, family):
+        subnet = ipaddress.ip_network(PUBLIC_SUBNETS[family])
+        address = str(subnet[1])
+        network = f"{self.home.name}-{family.lower()}"
+        options = ["--subnet", str(subnet), "--gateway", address]
+        options += ["-o", "com.docker.network.bridge.enable_ip_masquerade=false"]
+        if subnet.version == 6:
+            options.append("--ipv6")
+        self.run_docker("network", "create", *options, network)
+        try:
+            yield address
+        finally:
+            self.run_docker("network", "rm", network, check=False)
 
-@pytest.fixture(scope="session")
-def stack(tmp_path_factory, request):
-    stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-it-{secrets.token_hex(4)}")
-    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
-    created = stack.saigonos("init", *ports)
-    assert created.returncode == 0, created.stdout + created.stderr
+    def certificate(self):
+        connection = Connection(self.url, self.context)
+        try:
+            connection.connect()
+            return hashlib.sha256(connection.sock.getpeercert(binary_form=True)).hexdigest()
+        finally:
+            connection.close()
+
+    def trust_caddy(self, timeout=60):
+        deadline = time.monotonic() + timeout
+        while True:
+            certificate = caddy_root_certificate(self.home)
+            if certificate:
+                self.context = ssl.create_default_context(cadata=certificate)
+                try:
+                    self.certificate()
+                except OSError:
+                    pass
+                else:
+                    return
+            assert time.monotonic() < deadline, "Caddy chưa cấp chứng chỉ"
+            time.sleep(0.5)
+
+    def logged_address(self, agent, timeout=30):
+        deadline = time.monotonic() + timeout
+        while True:
+            for line in self.compose("logs", "--no-log-prefix", "apisix").splitlines():
+                if f'"{agent}"' in line:
+                    return line.split(" ", 1)[0]
+            assert time.monotonic() < deadline, f"Log của APISIX không có lời gọi {agent}"
+            time.sleep(1)
+
+    def remove_data(self):
+        if not (self.home / "data").exists():
+            return
+        services = json.loads(self.compose("config", "--format", "json"))["services"]
+        options = ["--rm", "--volume", f"{self.home}:/home", "--entrypoint", "rm"]
+        self.run_docker("run", *options, services["postgres"]["image"], "-rf", "/home/data")
+
+
+def run_stack(stack, request):
     try:
         started = stack.saigonos("up")
         if started.returncode != 0:
             pytest.fail(f"{started.stderr}\n{stack.compose('logs', '--tail', '50')}")
+        if "caddy" in stack.compose("config", "--services").split():
+            stack.trust_caddy()
         stack.create_client()
         yield stack
         if request.session.testsfailed:
@@ -249,3 +329,25 @@ def stack(tmp_path_factory, request):
                 print(stack.compose("logs", "--tail", "50"))
     finally:
         stack.saigonos("down", "--volumes")
+        stack.remove_data()
+
+
+@pytest.fixture(scope="module")
+def stack(tmp_path_factory, request):
+    stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-it-{secrets.token_hex(4)}")
+    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
+    created = stack.saigonos("init", *ports)
+    assert created.returncode == 0, created.stdout + created.stderr
+    yield from run_stack(stack, request)
+
+
+@pytest.fixture(scope="module")
+def caddy_stack(tmp_path_factory, request):
+    stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-caddy-{secrets.token_hex(4)}")
+    stack.home.mkdir()
+    (stack.home / ".env").write_text(f"CADDY_HTTP_PORT={free_port()}\n", encoding="utf-8")
+    options = ["--caddy", "--url", f"https://localhost:{free_port()}"]
+    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
+    created = stack.saigonos("init", *options, *ports)
+    assert created.returncode == 0, created.stdout + created.stderr
+    yield from run_stack(stack, request)

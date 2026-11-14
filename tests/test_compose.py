@@ -48,6 +48,48 @@ def test_down_returns_exit_code_of_compose(home, cli, docker):
     assert cli("down", "--home", home).exit_code == 1
 
 
+@pytest.fixture
+def caddy_home(tmp_path, cli):
+    path = tmp_path / "caddy"
+    cli("init", "--home", path, "--url", "https://dx.example.com", "--caddy")
+    return path
+
+
+@pytest.mark.parametrize(("command", "compose_command"), [("up", "up -d --wait"), ("down", "down")])
+def test_enabled_caddy_is_left_to_compose(caddy_home, cli, docker, command, compose_command):
+    result = cli(command, "--home", caddy_home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [f"{caddy_home.resolve()}: compose {compose_command}"]
+
+
+@pytest.mark.parametrize(("command", "compose_command"), [("up", "up -d --wait"), ("down", "down")])
+def test_caddy_turned_off_is_removed_first(caddy_home, cli, docker, command, compose_command):
+    cli("init", "--home", caddy_home, "--no-caddy")
+
+    result = cli(command, "--home", caddy_home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [
+        f"{caddy_home.resolve()}: compose rm --stop --force caddy",
+        f"{caddy_home.resolve()}: compose {compose_command}",
+    ]
+
+
+@pytest.mark.parametrize("command", ["up", "down"])
+def test_commands_stop_when_caddy_cannot_be_removed(caddy_home, cli, docker, command):
+    cli("init", "--home", caddy_home, "--no-caddy")
+    docker.reply("rm", error="Cannot connect to the Docker daemon\n", code=1)
+
+    result = cli(command, "--home", caddy_home)
+
+    assert result.exit_code == 1
+    assert "Lệnh docker compose rm không chạy được: Cannot connect to the Docker daemon" in (
+        result.output
+    )
+    assert docker.calls == [f"{caddy_home.resolve()}: compose rm --stop --force caddy"]
+
+
 @pytest.mark.parametrize("command", ["up", "down", "doctor"])
 @pytest.mark.parametrize("missing", ["compose.yaml", ".env"])
 def test_commands_need_initialized_home(home, cli, docker, command, missing):

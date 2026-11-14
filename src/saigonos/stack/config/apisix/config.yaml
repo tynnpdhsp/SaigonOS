@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 apisix:
+  node_listen:
+    - ${{SAIGONOS_HTTP_PORT}}
   dns_resolver_valid: 30
   trusted_addresses:
     - 127.0.0.0/8

@@ -8,16 +8,21 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
-from saigonos.doctor import gateway_checks, service_checks
+from saigonos.doctor import run_checks
 from saigonos.home import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SettingsError,
+    disabled_services,
     init_home,
     read_url,
 )
 
 PORT = click.IntRange(1, 65535)
+MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
+MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
+COLUMN_GAP = " " * 4
 
 home_option = click.option(
     "--home",
@@ -114,6 +119,14 @@ def main() -> None:
         f"Mặc định là {DEFAULT_ADMIN_PORT}."
     ),
 )
+@click.option(
+    "--caddy/--no-caddy",
+    default=None,
+    help=(
+        "Bật hoặc tắt Caddy. Caddy là reverse proxy nhận kết nối HTTPS và tự động lấy "
+        "chứng chỉ, dùng khi máy cài đặt chưa có reverse proxy. Mặc định tắt."
+    ),
+)
 @click.pass_context
 def init(
     ctx: click.Context,
@@ -122,16 +135,26 @@ def init(
     http_host: str | None,
     http_port: int | None,
     admin_port: int | None,
+    caddy: bool | None,
 ) -> None:
     try:
         result = init_home(
-            home, url=url, http_host=http_host, http_port=http_port, admin_port=admin_port
+            home,
+            url=url,
+            http_host=http_host,
+            http_port=http_port,
+            admin_port=admin_port,
+            caddy=caddy,
         )
+    except SettingsError as error:
+        raise click.UsageError(str(error)) from error
     except OSError as error:
         raise click.ClickException(f"Không ghi được vào {home}: {error.strerror}") from error
     click.echo(f"Thư mục làm việc: {home}")
     click.echo(f"Địa chỉ truy cập: {result.url}")
     click.echo(f"Địa chỉ lắng nghe: {result.listen}")
+    if result.caddy:
+        click.echo("Caddy: bật")
     if result.new_secrets:
         click.echo(f"Đã tạo {result.new_secrets} mật khẩu ngẫu nhiên trong file .env.")
     else:
@@ -151,10 +174,21 @@ def run_compose(ctx: click.Context, home: Path, *args: str) -> None:
         ctx.exit(code)
 
 
+def remove_disabled_services(home: Path) -> None:
+    services = disabled_services(home)
+    if not services:
+        return
+    try:
+        compose.capture(home, "rm", "--stop", "--force", *services)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+
+
 @main.command(help="Khởi động các service bằng Docker Compose và chờ đến khi sẵn sàng.")
 @home_option
 @click.pass_context
 def up(ctx: click.Context, home: Path) -> None:
+    remove_disabled_services(home)
     run_compose(ctx, home, "up", "-d", "--wait")
     click.echo(f"Địa chỉ truy cập: {read_url(home)}")
 
@@ -164,6 +198,7 @@ def up(ctx: click.Context, home: Path) -> None:
 @click.option("--volumes", is_flag=True, help="Xóa cả dữ liệu trong các volume.")
 @click.pass_context
 def down(ctx: click.Context, home: Path, volumes: bool) -> None:
+    remove_disabled_services(home)
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
 
 
@@ -172,13 +207,14 @@ def down(ctx: click.Context, home: Path, volumes: bool) -> None:
 @click.pass_context
 def doctor(ctx: click.Context, home: Path) -> None:
     try:
-        checks = [*service_checks(home), *gateway_checks(read_url(home))]
+        checks = run_checks(home, read_url(home))
     except compose.ComposeError as error:
         raise click.ClickException(str(error)) from error
-    width = max(len(check.name) for check in checks)
+    name_width = max(len(check.name) for check in checks)
     for check in checks:
-        mark = click.style("ĐẠT", fg="green") if check.ok else click.style("LỖI", fg="red")
-        click.echo(f"{mark}  {check.name:<{width}}  {check.detail}")
+        label, color = MARKS[check.ok]
+        mark = click.style(f"{label:<{MARK_WIDTH}}", fg=color)
+        click.echo(COLUMN_GAP.join([mark, f"{check.name:<{name_width}}", check.detail]))
     failed = sum(not check.ok for check in checks)
     if failed:
         click.echo(f"Có {failed} mục lỗi.")

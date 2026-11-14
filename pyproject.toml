@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "saigonos"
-version = "0.1.1"
+version = "0.2.0"
 description = "Hệ điều hành chuyển đổi số (DX-OS) nguồn mở"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,7 +56,7 @@ select = ["E", "W", "F", "I", "UP", "B", "S", "SIM", "C4", "PTH", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["S603"]
 "src/saigonos/compose.py" = ["S603"]
-"tests/*" = ["S101"]
+"tests/*" = ["S101", "S104"]
 "tests/integration/*" = ["S603"]
 
 [tool.pytest.ini_options]

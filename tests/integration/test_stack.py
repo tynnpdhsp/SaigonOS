@@ -37,14 +37,29 @@ def test_doctor_reports_working_stack(stack):
 def test_gateway_ports_listen_on_loopback_only(stack):
     env = stack.env
 
-    assert stack.compose("port", "apisix", "9080") == f"127.0.0.1:{env['SAIGONOS_HTTP_PORT']}"
+    http_port = env["SAIGONOS_HTTP_PORT"]
+
+    assert stack.compose("port", "apisix", http_port) == f"127.0.0.1:{http_port}"
     assert stack.compose("port", "apisix", "9180") == f"127.0.0.1:{env['SAIGONOS_ADMIN_PORT']}"
+
+
+def test_caddy_does_not_run_by_default(stack):
+    services = stack.compose("ps", "--all", "--services").split()
+
+    assert "apisix" in services
+    assert "caddy" not in services
 
 
 def test_keycloak_uses_address_of_direct_call(stack):
     discovery = stack.discovery()
 
     assert discovery["issuer"] == f"{stack.url}{REALM_PATH}"
+    assert discovery["token_endpoint"] == f"{stack.url}{TOKEN_PATH}"
+
+
+def test_keycloak_uses_port_of_gateway_when_host_header_has_no_port(stack):
+    discovery = stack.discovery(headers={"Host": "localhost"})
+
     assert discovery["token_endpoint"] == f"{stack.url}{TOKEN_PATH}"
 
 

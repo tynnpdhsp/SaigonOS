@@ -18,6 +18,7 @@ SETTING_KEYS = [
     "SAIGONOS_ADMIN_PORT",
     *SECRET_KEYS,
 ]
+HTTPS_URL = "https://dx.example.com"
 
 
 @pytest.fixture
@@ -39,6 +40,11 @@ def init(*args):
 def read_env(home):
     lines = (home / ".env").read_text(encoding="utf-8").splitlines()
     return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def append_env(home, line):
+    env_file = home / ".env"
+    env_file.write_text(f"{env_file.read_text(encoding='utf-8')}{line}\n", encoding="utf-8")
 
 
 def stack_files(directory=STACK, prefix=""):
@@ -193,6 +199,143 @@ def test_http_host_is_kept_until_set_again(home):
     result = init("--home", home, "--http-host", "0:0:0:0:0:0:0:1")
     assert read_env(home)["SAIGONOS_HTTP_HOST"] == "::1"
     assert "Địa chỉ lắng nghe: [::1]:8000\n" in result.output
+
+
+def test_caddy_option_enables_compose_profile(home):
+    result = init("--home", home, "--url", HTTPS_URL, "--caddy")
+
+    assert result.exit_code == 0
+    assert list(read_env(home)) == [*SETTING_KEYS, "COMPOSE_PROFILES"]
+    assert read_env(home)["COMPOSE_PROFILES"] == "caddy"
+    assert "Caddy: bật\n" in result.output
+
+
+def test_caddy_stays_enabled_until_turned_off(home):
+    init("--home", home, "--url", HTTPS_URL, "--caddy")
+    before = (home / ".env").read_text(encoding="utf-8")
+
+    result = init("--home", home)
+    assert (home / ".env").read_text(encoding="utf-8") == before
+    assert "Caddy: bật\n" in result.output
+
+    result = init("--home", home, "--no-caddy")
+    assert read_env(home)["COMPOSE_PROFILES"] == ""
+    assert "Caddy" not in result.output
+
+
+def test_no_caddy_option_adds_nothing_to_env_without_caddy(home):
+    result = init("--home", home, "--no-caddy")
+
+    assert result.exit_code == 0
+    assert list(read_env(home)) == SETTING_KEYS
+
+
+def test_caddy_option_keeps_other_compose_profiles(home):
+    init("--home", home, "--url", HTTPS_URL)
+    append_env(home, "COMPOSE_PROFILES=khac")
+
+    init("--home", home, "--caddy")
+    assert read_env(home)["COMPOSE_PROFILES"] == "khac,caddy"
+
+    init("--home", home, "--no-caddy")
+    assert read_env(home)["COMPOSE_PROFILES"] == "khac"
+
+
+def test_caddy_accepts_gateway_listening_on_all_addresses(home):
+    result = init("--home", home, "--url", HTTPS_URL, "--caddy", "--http-host", "0.0.0.0")
+
+    assert result.exit_code == 0
+    assert read_env(home)["COMPOSE_PROFILES"] == "caddy"
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ([], "địa chỉ truy cập phải có dạng https://tên-máy"),
+        (["--url", "http://dx.example.com"], "địa chỉ truy cập phải có dạng https://tên-máy"),
+        (
+            ["--url", HTTPS_URL, "--http-host", "192.168.1.10"],
+            "phải lắng nghe trên địa chỉ 127.0.0.1",
+        ),
+        (["--url", HTTPS_URL, "--http-host", "::"], "phải lắng nghe trên địa chỉ 127.0.0.1"),
+        (["--url", HTTPS_URL, "--http-port", 80], "Cổng HTTP 80 của API Gateway trùng"),
+        (["--url", HTTPS_URL, "--http-port", 443], "Cổng HTTP 443 của API Gateway trùng"),
+        (
+            ["--url", f"{HTTPS_URL}:8443", "--http-port", 8443],
+            "Cổng HTTP 8443 của API Gateway trùng",
+        ),
+    ],
+)
+def test_caddy_option_rejects_settings_that_cannot_work(home, options, message):
+    result = init("--home", home, "--caddy", *options)
+
+    assert result.exit_code == 2
+    assert message in result.output
+    assert not home.exists()
+
+
+def test_settings_are_checked_again_while_caddy_is_enabled(home):
+    init("--home", home, "--url", HTTPS_URL, "--caddy")
+    before = (home / ".env").read_text(encoding="utf-8")
+
+    result = init("--home", home, "--url", "http://localhost:9080")
+
+    assert result.exit_code == 2
+    assert "tắt Caddy bằng tùy chọn --no-caddy" in result.output
+    assert (home / ".env").read_text(encoding="utf-8") == before
+
+
+def test_caddy_http_port_in_env_is_compared_with_gateway_port(home):
+    init("--home", home, "--url", HTTPS_URL)
+    append_env(home, "CADDY_HTTP_PORT=8081")
+
+    assert init("--home", home, "--caddy", "--http-port", 8081).exit_code == 2
+    assert init("--home", home, "--caddy", "--http-port", 80).exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        (
+            "SAIGONOS_URL=https://dx.example.com:abc",
+            "địa chỉ truy cập phải có dạng https://tên-máy",
+        ),
+        ("SAIGONOS_HTTP_HOST=localhost", "phải lắng nghe trên địa chỉ 127.0.0.1"),
+    ],
+)
+def test_caddy_option_rejects_invalid_values_written_by_hand(home, line, message):
+    init("--home", home, "--url", HTTPS_URL)
+    append_env(home, line)
+
+    result = init("--home", home, "--caddy")
+
+    assert result.exit_code == 2
+    assert message in result.output
+    assert "COMPOSE_PROFILES" not in read_env(home)
+
+
+@pytest.mark.parametrize("port", [7085, 9090, 9091, 9180, 9443])
+def test_http_port_used_inside_gateway_container_is_rejected(home, port):
+    result = init("--home", home, "--http-port", port)
+
+    assert result.exit_code == 2
+    assert f"Cổng HTTP {port} trùng với một cổng mà APISIX dùng bên trong container." in (
+        result.output
+    )
+    assert "Các cổng này gồm 7085, 9090, 9091, 9180 và 9443." in result.output
+    assert not home.exists()
+
+
+def test_http_port_kept_from_older_version_is_checked(home):
+    init("--home", home)
+    append_env(home, "SAIGONOS_HTTP_PORT=9443")
+    before = (home / ".env").read_text(encoding="utf-8")
+
+    result = init("--home", home)
+
+    assert result.exit_code == 2
+    assert "Hãy chọn cổng khác bằng tùy chọn --http-port." in result.output
+    assert (home / ".env").read_text(encoding="utf-8") == before
 
 
 @pytest.mark.parametrize("host", ["localhost", "256.0.0.1", "127.0.0.1:9080", "10.0.0.0/8", ""])

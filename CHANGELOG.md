@@ -7,6 +7,27 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.2.0] - 2026-11-14
+
+### Thêm
+
+- Service `caddy` nhận kết nối HTTPS trên máy chủ chưa có reverse proxy. Caddy tự lấy chứng chỉ từ Let's Encrypt và bật HSTS. Caddy cũng hỗ trợ HTTP/3 và chuyển các kết nối HTTP sang HTTPS. Caddy dùng mạng của máy chủ nên thấy đúng địa chỉ IP của người dùng qua IPv4 và IPv6. Các header `X-Forwarded-*` do người dùng tự gửi bị bỏ qua.
+- Tùy chọn `--caddy` và `--no-caddy` của lệnh `saigonos init` bật và tắt Caddy. Caddy mặc định tắt. Khi Caddy bật, địa chỉ truy cập phải bắt đầu bằng `https://`.
+- Lệnh `saigonos doctor` tin chứng chỉ do Caddy tự cấp, ví dụ chứng chỉ cho `localhost`.
+- Lệnh `saigonos doctor` báo lỗi khi Keycloak nhận lời gọi qua một địa chỉ khác với `SAIGONOS_URL`. Lỗi này xảy ra khi reverse proxy không gửi đủ các header `X-Forwarded-Proto`, `X-Forwarded-Host` và `X-Forwarded-Port`.
+- Hướng dẫn triển khai trên máy chủ chưa có reverse proxy trong README.
+
+### Thay đổi
+
+- Lệnh `saigonos doctor` ghi `BÌNH THƯỜNG` thay cho `ĐẠT` và ghi `healthcheck báo lỗi` thay cho `không đạt healthcheck`. Các cột cách nhau 4 dấu cách.
+- Lệnh `saigonos init` từ chối cổng HTTP trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container. Ở phiên bản 0.1.1, các cổng này vẫn được chấp nhận.
+- Lệnh `saigonos up` và `saigonos down` xóa container của Caddy sau khi Caddy bị tắt bằng lệnh `saigonos init --no-caddy`.
+- Mục "Triển khai sau reverse proxy HTTPS" của README đổi tên thành "Triển khai trên máy chủ đã có reverse proxy".
+
+### Sửa
+
+- Khi người dùng truy cập thẳng API Gateway qua cổng 80, `token_endpoint` của Keycloak không còn kèm cổng 9080. Lỗi này có từ phiên bản 0.1.0. Để sửa lỗi, APISIX lắng nghe trong container đúng cổng HTTP được mở ra máy chủ.
+
 ## [0.1.1] - 2026-11-13
 
 ### Thêm
@@ -44,6 +65,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.1.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
 [0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
 [0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0

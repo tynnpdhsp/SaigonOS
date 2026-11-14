@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import ssl
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -8,6 +9,9 @@ from urllib.parse import urlsplit
 from saigonos import compose
 
 REALM_PATH = "/auth/realms/saigonos"
+TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
+CADDY = "caddy"
+CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
 TIMEOUT = 5
 STOPPED_STATES = {
     "created": "đã tạo nhưng chưa chạy",
@@ -40,7 +44,7 @@ def service_state(service: dict[str, Any], container: dict[str, Any] | None) -> 
     if health == "starting":
         return False, "đang khởi động"
     if health == "unhealthy":
-        return False, "không đạt healthcheck"
+        return False, "healthcheck báo lỗi"
     return True, "đang chạy"
 
 
@@ -58,10 +62,23 @@ def service_checks(home: Path) -> list[Check]:
     ]
 
 
-def fetch(url: str) -> tuple[int, bytes]:
+def caddy_root_certificate(home: Path) -> str | None:
+    try:
+        return compose.capture(home, "exec", "-T", CADDY, "cat", CADDY_ROOT_CERTIFICATE) or None
+    except compose.ComposeError:
+        return None
+
+
+def fetch(url: str, certificate: str | None = None) -> tuple[int, bytes]:
     parts = urlsplit(url)
-    connection_type = HTTPSConnection if parts.scheme == "https" else HTTPConnection
-    connection = connection_type(parts.netloc, timeout=TIMEOUT)
+    connection: HTTPConnection
+    if parts.scheme == "https":
+        context = ssl.create_default_context()
+        if certificate:
+            context.load_verify_locations(cadata=certificate)
+        connection = HTTPSConnection(parts.netloc, timeout=TIMEOUT, context=context)
+    else:
+        connection = HTTPConnection(parts.netloc, timeout=TIMEOUT)
     try:
         connection.request("GET", parts.path)
         response = connection.getresponse()
@@ -74,11 +91,19 @@ def login_state(url: str, status: int, body: bytes) -> tuple[bool, str]:
     if status != 200:
         return False, f"Keycloak trả về mã {status}"
     try:
-        issuer = json.loads(body).get("issuer")
+        discovery = json.loads(body)
+        issuer, token_endpoint = discovery.get("issuer"), discovery.get("token_endpoint")
     except (ValueError, AttributeError):
-        issuer = None
+        issuer = token_endpoint = None
     if issuer != f"{url}{REALM_PATH}":
         return False, f"Keycloak dùng địa chỉ {issuer}, khác với SAIGONOS_URL trong file .env"
+    if token_endpoint != f"{url}{TOKEN_PATH}":
+        seen = str(token_endpoint).removesuffix(TOKEN_PATH)
+        return False, (
+            f"Keycloak nhận lời gọi qua địa chỉ {seen}, khác với SAIGONOS_URL trong file .env. "
+            "Hãy kiểm tra header X-Forwarded-Proto, X-Forwarded-Host và X-Forwarded-Port "
+            "của reverse proxy"
+        )
     return True, f"Keycloak trả lời tại {url}/auth"
 
 
@@ -94,13 +119,21 @@ PROBES = (
 )
 
 
-def gateway_checks(url: str) -> list[Check]:
+def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:
     checks = []
     for name, path, state in PROBES:
         try:
-            status, body = fetch(f"{url}{path}")
+            status, body = fetch(f"{url}{path}", certificate)
         except (OSError, HTTPException) as error:
             checks.append(Check(name, False, f"không kết nối được tới {url}: {error}"))
         else:
             checks.append(Check(name, *state(url, status, body)))
     return checks
+
+
+def run_checks(home: Path, url: str) -> list[Check]:
+    services = service_checks(home)
+    certificate = None
+    if any(check.name == CADDY for check in services):
+        certificate = caddy_root_certificate(home)
+    return [*services, *gateway_checks(url, certificate)]
