@@ -222,7 +222,7 @@ class Stack:
         fields = []
         for name, value in (headers or {}).items():
             fields += ["--header", f"{name}: {value}"]
-        url = f"http://gateway:9080{path}"
+        url = f"http://gateway:{self.env['SAIGONOS_HTTP_PORT']}{path}"
         result = self.run_docker(
             "run", *options, image, "-S", "-O", "/dev/null", *fields, url, check=False
         )

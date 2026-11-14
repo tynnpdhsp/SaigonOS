@@ -76,10 +76,11 @@ services:
         condition: service_healthy
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
+      SAIGONOS_HTTP_PORT: ${SAIGONOS_HTTP_PORT:?}
     ports:
       - host_ip: ${SAIGONOS_HTTP_HOST:?}
         published: ${SAIGONOS_HTTP_PORT:?}
-        target: 9080
+        target: ${SAIGONOS_HTTP_PORT:?}
       - host_ip: 127.0.0.1
         published: ${SAIGONOS_ADMIN_PORT:?}
         target: 9180
