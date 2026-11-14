@@ -57,6 +57,12 @@ def test_keycloak_uses_address_of_direct_call(stack):
     assert discovery["token_endpoint"] == f"{stack.url}{TOKEN_PATH}"
 
 
+def test_keycloak_uses_port_of_gateway_when_host_header_has_no_port(stack):
+    discovery = stack.discovery(headers={"Host": "localhost"})
+
+    assert discovery["token_endpoint"] == f"{stack.url}{TOKEN_PATH}"
+
+
 def test_keycloak_uses_address_sent_by_reverse_proxy(stack):
     proxy = {
         "X-Forwarded-Proto": "https",
