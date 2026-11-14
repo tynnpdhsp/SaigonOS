@@ -45,7 +45,7 @@ def test_readme_options_exist_in_cli():
         option
         for command in main.commands.values()
         for parameter in command.params
-        for option in parameter.opts
+        for option in [*parameter.opts, *parameter.secondary_opts]
     }
 
     assert documented
@@ -83,3 +83,4 @@ def test_readme_states_the_default_values():
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
+    assert "| `--caddy`, `--no-caddy` | Tắt |" in README
