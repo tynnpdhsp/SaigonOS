@@ -40,7 +40,7 @@ def service_state(service: dict[str, Any], container: dict[str, Any] | None) -> 
     if health == "starting":
         return False, "đang khởi động"
     if health == "unhealthy":
-        return False, "không đạt healthcheck"
+        return False, "healthcheck báo lỗi"
     return True, "đang chạy"
 
 

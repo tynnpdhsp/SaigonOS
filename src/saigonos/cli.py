@@ -19,6 +19,9 @@ from saigonos.home import (
 )
 
 PORT = click.IntRange(1, 65535)
+MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
+MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
+COLUMN_GAP = " " * 4
 
 home_option = click.option(
     "--home",
@@ -194,10 +197,11 @@ def doctor(ctx: click.Context, home: Path) -> None:
         checks = [*service_checks(home), *gateway_checks(read_url(home))]
     except compose.ComposeError as error:
         raise click.ClickException(str(error)) from error
-    width = max(len(check.name) for check in checks)
+    name_width = max(len(check.name) for check in checks)
     for check in checks:
-        mark = click.style("ĐẠT", fg="green") if check.ok else click.style("LỖI", fg="red")
-        click.echo(f"{mark}  {check.name:<{width}}  {check.detail}")
+        label, color = MARKS[check.ok]
+        mark = click.style(f"{label:<{MARK_WIDTH}}", fg=color)
+        click.echo(COLUMN_GAP.join([mark, f"{check.name:<{name_width}}", check.detail]))
     failed = sum(not check.ok for check in checks)
     if failed:
         click.echo(f"Có {failed} mục lỗi.")

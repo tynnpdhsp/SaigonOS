@@ -42,11 +42,11 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
 
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "ĐẠT  postgres   đang chạy",
-        "ĐẠT  routes     đã chạy xong",
-        "ĐẠT  jwks       đã chạy xong",
-        f"ĐẠT  Đăng nhập  Keycloak trả lời tại {gateway.url}/auth",
-        "ĐẠT  API        lời gọi không có access token bị từ chối",
+        "BÌNH THƯỜNG    postgres     đang chạy",
+        "BÌNH THƯỜNG    routes       đã chạy xong",
+        "BÌNH THƯỜNG    jwks         đã chạy xong",
+        f"BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại {gateway.url}/auth",
+        "BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -62,9 +62,9 @@ def test_doctor_reports_each_failure_and_exits_with_1(home, cli, docker, gateway
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert "LỖI  postgres   chưa được tạo\n" in result.output
-    assert "ĐẠT  routes     đã chạy xong\n" in result.output
-    assert "LỖI  API        lời gọi không có access token nhận mã 200" in result.output
+    assert "LỖI            postgres     chưa được tạo\n" in result.output
+    assert "BÌNH THƯỜNG    routes       đã chạy xong\n" in result.output
+    assert "LỖI            API          lời gọi không có access token nhận mã 200" in result.output
     assert result.output.endswith("Có 2 mục lỗi.\n")
 
 
@@ -76,8 +76,8 @@ def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert f"LỖI  Đăng nhập  không kết nối được tới {closed_url}: " in result.output
-    assert f"LỖI  API        không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            Đăng nhập    không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            API          không kết nối được tới {closed_url}: " in result.output
 
 
 def test_doctor_stops_when_compose_fails(home, cli, docker):
@@ -90,7 +90,7 @@ def test_doctor_stops_when_compose_fails(home, cli, docker):
     assert "Lệnh docker compose ps không chạy được: Cannot connect to the Docker daemon" in (
         result.output
     )
-    assert "ĐẠT" not in result.output
+    assert "BÌNH THƯỜNG" not in result.output
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_doctor_stops_when_compose_fails(home, cli, docker):
         (
             "unless-stopped",
             {"State": "running", "Health": "unhealthy"},
-            (False, "không đạt healthcheck"),
+            (False, "healthcheck báo lỗi"),
         ),
         (
             "unless-stopped",
