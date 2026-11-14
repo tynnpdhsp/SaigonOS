@@ -17,6 +17,12 @@ BLOCK_LINES = [
 INLINE = re.findall(r"`([^`\n]+)`", README)
 COMMANDS = sorted({text for text in [*BLOCK_LINES, *INLINE] if text.startswith("saigonos ")})
 DOCTOR_SAMPLE = re.search(r"```text\n(.*?)```", README, re.DOTALL)[1]
+PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
+HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
+
+
+def anchor(heading):
+    return re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
 
 
 def test_readme_shows_the_whole_install_path():
@@ -62,6 +68,13 @@ def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
 
     assert finished
     assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
+
+
+def test_readme_links_point_to_existing_sections():
+    links = re.findall(r"\]\(#([^)]+)\)", PROSE)
+
+    assert links
+    assert set(links) <= {anchor(heading) for heading in HEADINGS}
 
 
 def test_readme_states_the_default_values():
