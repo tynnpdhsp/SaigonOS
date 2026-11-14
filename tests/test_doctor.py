@@ -17,7 +17,12 @@ HEALTHY = [
     {"Service": "jwks", "State": "exited", "Health": "", "ExitCode": 0},
 ]
 URL = "http://dx.example.com"
-ISSUER = json.dumps({"issuer": f"{URL}/auth/realms/saigonos"}).encode()
+REALM_PATH = "/auth/realms/saigonos"
+TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
+
+
+def discovery(issuer=f"{URL}{REALM_PATH}", token_endpoint=f"{URL}{TOKEN_PATH}"):
+    return json.dumps({"issuer": issuer, "token_endpoint": token_endpoint}).encode()
 
 
 @pytest.fixture
@@ -122,8 +127,8 @@ def test_service_state(restart, container, expected):
     assert service_state({"restart": restart}, container) == expected
 
 
-def test_login_state_accepts_issuer_matching_url():
-    assert login_state(URL, 200, ISSUER) == (True, f"Keycloak trả lời tại {URL}/auth")
+def test_login_state_accepts_addresses_matching_url():
+    assert login_state(URL, 200, discovery()) == (True, f"Keycloak trả lời tại {URL}/auth")
 
 
 @pytest.mark.parametrize(
@@ -142,6 +147,38 @@ def test_login_state_accepts_issuer_matching_url():
 )
 def test_login_state_rejects_other_answers(status, body, detail):
     assert login_state(URL, status, body) == (False, detail)
+
+
+@pytest.mark.parametrize(
+    ("token_endpoint", "seen"),
+    [
+        (f"http://dx.example.com:9080{TOKEN_PATH}", "http://dx.example.com:9080"),
+        (f"https://dx.example.com{TOKEN_PATH}", "https://dx.example.com"),
+        (None, "None"),
+    ],
+)
+def test_login_state_rejects_token_endpoint_of_another_address(token_endpoint, seen):
+    ok, detail = login_state(URL, 200, discovery(token_endpoint=token_endpoint))
+
+    assert ok is False
+    assert detail.startswith(
+        f"Keycloak nhận lời gọi qua địa chỉ {seen}, khác với SAIGONOS_URL trong file .env. "
+    )
+    assert detail.endswith("X-Forwarded-Host và X-Forwarded-Port của reverse proxy")
+
+
+def test_doctor_reports_reverse_proxy_that_sends_wrong_address(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    gateway.healthy(seen_url=f"{URL}:9080")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert (
+        f"LỖI            Đăng nhập    Keycloak nhận lời gọi qua địa chỉ {URL}:9080, "
+        in result.output
+    )
+    assert result.output.endswith("Có 1 mục lỗi.\n")
 
 
 def test_api_state_requires_401_without_token():

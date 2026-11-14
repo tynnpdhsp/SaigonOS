@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from saigonos import compose
 
 REALM_PATH = "/auth/realms/saigonos"
+TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
 TIMEOUT = 5
 STOPPED_STATES = {
     "created": "đã tạo nhưng chưa chạy",
@@ -74,11 +75,19 @@ def login_state(url: str, status: int, body: bytes) -> tuple[bool, str]:
     if status != 200:
         return False, f"Keycloak trả về mã {status}"
     try:
-        issuer = json.loads(body).get("issuer")
+        discovery = json.loads(body)
+        issuer, token_endpoint = discovery.get("issuer"), discovery.get("token_endpoint")
     except (ValueError, AttributeError):
-        issuer = None
+        issuer = token_endpoint = None
     if issuer != f"{url}{REALM_PATH}":
         return False, f"Keycloak dùng địa chỉ {issuer}, khác với SAIGONOS_URL trong file .env"
+    if token_endpoint != f"{url}{TOKEN_PATH}":
+        seen = str(token_endpoint).removesuffix(TOKEN_PATH)
+        return False, (
+            f"Keycloak nhận lời gọi qua địa chỉ {seen}, khác với SAIGONOS_URL trong file .env. "
+            "Hãy kiểm tra header X-Forwarded-Proto, X-Forwarded-Host và X-Forwarded-Port "
+            "của reverse proxy"
+        )
     return True, f"Keycloak trả lời tại {url}/auth"
 
 

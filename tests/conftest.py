@@ -47,8 +47,12 @@ class Gateway:
         self.routes = {}
         self.healthy()
 
-    def healthy(self):
-        discovery = {"issuer": f"{self.url}/auth/realms/saigonos"}
+    def healthy(self, seen_url=None):
+        realm = "/auth/realms/saigonos"
+        discovery = {
+            "issuer": f"{self.url}{realm}",
+            "token_endpoint": f"{seen_url or self.url}{realm}/protocol/openid-connect/token",
+        }
         self.routes["/auth/realms/saigonos/.well-known/openid-configuration"] = (
             200,
             json.dumps(discovery).encode(),
