@@ -14,6 +14,7 @@ from saigonos.home import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SettingsError,
+    disabled_services,
     init_home,
     read_url,
 )
@@ -173,10 +174,21 @@ def run_compose(ctx: click.Context, home: Path, *args: str) -> None:
         ctx.exit(code)
 
 
+def remove_disabled_services(home: Path) -> None:
+    services = disabled_services(home)
+    if not services:
+        return
+    try:
+        compose.capture(home, "rm", "--stop", "--force", *services)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+
+
 @main.command(help="Khởi động các service bằng Docker Compose và chờ đến khi sẵn sàng.")
 @home_option
 @click.pass_context
 def up(ctx: click.Context, home: Path) -> None:
+    remove_disabled_services(home)
     run_compose(ctx, home, "up", "-d", "--wait")
     click.echo(f"Địa chỉ truy cập: {read_url(home)}")
 
@@ -186,6 +198,7 @@ def up(ctx: click.Context, home: Path) -> None:
 @click.option("--volumes", is_flag=True, help="Xóa cả dữ liệu trong các volume.")
 @click.pass_context
 def down(ctx: click.Context, home: Path, volumes: bool) -> None:
+    remove_disabled_services(home)
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
 
 

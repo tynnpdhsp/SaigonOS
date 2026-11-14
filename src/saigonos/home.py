@@ -14,6 +14,7 @@ DEFAULT_ADMIN_PORT = 9180
 DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 CADDY_PROFILE = "caddy"
+OPTIONAL_SERVICES = (CADDY_PROFILE,)
 SECRET_KEYS = (
     "POSTGRES_PASSWORD",
     "KEYCLOAK_DB_PASSWORD",
@@ -74,6 +75,14 @@ def read_url(home: Path) -> str:
 
 def split_profiles(value: str) -> list[str]:
     return [name.strip() for name in value.split(",") if name.strip()]
+
+
+def disabled_services(home: Path) -> list[str]:
+    env = parse_env(read_env_lines(home))
+    if "COMPOSE_PROFILES" not in env:
+        return []
+    enabled = split_profiles(env["COMPOSE_PROFILES"])
+    return [name for name in OPTIONAL_SERVICES if name not in enabled]
 
 
 def https_port(url: str) -> str | None:
