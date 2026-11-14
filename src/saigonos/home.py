@@ -3,12 +3,17 @@ import secrets
 import string
 from importlib.resources import files
 from importlib.resources.abc import Traversable
+from ipaddress import ip_address
 from pathlib import Path
 from typing import NamedTuple
+from urllib.parse import urlsplit
 
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
+DEFAULT_CADDY_HTTP_PORT = 80
+DEFAULT_HTTPS_PORT = 443
+CADDY_PROFILE = "caddy"
 SECRET_KEYS = (
     "POSTGRES_PASSWORD",
     "KEYCLOAK_DB_PASSWORD",
@@ -24,6 +29,11 @@ class Initialized(NamedTuple):
     url: str
     listen: str
     new_secrets: int
+    caddy: bool
+
+
+class SettingsError(Exception):
+    pass
 
 
 def new_secret() -> str:
@@ -62,6 +72,47 @@ def read_url(home: Path) -> str:
     return env.get("SAIGONOS_URL") or local_url(http_port)
 
 
+def split_profiles(value: str) -> list[str]:
+    return [name.strip() for name in value.split(",") if name.strip()]
+
+
+def https_port(url: str) -> str | None:
+    try:
+        parts = urlsplit(url)
+        return str(parts.port or DEFAULT_HTTPS_PORT) if parts.scheme == "https" else None
+    except ValueError:
+        return None
+
+
+def reachable_from_caddy(http_host: str) -> bool:
+    if http_host == DEFAULT_HTTP_HOST:
+        return True
+    try:
+        address = ip_address(http_host)
+    except ValueError:
+        return False
+    return address.version == 4 and address.is_unspecified
+
+
+def check_caddy(url: str, http_host: str, http_port: str, caddy_http_port: str) -> None:
+    caddy_https_port = https_port(url)
+    if caddy_https_port is None:
+        raise SettingsError(
+            "Caddy đang bật nên địa chỉ truy cập phải có dạng https://tên-máy. "
+            "Hãy đặt địa chỉ bằng tùy chọn --url hoặc tắt Caddy bằng tùy chọn --no-caddy."
+        )
+    if not reachable_from_caddy(http_host):
+        raise SettingsError(
+            "Caddy đang bật nên cổng HTTP của API Gateway phải lắng nghe trên địa chỉ "
+            f"{DEFAULT_HTTP_HOST}. Hãy đặt lại bằng tùy chọn --http-host {DEFAULT_HTTP_HOST}."
+        )
+    if http_port in {caddy_http_port, caddy_https_port}:
+        raise SettingsError(
+            f"Cổng HTTP {http_port} của API Gateway trùng với cổng mà Caddy sử dụng. "
+            "Hãy chọn cổng khác bằng tùy chọn --http-port."
+        )
+
+
 def copy_tree(source: Traversable, target: Path) -> None:
     for entry in source.iterdir():
         path = target / entry.name
@@ -88,8 +139,8 @@ def init_home(
     http_host: str | None = None,
     http_port: int | None = None,
     admin_port: int | None = None,
+    caddy: bool | None = None,
 ) -> Initialized:
-    home.mkdir(parents=True, exist_ok=True)
     lines = read_env_lines(home)
     current = parse_env(lines)
 
@@ -110,6 +161,18 @@ def init_home(
     for key in SECRET_KEYS:
         values[key] = new_secret() if key in missing else current[key]
 
+    profiles = split_profiles(current.get("COMPOSE_PROFILES", ""))
+    if caddy is not None and caddy != (CADDY_PROFILE in profiles):
+        if caddy:
+            profiles.append(CADDY_PROFILE)
+        else:
+            profiles.remove(CADDY_PROFILE)
+        values["COMPOSE_PROFILES"] = ",".join(profiles)
+    if CADDY_PROFILE in profiles:
+        caddy_http_port = current.get("CADDY_HTTP_PORT") or str(DEFAULT_CADDY_HTTP_PORT)
+        check_caddy(url, new_http_host, new_http_port, caddy_http_port)
+
+    home.mkdir(parents=True, exist_ok=True)
     for key, value in values.items():
         if current.get(key) != value:
             set_value(lines, key, value)
@@ -117,4 +180,6 @@ def init_home(
 
     copy_tree(files("saigonos").joinpath("stack"), home)
     listen = listen_address(new_http_host, new_http_port)
-    return Initialized(url=url, listen=listen, new_secrets=len(missing))
+    return Initialized(
+        url=url, listen=listen, new_secrets=len(missing), caddy=CADDY_PROFILE in profiles
+    )

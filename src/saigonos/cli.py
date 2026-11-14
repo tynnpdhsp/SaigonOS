@@ -13,6 +13,7 @@ from saigonos.home import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SettingsError,
     init_home,
     read_url,
 )
@@ -114,6 +115,14 @@ def main() -> None:
         f"Mặc định là {DEFAULT_ADMIN_PORT}."
     ),
 )
+@click.option(
+    "--caddy/--no-caddy",
+    default=None,
+    help=(
+        "Bật hoặc tắt Caddy. Caddy là reverse proxy nhận kết nối HTTPS và tự động lấy "
+        "chứng chỉ, dùng khi máy cài đặt chưa có reverse proxy. Mặc định tắt."
+    ),
+)
 @click.pass_context
 def init(
     ctx: click.Context,
@@ -122,16 +131,26 @@ def init(
     http_host: str | None,
     http_port: int | None,
     admin_port: int | None,
+    caddy: bool | None,
 ) -> None:
     try:
         result = init_home(
-            home, url=url, http_host=http_host, http_port=http_port, admin_port=admin_port
+            home,
+            url=url,
+            http_host=http_host,
+            http_port=http_port,
+            admin_port=admin_port,
+            caddy=caddy,
         )
+    except SettingsError as error:
+        raise click.UsageError(str(error)) from error
     except OSError as error:
         raise click.ClickException(f"Không ghi được vào {home}: {error.strerror}") from error
     click.echo(f"Thư mục làm việc: {home}")
     click.echo(f"Địa chỉ truy cập: {result.url}")
     click.echo(f"Địa chỉ lắng nghe: {result.listen}")
+    if result.caddy:
+        click.echo("Caddy: bật")
     if result.new_secrets:
         click.echo(f"Đã tạo {result.new_secrets} mật khẩu ngẫu nhiên trong file .env.")
     else:
