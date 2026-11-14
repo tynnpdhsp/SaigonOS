@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import socket
+import ssl
 
 import pytest
 
 from saigonos.doctor import api_state, gateway_checks, login_state, service_state
+
+CADDY_SERVICE = {"caddy": {"restart": "unless-stopped"}}
+CADDY_RUNNING = {"Service": "caddy", "State": "running", "Health": "healthy", "ExitCode": 0}
+READ_ROOT_CERTIFICATE = "compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt"
 
 SERVICES = {
     "postgres": {"restart": "unless-stopped"},
@@ -37,6 +42,23 @@ def closed_url():
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return f"http://127.0.0.1:{listener.getsockname()[1]}"
+
+
+@pytest.fixture
+def caddy_home(tmp_path, cli, docker, gateway):
+    path = tmp_path / "home"
+    cli("init", "--home", path, "--url", gateway.url.replace("http://", "https://"), "--caddy")
+    docker.services(SERVICES | CADDY_SERVICE, [*HEALTHY, CADDY_RUNNING])
+    return path
+
+
+@pytest.fixture
+def trusted(monkeypatch):
+    certificates = []
+    monkeypatch.setattr(
+        ssl.SSLContext, "load_verify_locations", lambda self, cadata: certificates.append(cadata)
+    )
+    return certificates
 
 
 @pytest.mark.parametrize("array", [False, True])
@@ -191,3 +213,34 @@ def test_gateway_checks_use_tls_for_https_address(gateway):
 
     assert [check.ok for check in checks] == [False, False]
     assert all("không kết nối được" in check.detail for check in checks)
+
+
+def test_doctor_trusts_root_certificate_of_caddy(caddy_home, cli, docker, trusted):
+    docker.reply("exec", output="chứng chỉ gốc\n")
+
+    result = cli("doctor", "--home", caddy_home)
+
+    assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
+    assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
+    assert trusted == ["chứng chỉ gốc\n"] * 2
+
+
+@pytest.mark.parametrize("reply", [{"output": ""}, {"error": "No such file\n", "code": 1}])
+def test_doctor_trusts_only_system_certificates_without_root_certificate_of_caddy(
+    caddy_home, cli, docker, trusted, reply
+):
+    docker.reply("exec", **reply)
+
+    result = cli("doctor", "--home", caddy_home)
+
+    assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
+    assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
+    assert trusted == []
+
+
+def test_doctor_does_not_ask_for_root_certificate_without_caddy(home, cli, docker):
+    docker.services(SERVICES, HEALTHY)
+
+    cli("doctor", "--home", home)
+
+    assert not any(" exec " in call for call in docker.calls)

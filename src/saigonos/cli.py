@@ -8,7 +8,7 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
-from saigonos.doctor import gateway_checks, service_checks
+from saigonos.doctor import run_checks
 from saigonos.home import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
@@ -194,7 +194,7 @@ def down(ctx: click.Context, home: Path, volumes: bool) -> None:
 @click.pass_context
 def doctor(ctx: click.Context, home: Path) -> None:
     try:
-        checks = [*service_checks(home), *gateway_checks(read_url(home))]
+        checks = run_checks(home, read_url(home))
     except compose.ComposeError as error:
         raise click.ClickException(str(error)) from error
     name_width = max(len(check.name) for check in checks)
