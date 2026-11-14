@@ -13,6 +13,7 @@ DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
+APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
 CADDY_PROFILE = "caddy"
 OPTIONAL_SERVICES = (CADDY_PROFILE,)
 SECRET_KEYS = (
@@ -83,6 +84,15 @@ def disabled_services(home: Path) -> list[str]:
         return []
     enabled = split_profiles(env["COMPOSE_PROFILES"])
     return [name for name in OPTIONAL_SERVICES if name not in enabled]
+
+
+def check_http_port(http_port: str) -> None:
+    if http_port in APISIX_INTERNAL_PORTS:
+        listed = ", ".join(APISIX_INTERNAL_PORTS[:-1]) + " và " + APISIX_INTERNAL_PORTS[-1]
+        raise SettingsError(
+            f"Cổng HTTP {http_port} trùng với một cổng mà APISIX dùng bên trong container. "
+            f"Các cổng này gồm {listed}. Hãy chọn cổng khác bằng tùy chọn --http-port."
+        )
 
 
 def https_port(url: str) -> str | None:
@@ -170,6 +180,7 @@ def init_home(
     for key in SECRET_KEYS:
         values[key] = new_secret() if key in missing else current[key]
 
+    check_http_port(new_http_port)
     profiles = split_profiles(current.get("COMPOSE_PROFILES", ""))
     if caddy is not None and caddy != (CADDY_PROFILE in profiles):
         if caddy:

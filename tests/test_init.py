@@ -314,6 +314,30 @@ def test_caddy_option_rejects_invalid_values_written_by_hand(home, line, message
     assert "COMPOSE_PROFILES" not in read_env(home)
 
 
+@pytest.mark.parametrize("port", [7085, 9090, 9091, 9180, 9443])
+def test_http_port_used_inside_gateway_container_is_rejected(home, port):
+    result = init("--home", home, "--http-port", port)
+
+    assert result.exit_code == 2
+    assert f"Cổng HTTP {port} trùng với một cổng mà APISIX dùng bên trong container." in (
+        result.output
+    )
+    assert "Các cổng này gồm 7085, 9090, 9091, 9180 và 9443." in result.output
+    assert not home.exists()
+
+
+def test_http_port_kept_from_older_version_is_checked(home):
+    init("--home", home)
+    append_env(home, "SAIGONOS_HTTP_PORT=9443")
+    before = (home / ".env").read_text(encoding="utf-8")
+
+    result = init("--home", home)
+
+    assert result.exit_code == 2
+    assert "Hãy chọn cổng khác bằng tùy chọn --http-port." in result.output
+    assert (home / ".env").read_text(encoding="utf-8") == before
+
+
 @pytest.mark.parametrize("host", ["localhost", "256.0.0.1", "127.0.0.1:9080", "10.0.0.0/8", ""])
 def test_invalid_http_host_is_rejected(home, host):
     result = init("--home", home, "--http-host", host)
