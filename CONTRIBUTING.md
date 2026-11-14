@@ -43,14 +43,16 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này thực hiện các bước sau:
+Lệnh này chạy hai nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
-- Tạo một thư mục làm việc tạm bằng `saigonos init` với hai cổng còn trống.
+- Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
-- Chạy các kiểm thử trong thư mục `tests/integration`.
+- Chạy các kiểm thử của nhóm.
 - Xóa container và dữ liệu bằng `saigonos down --volumes`.
 
-Một lượt chạy mất khoảng 2 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
+
+Một lượt chạy mất khoảng 5 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
