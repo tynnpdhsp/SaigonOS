@@ -66,15 +66,15 @@ saigonos doctor
 Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
-ĐẠT  apisix     đang chạy
-ĐẠT  etcd       đang chạy
-ĐẠT  jwks       đã chạy xong
-ĐẠT  keycloak   đang chạy
-ĐẠT  postgres   đang chạy
-ĐẠT  postgrest  đang chạy
-ĐẠT  routes     đã chạy xong
-ĐẠT  Đăng nhập  Keycloak trả lời tại http://localhost:9080/auth
-ĐẠT  API        lời gọi không có access token bị từ chối
+BÌNH THƯỜNG    apisix       đang chạy
+BÌNH THƯỜNG    etcd         đang chạy
+BÌNH THƯỜNG    jwks         đã chạy xong
+BÌNH THƯỜNG    keycloak     đang chạy
+BÌNH THƯỜNG    postgres     đang chạy
+BÌNH THƯỜNG    postgrest    đang chạy
+BÌNH THƯỜNG    routes       đã chạy xong
+BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
+BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối
 Hệ thống hoạt động bình thường.
 ```
 

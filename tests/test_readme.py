@@ -16,6 +16,7 @@ BLOCK_LINES = [
 ]
 INLINE = re.findall(r"`([^`\n]+)`", README)
 COMMANDS = sorted({text for text in [*BLOCK_LINES, *INLINE] if text.startswith("saigonos ")})
+DOCTOR_SAMPLE = re.search(r"```text\n(.*?)```", README, re.DOTALL)[1]
 
 
 def test_readme_shows_the_whole_install_path():
@@ -43,6 +44,24 @@ def test_readme_options_exist_in_cli():
 
     assert documented
     assert documented <= known
+
+
+def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
+    rows = [re.split(r" {2,}", row, maxsplit=2) for row in DOCTOR_SAMPLE.splitlines()]
+    finished = {name: detail == "đã chạy xong" for _, name, detail in rows[:-3]}
+    docker.services(
+        {name: {"restart": "no" if done else "unless-stopped"} for name, done in finished.items()},
+        [
+            {"Service": name, "State": "exited" if done else "running", "ExitCode": 0}
+            for name, done in finished.items()
+        ],
+    )
+    cli("init", "--home", tmp_path / "home", "--url", gateway.url)
+
+    result = cli("doctor", "--home", tmp_path / "home")
+
+    assert finished
+    assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
 
 
 def test_readme_states_the_default_values():
