@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.2.0] - 2026-11-14
+
 ### Thêm
 
 - Service `caddy` nhận kết nối HTTPS trên máy chủ chưa có reverse proxy. Caddy tự lấy chứng chỉ từ Let's Encrypt và bật HSTS. Caddy cũng hỗ trợ HTTP/3 và chuyển các kết nối HTTP sang HTTPS. Caddy dùng mạng của máy chủ nên thấy đúng địa chỉ IP của người dùng qua IPv4 và IPv6. Các header `X-Forwarded-*` do người dùng tự gửi bị bỏ qua.
@@ -63,6 +65,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.1.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
 [0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
 [0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0
