@@ -20,6 +20,7 @@ Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấ
 | Image | Phiên bản | Giấy phép | Mô tả | Nguồn |
 |---|---|---|---|---|
 | apache/apisix | 3.19.0-ubuntu | Apache-2.0 | Làm API Gateway cho mọi lời gọi từ bên ngoài | https://github.com/apache/apisix/tree/3.19.0 |
+| caddy | 2.11.9-alpine | Apache-2.0 | Làm reverse proxy HTTPS và tự động lấy chứng chỉ khi được bật | https://github.com/caddyserver/caddy/tree/v2.11.9 |
 | postgres | 18.6-alpine | PostgreSQL | Lưu dữ liệu của Keycloak và của các ứng dụng | https://github.com/postgres/postgres/tree/REL_18_6 |
 | postgrest/postgrest | v16.5 | MIT | Tạo REST API từ cơ sở dữ liệu PostgreSQL | https://github.com/PostgREST/postgrest/tree/v16.5 |
 | quay.io/coreos/etcd | v3.6.16 | Apache-2.0 | Lưu cấu hình của APISIX | https://github.com/etcd-io/etcd/tree/v3.6.16 |
