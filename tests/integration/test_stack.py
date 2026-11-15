@@ -2,6 +2,7 @@
 import base64
 import json
 import time
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -95,6 +96,23 @@ def test_caller_outside_local_network_cannot_pose_as_local_address(stack):
 
 def test_api_answers_call_without_token(stack):
     assert stack.api().status == 200
+
+
+def test_api_document_gives_saigonos_url_and_authorization_header(stack):
+    reply = stack.api()
+    document = json.loads(reply.body)
+    parts = urlsplit(stack.url)
+    scheme = document["securityDefinitions"]["JWT"]
+
+    assert reply.headers.get_content_type() == "application/openapi+json"
+    assert (document["swagger"], document["info"]["title"]) == ("2.0", "SaigonOS API")
+    assert (document["schemes"], document["host"], document["basePath"]) == (
+        [parts.scheme],
+        parts.netloc,
+        "/api",
+    )
+    assert (scheme["type"], scheme["in"], scheme["name"]) == ("apiKey", "header", "Authorization")
+    assert document["security"] == [{"JWT": []}]
 
 
 def test_rate_limit_counts_calls_without_token(stack):

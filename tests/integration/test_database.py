@@ -52,6 +52,17 @@ AS $$ BEGIN
 END $$;
 GRANT EXECUTE ON FUNCTION api.{table}_undone TO authenticated;
 """
+GRANTED = """
+SELECT '/' || relname FROM pg_class
+WHERE relnamespace = 'api'::regnamespace AND relkind IN ('r', 'p', 'v', 'm', 'f')
+AND (
+    has_table_privilege('{role}', oid, 'SELECT, INSERT, UPDATE, DELETE')
+    OR has_any_column_privilege('{role}', oid, 'SELECT, INSERT, UPDATE')
+)
+UNION
+SELECT '/rpc/' || proname FROM pg_proc
+WHERE pronamespace = 'api'::regnamespace AND has_function_privilege('{role}', oid, 'EXECUTE')
+"""
 AUDIT_CHAIN = """
 SELECT json_build_object(
     'id', id,
@@ -167,6 +178,17 @@ class Notes:
     def stored(self, user):
         query = f"SELECT id, body FROM api.{self.table} WHERE owner = '{user.id}'"
         return [[int(row), body] for row, body in self.stack.sql(query)]
+
+
+def documented(stack, token=None):
+    reply = stack.call("GET", f"{stack.url}/api/", token=token)
+    assert reply.status == 200, reply.body
+    document = json.loads(reply.body)
+    return set(document["paths"]) - {"/"}, set(document.get("definitions", {}))
+
+
+def granted(stack, role):
+    return {path for [path] in stack.sql(GRANTED.format(role=role))}
 
 
 def audit_entries(stack, condition):
@@ -515,6 +537,40 @@ def test_forged_token_is_rejected_where_anon_is_allowed(stack, notes):
     assert stack.postgrest_status(path) == 200
     assert gateway == dict.fromkeys(forged, 401)
     assert postgrest == dict.fromkeys(forged, 401)
+
+
+def test_api_document_lists_only_tables_and_functions_granted_to_caller(stack, notes):
+    table = notes.table
+    token = stack.token(stack.new_user())
+
+    user_paths, user_tables = documented(stack, token)
+    anon_paths, anon_tables = documented(stack)
+
+    own = {f"/rpc/{table}_{name}" for name in ("caller", "nested", "open", "undone")}
+    assert user_paths == granted(stack, "authenticated")
+    assert anon_paths == granted(stack, "anon")
+    assert {path for path in user_paths if table in path} == {f"/{table}", *own}
+    assert {path for path in anon_paths if table in path} == {
+        f"/rpc/{table}_nested",
+        f"/rpc/{table}_open",
+    }
+    assert table in user_tables
+    assert anon_tables == set()
+
+
+def test_api_document_follows_grant_and_revoke_at_once(stack, notes):
+    function = f"api.{notes.table}_closed"
+    path = f"/rpc/{notes.table}_closed"
+
+    stack.sql(f"GRANT EXECUTE ON FUNCTION {function} TO anon")
+    try:
+        after_grant = documented(stack)[0]
+    finally:
+        stack.sql(f"REVOKE EXECUTE ON FUNCTION {function} FROM anon")
+    after_revoke = documented(stack)[0]
+
+    assert path in after_grant
+    assert path not in after_revoke
 
 
 def test_audit_log_records_who_changed_which_values(stack, notes):
