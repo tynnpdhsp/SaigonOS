@@ -70,6 +70,7 @@ BÌNH THƯỜNG    apisix       đang chạy
 BÌNH THƯỜNG    etcd         đang chạy
 BÌNH THƯỜNG    jwks         đã chạy xong
 BÌNH THƯỜNG    keycloak     đang chạy
+BÌNH THƯỜNG    migrate      đã chạy xong
 BÌNH THƯỜNG    postgres     đang chạy
 BÌNH THƯỜNG    postgrest    đang chạy
 BÌNH THƯỜNG    routes       đã chạy xong
@@ -291,7 +292,7 @@ saigonos up
 saigonos doctor
 ```
 
-Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới.
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu.
 
 ## Tham gia phát triển
 
