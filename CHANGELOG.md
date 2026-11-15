@@ -10,6 +10,13 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thêm
 
 - Service `migrate` chạy các file SQL của cơ sở dữ liệu mỗi khi hệ thống khởi động. Các file chạy theo thứ tự tên. Mỗi file chỉ chạy một lần và chạy trong một transaction. Bảng `core.migrations` ghi lại các file đã chạy. Khi nội dung của một file đã chạy bị thay đổi, service dừng và báo lỗi. PostgREST nhận ngay các bảng và view mới mà không cần khởi động lại.
+- Các hàm `core.uid()`, `core.has_role()` và `core.unit()` cho biết thông tin của người gọi API. Hàm `core.uid()` trả về mã người dùng trong Keycloak. Hàm `core.has_role()` kiểm tra một realm role của người dùng. Hàm `core.unit()` trả về đơn vị của người dùng. Hàm `core.claims()` trả về toàn bộ nội dung của access token. Các hàm này đọc access token mà PostgREST đã kiểm tra. Chính sách phân quyền từng dòng (row-level security) của bảng dùng các hàm này để giới hạn dữ liệu theo người dùng, vai trò và đơn vị.
+- Thuộc tính `unit` (Đơn vị) của người dùng trong realm `saigonos`. Quản trị viên đặt giá trị này ở trang thông tin người dùng trong Admin Console của Keycloak. Người dùng không tự đổi được giá trị này. Access token mang giá trị này trong claim `unit`.
+- Service `realm` thêm các thiết lập mới vào realm `saigonos` mỗi khi hệ thống khởi động. Nhờ đó, realm được tạo từ phiên bản cũ cũng có thuộc tính `unit`. Service chỉ thêm thiết lập còn thiếu và giữ nguyên các thiết lập khác của realm.
+
+### Thay đổi
+
+- Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật.
 
 ## [0.2.0] - 2026-11-14
 
