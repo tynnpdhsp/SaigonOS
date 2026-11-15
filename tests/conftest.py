@@ -53,11 +53,10 @@ class Gateway:
             "issuer": f"{self.url}{realm}",
             "token_endpoint": f"{seen_url or self.url}{realm}/protocol/openid-connect/token",
         }
-        self.routes["/auth/realms/saigonos/.well-known/openid-configuration"] = (
-            200,
-            json.dumps(discovery).encode(),
-        )
-        self.routes["/api/"] = (401, b"")
+        path = f"{realm}/.well-known/openid-configuration"
+        self.routes[path, False] = (200, json.dumps(discovery).encode())
+        self.routes["/api/", False] = (200, b"{}")
+        self.routes["/api/", True] = (401, b"")
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +87,8 @@ def docker(tmp_path, monkeypatch):
 def gateway():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            status, body = gateway.routes.get(self.path, (404, b""))
+            route = (self.path, "Authorization" in self.headers)
+            status, body = gateway.routes.get(route, (404, b""))
             self.send_response(status)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

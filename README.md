@@ -76,7 +76,7 @@ BÌNH THƯỜNG    postgrest    đang chạy
 BÌNH THƯỜNG    realm        đã chạy xong
 BÌNH THƯỜNG    routes       đã chạy xong
 BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
-BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối
+BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
 Hệ thống hoạt động bình thường.
 ```
 
