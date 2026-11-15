@@ -90,23 +90,23 @@ def test_commands_stop_when_caddy_cannot_be_removed(caddy_home, cli, docker, com
     assert docker.calls == [f"{caddy_home.resolve()}: compose rm --stop --force caddy"]
 
 
-@pytest.mark.parametrize("command", ["up", "down", "doctor"])
+@pytest.mark.parametrize("command", ["up", "down", "doctor", "audit verify"])
 @pytest.mark.parametrize("missing", ["compose.yaml", ".env"])
 def test_commands_need_initialized_home(home, cli, docker, command, missing):
     (home / missing).unlink()
 
-    result = cli(command, "--home", home)
+    result = cli(*command.split(), "--home", home)
 
     assert result.exit_code == 1
     assert "Hãy chạy lệnh saigonos init trước." in result.output
     assert docker.calls == []
 
 
-@pytest.mark.parametrize("command", ["up", "down", "doctor"])
+@pytest.mark.parametrize("command", ["up", "down", "doctor", "audit verify"])
 def test_commands_need_docker(home, cli, tmp_path, monkeypatch, command):
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    result = cli(command, "--home", home)
+    result = cli(*command.split(), "--home", home)
 
     assert result.exit_code == 1
     assert "Không tìm thấy lệnh docker." in result.output

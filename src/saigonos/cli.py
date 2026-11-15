@@ -8,6 +8,7 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
+from saigonos.audit import verify as verify_chain
 from saigonos.doctor import run_checks
 from saigonos.home import (
     DEFAULT_ADMIN_PORT,
@@ -220,3 +221,28 @@ def doctor(ctx: click.Context, home: Path) -> None:
         click.echo(f"Có {failed} mục lỗi.")
         ctx.exit(1)
     click.echo("Hệ thống hoạt động bình thường.")
+
+
+@main.group(help="Làm việc với audit log của cơ sở dữ liệu.")
+def audit() -> None:
+    pass
+
+
+@audit.command(
+    short_help="Tính lại chuỗi mã băm của audit log.",
+    help=(
+        "Tính lại chuỗi mã băm của bảng core.audit_log và so sánh với mã băm đã lưu.\n\n"
+        "Khi một dòng đã bị sửa hoặc bị xóa, lệnh chỉ ra dòng sai đầu tiên "
+        "và kết thúc với mã thoát 1."
+    ),
+)
+@home_option
+@click.pass_context
+def verify(ctx: click.Context, home: Path) -> None:
+    try:
+        verdict = verify_chain(home)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(verdict.detail)
+    if not verdict.ok:
+        ctx.exit(1)
