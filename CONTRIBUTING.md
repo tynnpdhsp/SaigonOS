@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy ba nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng và role `anon`, với cấu hình mặc định. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy ba nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -91,7 +91,7 @@ Cơ sở dữ liệu `saigonos` được cập nhật bằng các file SQL trong
 
 Mỗi thay đổi của cơ sở dữ liệu được viết thành một file mới theo các quy tắc sau:
 
-- Tên file gồm số thứ tự tiếp theo với 4 chữ số, dấu gạch dưới và một mô tả ngắn viết bằng chữ thường không dấu. Ví dụ: `0002_audit_log.sql`.
+- Tên file gồm số thứ tự tiếp theo với 4 chữ số, dấu gạch dưới và một mô tả ngắn viết bằng chữ thường không dấu. Ví dụ: `0004_audit_log.sql`.
 - Mỗi file chạy trong một transaction. Khi một câu lệnh bị lỗi, mọi thay đổi của file bị hủy. Do đó, file không được chứa `BEGIN`, `COMMIT` hoặc câu lệnh không chạy được trong transaction, ví dụ `CREATE INDEX CONCURRENTLY`.
 - Không sửa hoặc xóa file đã được merge vào `main`. Service `migrate` dừng và báo lỗi khi nội dung của một file đã chạy bị thay đổi. Để sửa một thay đổi cũ, hãy thêm một file mới.
 - File `init.sql` chỉ chạy một lần khi cơ sở dữ liệu được tạo. Do đó, không thêm thay đổi mới vào file này.
@@ -107,6 +107,40 @@ Mỗi lời gọi API chạy với một trong hai role của cơ sở dữ li�
 - Không cấp quyền cho `PUBLIC`.
 
 PostgreSQL không kiểm tra lại quyền `EXECUTE` của hàm khi dùng lại một query plan đã lập cho role khác. Do đó, hàm `core.pre_request()` xóa các query plan đã lưu trước mỗi lời gọi API và PostgREST không dùng prepared statement. Không bỏ hai thiết lập `PGRST_DB_PRE_REQUEST` và `PGRST_DB_PREPARED_STATEMENTS` trong file `compose.yaml`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong `tests/integration/test_database.py` kiểm tra điều này.
+
+### Ghi audit log cho bảng
+
+Bảng `core.audit_log` lưu audit log của cơ sở dữ liệu. Để ghi audit log cho một bảng, file SQL gắn hàm `core.audit()` vào bảng đó bằng một trigger. Ví dụ với bảng `api.notes`:
+
+```sql
+CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON api.notes
+    FOR EACH ROW EXECUTE FUNCTION core.audit();
+```
+
+Sau đó, mỗi lần một dòng của bảng được thêm, sửa hoặc xóa, trigger ghi một dòng vào `core.audit_log` với các cột sau:
+
+| Cột | Nội dung |
+| --- | --- |
+| `id` | Số thứ tự của dòng audit log. Số này tăng liên tục và không bỏ số nào |
+| `occurred_at` | Thời điểm ghi audit log |
+| `actor` | Mã người dùng trong access token, giống giá trị của `core.uid()`. Cột này trống khi thay đổi không đi qua API |
+| `db_role` | Role của cơ sở dữ liệu đã thực hiện thay đổi, ví dụ `authenticated`, `anon` hoặc `postgres` |
+| `table_schema`, `table_name` | Schema và tên của bảng có thay đổi |
+| `operation` | Thao tác `INSERT`, `UPDATE` hoặc `DELETE` |
+| `old_row`, `new_row` | Giá trị của dòng trước và sau thay đổi ở dạng JSON |
+| `hash` | Mã băm SHA-256 của dòng audit log |
+
+Hàm `core.audit_hash()` tính mã băm của một dòng từ mã băm của dòng trước và nội dung của dòng đó. Do đó, các dòng audit log nối thành một chuỗi. Khi một dòng audit log bị sửa hoặc bị xóa, chuỗi mã băm không còn khớp.
+
+Khi dùng audit log, cần tuân theo các quy tắc sau:
+
+- Trigger phải chạy sau thao tác và chạy cho từng dòng (`AFTER ... FOR EACH ROW`). Với kiểu trigger khác, hàm `core.audit()` báo lỗi.
+- Để các dòng audit log nối thành một chuỗi duy nhất, trigger giữ một khóa cho tới khi transaction kết thúc. Trong thời gian đó, các transaction khác phải chờ khi ghi vào bảng có audit log. Do đó, transaction ghi vào các bảng này cần kết thúc nhanh.
+- Transaction ở mức `REPEATABLE READ` hoặc `SERIALIZABLE` có thể nhận lỗi trùng `id` khi một transaction khác vừa ghi audit log. Khi đó, cần chạy lại transaction.
+- Không cấp quyền trên `core.audit_log` cho role `anon` và `authenticated`.
+- Không thay đổi cách tính mã băm của các dòng đã ghi. Khi `core.audit_log` có thêm cột, hàm `core.audit_hash()` chỉ đưa cột mới vào mã băm khi cột đó có giá trị. Nhờ đó, mã băm của các dòng cũ vẫn khớp.
+
+Kiểm thử `test_audit_chain_stays_unbroken_when_many_connections_write_at_once` trong `tests/integration/test_database.py` tính lại cả chuỗi mã băm sau khi nhiều kết nối ghi cùng lúc.
 
 ## Thay đổi realm của Keycloak
 
