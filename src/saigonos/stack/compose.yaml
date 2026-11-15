@@ -182,6 +182,7 @@ services:
       PGUSER: authenticator
       PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
       PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: "@/jwks/jwks.json"
       PGRST_JWT_ROLE_CLAIM_KEY: '$$.realm_access.roles[?(@ == "authenticated")]'
       PGRST_ADMIN_SERVER_HOST: 127.0.0.1
