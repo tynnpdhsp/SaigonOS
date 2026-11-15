@@ -12,10 +12,6 @@ DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
 
 
-def encode(data):
-    return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
-
-
 def decode(segment):
     return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
 
@@ -93,12 +89,21 @@ def test_caller_outside_local_network_cannot_pose_as_local_address(stack):
         reached = stack.outside_status(network, "/api/")
         forged = stack.outside_status(network, DISCOVERY_PATH, {"X-Forwarded-For": "10.0.0.5"})
 
-    assert reached == 401
+    assert reached == 200
     assert forged == 403
 
 
-def test_api_rejects_call_without_token(stack):
-    assert stack.api().status == 401
+def test_api_answers_call_without_token(stack):
+    assert stack.api().status == 200
+
+
+def test_rate_limit_counts_calls_without_token(stack):
+    def remaining():
+        reply = stack.api(headers={"X-Forwarded-For": "203.0.113.9"})
+        assert reply.status == 200, reply.body
+        return int(reply.headers["X-RateLimit-Remaining"])
+
+    assert [remaining(), remaining()] == [299, 298]
 
 
 def test_api_accepts_token_of_user(stack):
@@ -109,13 +114,7 @@ def test_api_accepts_token_of_user(stack):
 
 
 def test_api_rejects_forged_tokens(stack):
-    header, payload, signature = stack.token(stack.new_user()).split(".")
-    claims = decode(payload)
-    forged = {
-        "không phải JWT": "khong-phai-token",
-        "sửa nội dung": f"{header}.{encode(claims | {'preferred_username': 'admin'})}.{signature}",
-        "không ký": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
-    }
+    forged = stack.forged_tokens(stack.new_user())
 
     statuses = {name: stack.api(token).status for name, token in forged.items()}
 

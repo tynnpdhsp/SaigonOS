@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import base64
 import hashlib
 import ipaddress
 import json
@@ -51,6 +52,20 @@ class Connection(HTTPConnection):
         self.sock = socket.create_connection((self.address or self.host, self.port), self.timeout)
         if self.context is not None:
             self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
+
+
+def encode(data):
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
+
+
+def decode(segment):
+    return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+
+
+def http_status(result):
+    status = re.search(r"HTTP/\S+ (\d{3})", result.stderr)
+    assert status, result.stderr
+    return int(status[1])
 
 
 def free_port():
@@ -163,6 +178,12 @@ class Stack:
         reply = self.admin("POST", f"/users/{user.id}/role-mappings/realm", [found])
         assert reply.status == 204, reply.body
 
+    def revoke_roles(self, user):
+        path = f"/users/{user.id}/role-mappings/realm"
+        roles = json.loads(self.admin("GET", path).body)
+        reply = self.admin("DELETE", path, roles)
+        assert reply.status == 204, reply.body
+
     def login(self, user):
         form = {
             "grant_type": "password",
@@ -184,6 +205,15 @@ class Stack:
         reply = self.login(user)
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
+
+    def forged_tokens(self, user):
+        header, payload, signature = self.token(user).split(".")
+        claims = decode(payload) | {"preferred_username": "admin"}
+        return {
+            "không phải JWT": "khong-phai-token",
+            "sửa nội dung": f"{header}.{encode(claims)}.{signature}",
+            "không ký": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
+        }
 
     def api(self, token=None, headers=None, address=None):
         return self.call("GET", f"{self.url}/api/", token=token, headers=headers, address=address)
@@ -236,6 +266,15 @@ class Stack:
         assert result.returncode == 0, result.stderr
         return [line.split("|") for line in result.stdout.splitlines()]
 
+    def postgrest_status(self, path, token=None):
+        fields = ["--header", f"Authorization: Bearer {token}"] if token else []
+        options = ["-S", "-O", "/dev/null", *fields, f"http://postgrest:3000{path}"]
+        command = [self.docker, "compose", "exec", "-T", "postgres", "wget", *options]
+        result = subprocess.run(
+            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=60
+        )
+        return http_status(result)
+
     def add_migration(self, name, text):
         path = self.home / "config" / "postgres" / "migrations" / name
         path.write_text(text, encoding="utf-8")
@@ -284,9 +323,7 @@ class Stack:
         result = self.run_docker(
             "run", *options, image, "-S", "-O", "/dev/null", *fields, url, check=False
         )
-        status = re.search(r"HTTP/\S+ (\d{3})", result.stderr)
-        assert status, result.stderr
-        return int(status[1])
+        return http_status(result)
 
     @contextmanager
     def public_network(self, family):
