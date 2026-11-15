@@ -136,7 +136,7 @@ class Stack:
         reply = self.admin("POST", "/clients", client)
         assert reply.status == 201, reply.body
 
-    def new_user(self):
+    def new_user(self, unit=None, role=None):
         name = f"thu-{secrets.token_hex(4)}"
         password = secrets.token_urlsafe(12)
         user = {
@@ -146,11 +146,22 @@ class Stack:
             "lastName": "Thử",
             "email": f"{name}@example.com",
             "emailVerified": True,
+            "attributes": {"unit": [unit]} if unit else {},
             "credentials": [{"type": "password", "value": password, "temporary": False}],
         }
         reply = self.admin("POST", "/users", user)
         assert reply.status == 201, reply.body
-        return User(reply.headers["Location"].rsplit("/", 1)[1], name, password)
+        user = User(reply.headers["Location"].rsplit("/", 1)[1], name, password)
+        if role:
+            self.grant_role(user, role)
+        return user
+
+    def grant_role(self, user, role):
+        created = self.admin("POST", "/roles", {"name": role})
+        assert created.status in (201, 409), created.body
+        found = json.loads(self.admin("GET", f"/roles/{role}").body)
+        reply = self.admin("POST", f"/users/{user.id}/role-mappings/realm", [found])
+        assert reply.status == 204, reply.body
 
     def login(self, user):
         form = {

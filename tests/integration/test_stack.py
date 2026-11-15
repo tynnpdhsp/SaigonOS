@@ -122,6 +122,74 @@ def test_api_rejects_forged_tokens(stack):
     assert statuses == dict.fromkeys(forged, 401)
 
 
+def test_access_token_carries_unit_of_user(stack):
+    member = decode(stack.token(stack.new_user(unit="khoa-a")).split(".")[1])
+    outsider = decode(stack.token(stack.new_user()).split(".")[1])
+
+    assert member["unit"] == "khoa-a"
+    assert "unit" not in outsider
+
+
+@pytest.mark.parametrize("unit", ["khoa-a", None])
+def test_user_cannot_change_own_unit(stack, unit):
+    user = stack.new_user(unit=unit)
+    account = f"{stack.url}{REALM_PATH}/account/"
+    json_reply = {"Accept": "application/json"}
+    profile = json.loads(
+        stack.call("GET", account, token=stack.token(user), headers=json_reply).body
+    )
+    assert profile["username"] == user.name
+
+    profile["attributes"] = {"unit": ["khoa-b"]}
+    reply = stack.call("POST", account, token=stack.token(user), body=profile, headers=json_reply)
+
+    error = json.loads(reply.body)
+    assert reply.status == 400
+    assert (error["field"], error["errorMessage"]) == ("unit", "error-user-attribute-read-only")
+    assert decode(stack.token(user).split(".")[1]).get("unit") == unit
+
+
+def test_realm_service_adds_unit_to_realm_created_by_older_version(stack):
+    user = stack.new_user(unit="khoa-a")
+    profile = json.loads(stack.admin("GET", "/users/profile").body)
+    custom = {
+        "name": "phone",
+        "displayName": "Điện thoại",
+        "permissions": {"view": [], "edit": ["admin"]},
+        "validations": {},
+        "annotations": {},
+        "multivalued": False,
+    }
+    older = [attribute for attribute in profile["attributes"] if attribute["name"] != "unit"]
+    names = [attribute["name"] for attribute in older]
+    profile["attributes"] = [*older, custom]
+    assert stack.admin("PUT", "/users/profile", profile).status == 200
+    scopes = json.loads(stack.admin("GET", "/client-scopes").body)
+    roles = next(scope for scope in scopes if scope["name"] == "roles")
+    mapper = next(mapper for mapper in roles["protocolMappers"] if mapper["name"] == "unit")
+    mappers = f"/client-scopes/{roles['id']}/protocol-mappers/models"
+    assert stack.admin("DELETE", f"{mappers}/{mapper['id']}").status == 204
+    assert "unit" not in decode(stack.token(user).split(".")[1])
+    before = json.loads(stack.admin("GET", "/users/profile").body)["attributes"]
+
+    first = stack.saigonos("up")
+    added = stack.logs("realm").splitlines()[-2:]
+    second = stack.saigonos("up")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert added == [
+        "Đã thêm thuộc tính unit vào user profile của realm saigonos",
+        "Đã thêm mapper unit vào client scope roles của realm saigonos",
+    ]
+    assert stack.logs("realm").splitlines()[-1] == "Realm saigonos không cần thay đổi"
+    after = json.loads(stack.admin("GET", "/users/profile").body)["attributes"]
+    assert [attribute["name"] for attribute in before] == [*names, "phone"]
+    assert after[:-1] == before
+    assert after[-1]["name"] == "unit"
+    assert decode(stack.token(stack.new_user(unit="khoa-b")).split(".")[1])["unit"] == "khoa-b"
+
+
 def test_new_signing_key_is_accepted_after_reload(stack):
     user = stack.new_user()
     old_key = decode(stack.token(user).split(".")[0])["kid"]
