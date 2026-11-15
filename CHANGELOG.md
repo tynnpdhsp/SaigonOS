@@ -15,6 +15,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `realm` thêm các thiết lập mới vào realm `saigonos` mỗi khi hệ thống khởi động. Nhờ đó, realm được tạo từ phiên bản cũ cũng có thuộc tính `unit`. Service chỉ thêm thiết lập còn thiếu và giữ nguyên các thiết lập khác của realm.
 - Role `anon` của cơ sở dữ liệu dành cho lời gọi API không có access token. Role này chưa được cấp quyền trên bảng, view hay hàm nào của API. Để mở một bảng, view hoặc hàm cho người chưa đăng nhập, cấp quyền cho role này bằng lệnh `GRANT`.
 - Hàm `core.pre_request()` xóa các query plan đã lưu trước mỗi lời gọi API. PostgREST cũng không dùng prepared statement. Nhờ đó, quyền `EXECUTE` của hàm được kiểm tra lại ở mỗi lời gọi. Khi dùng lại query plan đã lập cho một role khác, PostgreSQL không kiểm tra lại quyền này.
+- Bảng `core.audit_log` và hàm `core.audit()` ghi audit log của cơ sở dữ liệu. Để ghi audit log cho một bảng, gắn hàm `core.audit()` vào bảng đó bằng một lệnh `CREATE TRIGGER`. Mỗi lần một dòng được thêm, sửa hoặc xóa, audit log ghi người thực hiện, thời điểm, tên bảng, thao tác, giá trị trước và giá trị sau. Mỗi dòng audit log mang một mã băm SHA-256. Mã băm này được tính từ nội dung của dòng và mã băm của dòng trước. Do đó, khi một dòng audit log bị sửa hoặc bị xóa, chuỗi mã băm không còn khớp. Role `anon` và `authenticated` không đọc và không ghi được bảng `core.audit_log`.
 
 ### Thay đổi
 
