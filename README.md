@@ -88,7 +88,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 |---|---|---|
 | http://localhost:9080/auth/admin/ | Admin Console của Keycloak | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
-| http://localhost:9080/api/ | REST API của PostgREST | Access token do Keycloak cấp |
+| http://localhost:9080/api/ | REST API của PostgREST | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
