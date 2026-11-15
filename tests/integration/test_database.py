@@ -4,6 +4,7 @@ import json
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from importlib.resources import files
 
 import pytest
@@ -91,6 +92,46 @@ EXCEPTION WHEN raise_exception THEN
 END $$;
 SELECT pg_temp.attempt(), count(*) FROM {table};
 """
+REFUSED_CHANGES = """
+CREATE FUNCTION pg_temp.attempt(statement text) RETURNS text
+LANGUAGE plpgsql
+AS $$ BEGIN
+    EXECUTE statement;
+    RETURN 'đã chạy';
+EXCEPTION WHEN raise_exception THEN
+    RETURN SQLERRM;
+END $$;
+SET session_replication_role = {role};
+SELECT pg_temp.attempt(statement)
+FROM unnest(ARRAY[
+    $$UPDATE core.audit_log SET actor = 'nguoi-khac'$$,
+    'DELETE FROM core.audit_log',
+    'TRUNCATE core.audit_log'
+]) WITH ORDINALITY AS attempts (statement, position)
+ORDER BY position;
+"""
+AUDIT_OWNER = """
+SELECT relowner = current_user::regrole FROM pg_class WHERE oid = 'core.audit_log'::regclass
+"""
+AUDIT_SIZE = """
+SELECT count(*), (SELECT hash FROM core.audit_log ORDER BY id DESC LIMIT 1) FROM core.audit_log
+"""
+AUDIT_SCANS = """
+SELECT seq_scan FROM pg_stat_user_tables WHERE schemaname = 'core' AND relname = 'audit_log'
+"""
+COSTLY_INDEX = "SET random_page_cost = 1000000; SET cpu_index_tuple_cost = 1000000"
+UNLOCK = "ALTER TABLE core.audit_log DISABLE TRIGGER append_only"
+LOCK = "ALTER TABLE core.audit_log ENABLE ALWAYS TRIGGER append_only"
+CHANGED = (
+    "Dòng {row} của audit log không khớp mã băm. Nội dung hoặc mã băm của dòng này đã bị sửa.\n"
+)
+MISSING = "Audit log thiếu dòng {row}. Dòng này đã bị xóa hoặc bị đổi số thứ tự.\n"
+EDITS = {
+    "new_row": """new_row = new_row || '{"body": "đã bị sửa tay"}'""",
+    "actor": "actor = 'nguoi-khac'",
+    "occurred_at": "occurred_at = occurred_at - interval '1 day'",
+    "hash": "hash = repeat('0', 64)",
+}
 
 
 def unique(prefix):
@@ -156,6 +197,30 @@ def broken_links(stack):
             broken.append(entry["id"])
         previous = entry
     return broken
+
+
+def written_entries(stack, notes, count=3):
+    body = unique("ngoai_api")
+    rows = ", ".join([f"('quan-tri', '{body}')"] * count)
+    stack.sql(f"INSERT INTO api.{notes.table} (owner, body) VALUES {rows}")
+    return [entry["id"] for entry in audit_entries(stack, f"new_row ->> 'body' = '{body}'")]
+
+
+def verify(stack):
+    result = stack.saigonos("audit", "verify")
+    return result.returncode, result.stdout
+
+
+@contextmanager
+def tampered(stack, statement):
+    copy = unique("core.audit_copy")
+    stack.sql(f"CREATE TABLE {copy} AS TABLE core.audit_log")
+    try:
+        stack.sql(f"{UNLOCK}; {statement}; {LOCK}")
+        yield
+    finally:
+        restore = f"DELETE FROM core.audit_log; INSERT INTO core.audit_log SELECT * FROM {copy}"
+        stack.sql(f"{UNLOCK}; {restore}; {LOCK}; DROP TABLE {copy}")
 
 
 @pytest.fixture(scope="module")
@@ -545,8 +610,80 @@ def test_api_roles_cannot_use_audit_log_directly(stack):
         SELECT role,
             has_table_privilege(role, 'core.audit_log', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE'),
             has_function_privilege(role, 'core.audit_hash(text, core.audit_log)', 'EXECUTE'),
-            has_function_privilege(role, 'core.audit()', 'EXECUTE')
+            has_function_privilege(role, 'core.audit()', 'EXECUTE'),
+            has_function_privilege(role, 'core.append_only()', 'EXECUTE')
         FROM unnest(ARRAY['anon', 'authenticated']) AS role
     """
 
-    assert stack.sql(query) == [["anon", "f", "f", "f"], ["authenticated", "f", "f", "f"]]
+    assert stack.sql(query) == [["anon", *"ffff"], ["authenticated", *"ffff"]]
+
+
+def test_audit_trigger_never_scans_whole_audit_log(stack, notes):
+    rows = "SELECT 'quan-tri', 'nhiều dòng' FROM generate_series(1, 50)"
+    before = stack.sql(AUDIT_SCANS)
+
+    stack.sql(f"{COSTLY_INDEX}; INSERT INTO api.{notes.table} (owner, body) {rows}")
+
+    assert stack.sql(AUDIT_SCANS) == before
+
+
+@pytest.mark.parametrize("role", ["origin", "replica"])
+def test_audit_log_refuses_update_delete_and_truncate_even_from_owner(stack, notes, role):
+    written_entries(stack, notes)
+    before = stack.sql(AUDIT_SIZE)
+
+    refused = stack.sql(REFUSED_CHANGES.format(role=role))[-3:]
+
+    assert stack.sql(AUDIT_OWNER) == [["t"]]
+    assert refused == [
+        [f"Bảng core.audit_log chỉ cho phép thêm dòng, không cho phép {operation}"]
+        for operation in ("UPDATE", "DELETE", "TRUNCATE")
+    ]
+    assert stack.sql(AUDIT_SIZE) == before
+
+
+def test_audit_verify_accepts_chain_written_by_trigger(stack, notes):
+    written_entries(stack, notes)
+    [[rows, last_hash]] = stack.sql(AUDIT_SIZE)
+
+    assert verify(stack) == (
+        0,
+        f"Audit log có {rows} dòng. Chuỗi mã băm khớp.\nMã băm của dòng cuối: {last_hash}\n",
+    )
+    assert broken_links(stack) == []
+
+
+@pytest.mark.parametrize("edit", EDITS.values(), ids=EDITS.keys())
+def test_audit_verify_points_at_row_edited_by_superuser(stack, notes, edit):
+    _, edited, _ = written_entries(stack, notes)
+
+    with tampered(stack, f"UPDATE core.audit_log SET {edit} WHERE id = {edited}"):
+        broken = verify(stack)
+
+    assert broken == (1, CHANGED.format(row=edited))
+    assert verify(stack)[0] == 0
+
+
+def test_audit_verify_points_at_row_deleted_by_superuser(stack, notes):
+    _, deleted, _ = written_entries(stack, notes)
+
+    with tampered(stack, f"DELETE FROM core.audit_log WHERE id = {deleted}"):
+        broken = verify(stack)
+
+    assert broken == (1, MISSING.format(row=deleted))
+    assert verify(stack)[0] == 0
+
+
+def test_audit_verify_points_at_first_of_several_broken_rows(stack, notes):
+    first, _, later, _ = written_entries(stack, notes, 4)
+    edit = "UPDATE core.audit_log SET actor = 'nguoi-khac' WHERE id = {row}"
+    delete = "DELETE FROM core.audit_log WHERE id = {row}"
+
+    with tampered(stack, f"{edit.format(row=first)}; {delete.format(row=later)}"):
+        edited_first = verify(stack)
+    with tampered(stack, f"{delete.format(row=first)}; {edit.format(row=later)}"):
+        deleted_first = verify(stack)
+
+    assert edited_first == (1, CHANGED.format(row=first))
+    assert deleted_first == (1, MISSING.format(row=first))
+    assert verify(stack)[0] == 0
