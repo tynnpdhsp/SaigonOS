@@ -33,6 +33,15 @@ def test_api_role_cannot_read_records_of_migrate(stack):
     assert stack.sql(query) == [["f"]]
 
 
+def test_postgrest_starts_after_migrate_has_finished(stack):
+    services = json.loads(stack.compose("config", "--format", "json"))["services"]
+
+    condition = services["postgrest"]["depends_on"]["migrate"]["condition"]
+
+    assert services["migrate"]["restart"] == "no"
+    assert condition == "service_completed_successfully"
+
+
 def test_new_files_run_once_in_name_order(stack):
     table = unique("migrate_order")
     stack.add_migration(f"9001_{table}_b.sql", f"INSERT INTO {table} VALUES ('b');")
