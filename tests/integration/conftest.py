@@ -212,6 +212,24 @@ class Stack:
         reply = self.admin("POST", "/components", component)
         assert reply.status == 201, reply.body
 
+    def logs(self, service):
+        return self.compose("logs", "--no-log-prefix", service)
+
+    def sql(self, query):
+        options = ["--username=postgres", "--dbname=saigonos", "--no-psqlrc", "--tuples-only"]
+        options += ["--no-align", "--set=ON_ERROR_STOP=1", f"--command={query}"]
+        command = [self.docker, "compose", "exec", "-T", "postgres", "psql", *options]
+        result = subprocess.run(
+            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=60
+        )
+        assert result.returncode == 0, result.stderr
+        return [line.split("|") for line in result.stdout.splitlines()]
+
+    def add_migration(self, name, text):
+        path = self.home / "config" / "postgres" / "migrations" / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
     def container(self, service):
         return self.compose("ps", "--all", "--quiet", service)
 
