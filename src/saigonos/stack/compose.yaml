@@ -10,7 +10,7 @@ services:
       POSTGREST_DB_PASSWORD: ${POSTGREST_DB_PASSWORD:?}
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./config/postgres:/docker-entrypoint-initdb.d:ro
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres", "--dbname=saigonos"]
       interval: 30s
@@ -130,6 +130,24 @@ services:
       - /var/lib/postgresql
     entrypoint: ["sh", "/config/fetch-jwks.sh"]
 
+  migrate:
+    image: postgres:18.6-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: saigonos
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ./config/postgres:/config:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["sh", "/config/migrate.sh"]
+    command: ["core", "/config/migrations"]
+
   postgrest:
     image: postgrest/postgrest:v16.5
     restart: unless-stopped
@@ -137,6 +155,8 @@ services:
       postgres:
         condition: service_healthy
       jwks:
+        condition: service_completed_successfully
+      migrate:
         condition: service_completed_successfully
       routes:
         condition: service_completed_successfully
