@@ -3,6 +3,7 @@ import hashlib
 import json
 import secrets
 import time
+from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import files
 
 import pytest
@@ -40,6 +41,55 @@ CREATE FUNCTION api.{table}_nested() RETURNS json
 LANGUAGE plpgsql STABLE
 AS $$ BEGIN RETURN api.{table}_caller(); END $$;
 GRANT EXECUTE ON FUNCTION api.{table}_nested TO anon, authenticated;
+CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON api.{table}
+    FOR EACH ROW EXECUTE FUNCTION core.audit();
+CREATE FUNCTION api.{table}_undone() RETURNS void
+LANGUAGE plpgsql
+AS $$ BEGIN
+    INSERT INTO api.{table} (body) VALUES ('bị hủy');
+    RAISE EXCEPTION 'hủy thay đổi';
+END $$;
+GRANT EXECUTE ON FUNCTION api.{table}_undone TO authenticated;
+"""
+AUDIT_CHAIN = """
+SELECT json_build_object(
+    'id', id,
+    'occurred_at', to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    'actor', actor,
+    'db_role', db_role,
+    'table_schema', table_schema,
+    'table_name', table_name,
+    'operation', operation,
+    'old_row', old_row::text,
+    'new_row', new_row::text,
+    'hash', hash
+)
+FROM core.audit_log ORDER BY id
+"""
+HASHED = [
+    "id",
+    "occurred_at",
+    "actor",
+    "db_role",
+    "table_schema",
+    "table_name",
+    "operation",
+    "old_row",
+    "new_row",
+]
+VERBATIM = {"id", "old_row", "new_row"}
+WRONG_TRIGGER = """
+CREATE TEMP TABLE {table} (id int);
+CREATE TRIGGER audit {kind} EXECUTE FUNCTION core.audit();
+CREATE FUNCTION pg_temp.attempt() RETURNS text
+LANGUAGE plpgsql
+AS $$ BEGIN
+    INSERT INTO {table} VALUES (1);
+    RETURN 'đã thêm';
+EXCEPTION WHEN raise_exception THEN
+    RETURN SQLERRM;
+END $$;
+SELECT pg_temp.attempt(), count(*) FROM {table};
 """
 
 
@@ -63,9 +113,9 @@ class Notes:
         )
         return reply.status, json.loads(reply.body)
 
-    def rpc(self, name, user=None):
+    def rpc(self, name, user=None, method="GET"):
         url = f"{self.stack.url}/api/rpc/{self.table}_{name}"
-        reply = self.stack.call("GET", url, token=self.stack.token(user) if user else None)
+        reply = self.stack.call(method, url, token=self.stack.token(user) if user else None)
         return reply.status, json.loads(reply.body)
 
     def add(self, user):
@@ -76,6 +126,36 @@ class Notes:
     def stored(self, user):
         query = f"SELECT id, body FROM api.{self.table} WHERE owner = '{user.id}'"
         return [[int(row), body] for row, body in self.stack.sql(query)]
+
+
+def audit_entries(stack, condition):
+    query = f"SELECT row_to_json(log) FROM core.audit_log AS log WHERE {condition} ORDER BY id"
+    return [json.loads("|".join(row)) for row in stack.sql(query)]
+
+
+def expected_hash(previous, entry):
+    def as_json(name):
+        if entry[name] is None:
+            return "null"
+        if name in VERBATIM:
+            return str(entry[name])
+        return json.dumps(entry[name], ensure_ascii=False)
+
+    names = sorted(HASHED, key=lambda name: (len(name), name))
+    row = "{" + ", ".join(f'"{name}": {as_json(name)}' for name in names) + "}"
+    return hashlib.sha256((previous + row).encode()).hexdigest()
+
+
+def broken_links(stack):
+    previous = {"id": 0, "hash": "0" * 64}
+    broken = []
+    for line in stack.sql(AUDIT_CHAIN):
+        entry = json.loads("|".join(line))
+        linked = entry["id"] == previous["id"] + 1
+        if not linked or entry["hash"] != expected_hash(previous["hash"], entry):
+            broken.append(entry["id"])
+        previous = entry
+    return broken
 
 
 @pytest.fixture(scope="module")
@@ -370,3 +450,103 @@ def test_forged_token_is_rejected_where_anon_is_allowed(stack, notes):
     assert stack.postgrest_status(path) == 200
     assert gateway == dict.fromkeys(forged, 401)
     assert postgrest == dict.fromkeys(forged, 401)
+
+
+def test_audit_log_records_who_changed_which_values(stack, notes):
+    user = stack.new_user(unit="khoa-a")
+    started = stack.sql("SELECT clock_timestamp()")[0][0]
+    row = notes.add(user)
+    changed = row | {"body": "đã sửa"}
+    only_row = f"?id=eq.{row['id']}"
+
+    notes.call(user, "PATCH", only_row, {"body": "đã sửa"})
+    notes.call(user, "DELETE", only_row)
+
+    recent = f"occurred_at BETWEEN '{started}' AND clock_timestamp()"
+    entries = audit_entries(stack, f"actor = '{user.id}' AND {recent}")
+    changes = [(entry["operation"], entry["old_row"], entry["new_row"]) for entry in entries]
+    sources = {(entry["db_role"], entry["table_schema"], entry["table_name"]) for entry in entries}
+    assert changes == [("INSERT", None, row), ("UPDATE", row, changed), ("DELETE", changed, None)]
+    assert sources == {("authenticated", "api", notes.table)}
+
+
+def test_audit_log_records_database_role_of_change_made_outside_api(stack, notes):
+    body = unique("ngoai_api")
+
+    stack.sql(f"INSERT INTO api.{notes.table} (owner, body) VALUES ('quan-tri', '{body}')")
+
+    entries = audit_entries(stack, f"new_row ->> 'body' = '{body}'")
+    assert [(entry["actor"], entry["db_role"]) for entry in entries] == [(None, "postgres")]
+
+
+def test_rejected_or_undone_change_leaves_no_audit_entry(stack, notes):
+    owner, other = stack.new_user(), stack.new_user()
+    row = notes.add(owner)
+    only_row = f"?id=eq.{row['id']}"
+
+    notes.call(other, "PATCH", only_row, {"body": "đã bị sửa"})
+    notes.call(other, "DELETE", only_row)
+    notes.call(other, "POST", body={"owner": owner.id, "body": "mạo danh"})
+    status, error = notes.rpc("undone", other, method="POST")
+
+    assert (status, error["message"]) == (400, "hủy thay đổi")
+    assert audit_entries(stack, f"actor = '{other.id}'") == []
+    assert [entry["operation"] for entry in audit_entries(stack, f"actor = '{owner.id}'")] == [
+        "INSERT"
+    ]
+
+
+def test_audit_chain_stays_unbroken_when_many_connections_write_at_once(stack, notes):
+    user = stack.new_user()
+    token = stack.token(user)
+    headers = {"Prefer": "return=minimal"}
+
+    def write(number):
+        if number % 4 == 0:
+            url = f"{stack.url}/api/rpc/{notes.table}_undone"
+            return stack.call("POST", url, token=token).status
+        body = {"body": f"ghi chú {number}"}
+        return stack.call("POST", notes.url, token=token, body=body, headers=headers).status
+
+    with ThreadPoolExecutor(8) as pool:
+        statuses = list(pool.map(write, range(120)))
+
+    entries = audit_entries(stack, f"actor = '{user.id}'")
+    assert statuses == [400 if number % 4 == 0 else 201 for number in range(120)]
+    assert sorted(entry["new_row"]["body"] for entry in entries) == sorted(
+        f"ghi chú {number}" for number in range(120) if number % 4
+    )
+    assert broken_links(stack) == []
+
+
+def test_audit_hash_covers_every_column_of_audit_log(stack):
+    query = """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'core' AND table_name = 'audit_log' ORDER BY ordinal_position
+    """
+
+    assert [column for [column] in stack.sql(query)] == [*HASHED, "hash"]
+
+
+@pytest.mark.parametrize(
+    "kind", ["BEFORE INSERT ON {table} FOR EACH ROW", "AFTER INSERT ON {table} FOR EACH STATEMENT"]
+)
+def test_audit_function_refuses_trigger_that_does_not_run_after_each_row(stack, kind):
+    table = unique("audit_trigger")
+
+    attempt = stack.sql(WRONG_TRIGGER.format(table=table, kind=kind.format(table=table)))
+
+    refused = "Hàm core.audit() chỉ dùng cho trigger AFTER INSERT OR UPDATE OR DELETE"
+    assert attempt[-1] == [f"{refused} ... FOR EACH ROW", "0"]
+
+
+def test_api_roles_cannot_use_audit_log_directly(stack):
+    query = """
+        SELECT role,
+            has_table_privilege(role, 'core.audit_log', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE'),
+            has_function_privilege(role, 'core.audit_hash(text, core.audit_log)', 'EXECUTE'),
+            has_function_privilege(role, 'core.audit()', 'EXECUTE')
+        FROM unnest(ARRAY['anon', 'authenticated']) AS role
+    """
+
+    assert stack.sql(query) == [["anon", "f", "f", "f"], ["authenticated", "f", "f", "f"]]
