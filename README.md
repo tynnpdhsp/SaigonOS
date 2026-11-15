@@ -73,6 +73,7 @@ BÌNH THƯỜNG    keycloak     đang chạy
 BÌNH THƯỜNG    migrate      đã chạy xong
 BÌNH THƯỜNG    postgres     đang chạy
 BÌNH THƯỜNG    postgrest    đang chạy
+BÌNH THƯỜNG    realm        đã chạy xong
 BÌNH THƯỜNG    routes       đã chạy xong
 BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối
@@ -94,6 +95,8 @@ Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem m�
 ```bash
 grep KEYCLOAK_ADMIN_PASSWORD ~/saigonos/.env
 ```
+
+Mỗi khi hệ thống khởi động, service `realm` đăng nhập Keycloak bằng tài khoản `admin` này để cập nhật realm `saigonos`. Do đó, không xóa tài khoản này. Sau khi đổi mật khẩu của tài khoản trong Admin Console, cần ghi mật khẩu mới vào dòng `KEYCLOAK_ADMIN_PASSWORD` của file `.env`.
 
 ## Cấu hình
 
@@ -292,7 +295,7 @@ saigonos up
 saigonos doctor
 ```
 
-Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu.
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
 
 ## Tham gia phát triển
 
