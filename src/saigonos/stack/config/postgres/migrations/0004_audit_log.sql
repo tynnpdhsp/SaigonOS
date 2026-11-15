@@ -30,6 +30,8 @@ CREATE FUNCTION core.audit() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = ''
 SET timezone = 'UTC'
+-- Luôn đọc dòng cuối qua index, vì plan quét cả bảng lập lúc audit log còn nhỏ sẽ chậm dần theo số dòng
+SET enable_seqscan = off
 AS $$
 DECLARE
     previous_id bigint;
