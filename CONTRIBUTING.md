@@ -30,25 +30,25 @@ Lệnh này thực hiện các bước sau:
 
 - Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
 - Kiểm tra lỗi và định dạng mã bằng `ruff`.
-- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file và file `compose.yaml`.
+- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với các lock file, file `compose.yaml` và `Dockerfile` của service `core`.
 - Chạy kiểm thử bằng `pytest` và đo coverage.
 
 Để tự động sửa định dạng mã, chạy `make format`.
 
 ## Kiểm thử tích hợp
 
-Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 2 GB.
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 2 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2 GB RAM.
 
 ```bash
 make integration
 ```
 
-Lệnh này chạy bốn nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy năm nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
 - Chạy các kiểm thử của nhóm.
-- Xóa container và dữ liệu bằng `saigonos down --volumes`.
+- Xóa container và dữ liệu bằng `saigonos down --volumes`, sau đó xóa image của service `core` vừa build.
 
 SeaweedFS không mở cổng S3 ra máy cài đặt và nằm trong mạng Docker `storage` riêng. Do đó, nhóm kiểm thử SeaweedFS gọi S3 từ một container tạm gắn vào mạng này. Tương tự, ClamAV nằm trong mạng Docker `scan` riêng. Kiểm thử gửi file tới ClamAV từ một container tạm gắn vào mạng `scan`. Kiểm thử dùng file EICAR làm mẫu mã độc. Đây là một file thử nghiệm vô hại mà mọi phần mềm diệt virus đều nhận ra.
 
@@ -68,9 +68,9 @@ Một lượt chạy mất khoảng 8 phút. Lệnh `make check` không chạy c
 
 Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công nhận. Không sao chép mã nguồn của dự án khác vào repo.
 
-1. Khai báo thư viện trong `pyproject.toml`.
+1. Khai báo thư viện trong `pyproject.toml`. Thư viện của lệnh `saigonos` nằm trong `dependencies`. Thư viện của service `core` nằm trong nhóm `core` của `[dependency-groups]`.
 2. Thêm một mô tả ngắn cho thư viện vào `DESCRIPTIONS` trong `scripts/dependencies.py`.
-3. Chạy `make lock` để tạo lại lock file.
+3. Chạy `make lock` để tạo lại các lock file.
 4. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
 5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
@@ -80,7 +80,7 @@ Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công n
 
 Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công nhận. Mỗi image phải ghi rõ phiên bản và không dùng tag `latest`.
 
-1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`.
+1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`. Với base image của service `core`, sửa dòng `FROM` trong `src/saigonos/stack/core/Dockerfile`, gồm cả tag và digest.
 2. Đọc file giấy phép trong mã nguồn của đúng phiên bản đó.
 3. Khai báo image trong `IMAGES` ở `scripts/dependencies.py`. Mỗi image cần giấy phép, mô tả và địa chỉ mã nguồn của phiên bản đó.
 4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
@@ -224,11 +224,24 @@ Script cũng cập nhật realm master. Keycloak tự tạo realm này khi khở
 
 API Gateway chặn mọi địa chỉ của realm master. Do đó, kiểm thử tích hợp gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
 
+## Service core
+
+Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
+
+Khi sửa service `core`, cần tuân theo các quy tắc sau:
+
+- Thư viện của service được khai báo trong nhóm `core` của `pyproject.toml`. Lệnh `make lock` tạo lock file `src/saigonos/stack/core/requirements.txt` cho Python 3.14, kèm mã băm của từng file. Không sửa tay lock file này.
+- Mọi truy vấn tới cơ sở dữ liệu chạy trong `Database.session(caller)`. Hàm này mở một transaction, xóa các query plan đã lưu, rồi đặt role và nội dung access token của người gọi. Không truy vấn bằng kết nối lấy thẳng từ pool.
+- API dành cho người đã đăng nhập nhận tham số kiểu `User`. Khi đó, lời gọi không có access token hợp lệ của người dùng có realm role `authenticated` nhận mã 401.
+- Không bật Swagger UI và ReDoc của FastAPI, vì hai trang này tải script từ máy chủ bên ngoài.
+
+Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong file `tests/integration/test_core.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file này kiểm tra việc xóa query plan ở mỗi phiên.
+
 ## Phát hành phiên bản mới
 
 Phần này dành cho maintainer của repo.
 
-1. Cập nhật `version` trong `pyproject.toml` thành số phiên bản mới, sau đó chạy lại `pip install --no-deps -e .`.
+1. Cập nhật `version` trong `pyproject.toml` và `__version__` trong `src/saigonos/stack/core/saigonos_core/__init__.py` thành số phiên bản mới, sau đó chạy lại `pip install --no-deps -e .`.
 2. Trong [CHANGELOG.md](CHANGELOG.md), đổi tiêu đề mục "Chưa phát hành" thành `## [X.Y.Z] - YYYY-MM-DD`. Thêm một mục "Chưa phát hành" trống ở phía trên và cập nhật các đường dẫn ở cuối file.
 3. Mở pull request và merge sau khi CI chạy thành công.
 4. Tạo tag trên `main` rồi push tag lên GitHub:
