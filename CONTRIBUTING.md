@@ -171,6 +171,41 @@ Khi dùng audit log, cần tuân theo các quy tắc sau:
 
 Kiểm thử `test_audit_chain_stays_unbroken_when_many_connections_write_at_once` trong `tests/integration/test_database.py` tính lại cả chuỗi mã băm sau khi nhiều kết nối ghi cùng lúc. Các kiểm thử `test_audit_verify_points_at_*` trong cùng file dùng quyền superuser để sửa tay audit log, sau đó kiểm tra lệnh `saigonos audit verify` chỉ ra đúng dòng sai.
 
+### Ghi sự đồng ý
+
+Bảng `core.consents` ghi sự đồng ý của người dùng với một chính sách, ví dụ chính sách bảo vệ dữ liệu cá nhân. Mỗi lần người dùng đồng ý, ứng dụng thêm một dòng với các cột sau:
+
+| Cột | Nội dung |
+| --- | --- |
+| `id` | Số thứ tự của dòng |
+| `subject` | Mã của người đồng ý. Giá trị mặc định là `core.uid()`, tức mã người dùng trong access token |
+| `policy` | Tên chính sách, ví dụ `du-lieu-ca-nhan` |
+| `policy_version` | Phiên bản chính sách mà người dùng đã đồng ý |
+| `given_at` | Thời điểm đồng ý. Giá trị mặc định là thời điểm bắt đầu transaction trên máy chủ |
+
+Ba cột `subject`, `policy` và `policy_version` không được để trống. Bảng chỉ cho phép thêm dòng bằng trigger `append_only` như bảng `core.audit_log`. Bảng cũng có audit log. Do đó, mỗi lần đồng ý đều nằm trong chuỗi mã băm của audit log.
+
+Role `anon` và `authenticated` không có quyền trên bảng này. Ứng dụng ghi sự đồng ý bằng một hàm `SECURITY DEFINER`. Ví dụ:
+
+```sql
+CREATE FUNCTION api.accept_policy(version text) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+BEGIN ATOMIC
+    INSERT INTO core.consents (policy, policy_version) VALUES ('du-lieu-ca-nhan', version);
+END;
+GRANT EXECUTE ON FUNCTION api.accept_policy TO authenticated;
+```
+
+Khi ghi sự đồng ý, cần tuân theo các quy tắc sau:
+
+- Hàm `SECURITY DEFINER` chạy bằng quyền của role `postgres` và không bị RLS giới hạn. Do đó, hàm cần đặt `search_path` rỗng và không nhận `subject` từ tham số do người gọi gửi.
+- Lời gọi không có access token không có `core.uid()`. Khi đó, hàm tự đặt `subject` từ dữ liệu của ứng dụng, ví dụ mã khách hàng mà hàm vừa tạo.
+- `subject` là một mã, không phải họ tên, số điện thoại hay email. Bảng chỉ cho phép thêm dòng, nên dữ liệu trong bảng không xóa được khi người dùng yêu cầu xóa dữ liệu cá nhân.
+- Ghi sự đồng ý trong cùng transaction với dữ liệu mà người dùng gửi. Nhờ đó, dữ liệu và sự đồng ý cùng được lưu hoặc cùng bị hủy.
+- Không lấy thời điểm đồng ý từ trình duyệt. Cột `given_at` dùng giá trị mặc định do máy chủ ghi.
+
+Các kiểm thử `test_consent_*` và `test_consents_*` trong `tests/integration/test_database.py` kiểm tra các quy tắc của bảng.
+
 ## Thay đổi realm của Keycloak
 
 Keycloak chỉ đọc file `src/saigonos/stack/config/keycloak/realm.json` một lần khi tạo realm `saigonos`. Do đó, không thêm thiết lập mới vào file này.
