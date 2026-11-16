@@ -50,6 +50,9 @@ def test_forged_token_is_rejected(realm, verifier, name):
         {"iss": None},
         {"sub": None},
         {"sub": 7},
+        {"typ": "ID"},
+        {"typ": "Refresh"},
+        {"typ": None},
     ],
     ids=[
         "hết hạn",
@@ -60,6 +63,9 @@ def test_forged_token_is_rejected(realm, verifier, name):
         "thiếu iss",
         "thiếu sub",
         "sub không phải chuỗi",
+        "ID token",
+        "refresh token",
+        "thiếu typ",
     ],
 )
 def test_token_with_wrong_claims_is_rejected(realm, verifier, changes):

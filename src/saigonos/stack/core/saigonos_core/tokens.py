@@ -10,6 +10,7 @@ ALGORITHMS = frozenset(
     {"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"}
 )
 REQUIRED_CLAIMS = ["exp", "iss", "sub"]
+ACCESS_TYPE = "Bearer"
 KEYS_LIFESPAN = 60
 KEYS_COOLDOWN = 1
 KEYS_TIMEOUT = 5
@@ -43,7 +44,7 @@ class TokenVerifier:
             key = self.keys.get_signing_key_from_jwt(token)
             if key.algorithm_name not in ALGORITHMS:
                 raise InvalidTokenError
-            return jwt.decode(
+            claims = jwt.decode(
                 token,
                 key,
                 algorithms=[key.algorithm_name],
@@ -55,3 +56,6 @@ class TokenVerifier:
             raise KeysUnavailableError from error
         except PyJWTError as error:
             raise InvalidTokenError from error
+        if claims.get("typ") != ACCESS_TYPE:
+            raise InvalidTokenError
+        return claims
