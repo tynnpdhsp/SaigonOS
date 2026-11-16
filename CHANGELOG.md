@@ -23,11 +23,15 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
 - Tùy chọn `--keycloak-port` của lệnh `saigonos init` đặt cổng của Keycloak trên máy cài đặt. Cổng này mặc định là 9280 và chỉ lắng nghe trên địa chỉ `127.0.0.1`. Admin Console của realm master dùng cổng này.
 - Hướng dẫn tạo tài khoản quản trị có OTP trong realm `saigonos` trong README.
-- Service `seaweedfs` lưu file của các ứng dụng theo chuẩn S3. Hai bucket `quarantine` và `clean` được tạo sẵn. Lời gọi S3 phải được ký bằng khóa trong file `.env`. Service này nằm trong một mạng Docker riêng. Do đó, API Gateway và các service khác không kết nối được tới SeaweedFS. SeaweedFS không gửi thống kê ra ngoài và không liệt kê nội dung thư mục.
+- Service `seaweedfs` lưu file của các ứng dụng theo chuẩn S3. Hai bucket `quarantine` và `clean` được tạo sẵn. Lời gọi S3 phải được ký bằng khóa trong file `.env`. Service này nằm trong một mạng Docker riêng. Chỉ service `core` kết nối được tới SeaweedFS. SeaweedFS không gửi thống kê ra ngoài và không liệt kê nội dung thư mục.
 - Admin UI của SeaweedFS ở địa chỉ http://127.0.0.1:9380/, chỉ truy cập được từ chính máy cài đặt. Tùy chọn `--seaweedfs-port` của lệnh `saigonos init` đổi cổng này.
 - Lệnh `saigonos init` tạo khóa S3 và mật khẩu Admin UI của SeaweedFS trong file `.env`. Khi cập nhật từ phiên bản cũ, lệnh thêm các giá trị này và giữ nguyên các mật khẩu đã có.
-- Service `clamav` quét mã độc bằng ClamAV. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. API Gateway và các service khác không kết nối được tới ClamAV. Khi tiến trình quét dừng bất thường, container tự khởi động lại.
+- Service `clamav` quét mã độc bằng ClamAV. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. Chỉ service `core` kết nối được tới ClamAV. Khi tiến trình quét dừng bất thường, container tự khởi động lại.
 - Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày và tải bản mới từ `database.clamav.net`. Cơ sở dữ liệu nằm trong volume `clamav-data` nên được giữ lại khi khởi động lại hệ thống. Trong lúc nạp bản mới, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM và dùng khoảng 1 GB RAM.
+- Service `core` cung cấp API của lõi tại địa chỉ `/core/` của API Gateway. Service được viết bằng FastAPI. Tài liệu OpenAPI 3.1 nằm ở `/core/openapi.json`. Lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được.
+- Docker Compose build image của service `core` trên máy cài đặt từ image `python` chính thức. Dòng `FROM` ghi cả digest của image. Các thư viện được cài từ lock file có mã băm. Do đó, file release vẫn chỉ chứa mã nguồn.
+- API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer, thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service với access token giả vẫn bị từ chối. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
+- Service `core` kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Lệnh `saigonos init` thêm mật khẩu của role này vào file `.env`.
 
 ### Thay đổi
 
@@ -37,6 +41,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Access token hợp lệ nhưng không có realm role `authenticated` chạy với role `anon`. Ở phiên bản 0.2.0, lời gọi này nhận mã 401.
 - Hàm mới trong cơ sở dữ liệu `saigonos` chỉ gọi được sau khi được cấp quyền `EXECUTE`. Ở phiên bản 0.2.0, mọi role đều gọi được hàm mới. Các hàm đã có trong schema `api` được cấp cho role `authenticated`. Do đó, người dùng đã đăng nhập vẫn gọi được các hàm này sau khi cập nhật.
 - Lệnh `saigonos doctor` kiểm tra hai lời gọi tới `/api/`. Lời gọi không có access token phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+- Lệnh `saigonos doctor` kiểm tra service `core` qua API Gateway. Lời gọi `/core/health` phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
 
 ### Bảo mật
 
