@@ -23,6 +23,9 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
 - Tùy chọn `--keycloak-port` của lệnh `saigonos init` đặt cổng của Keycloak trên máy cài đặt. Cổng này mặc định là 9280 và chỉ lắng nghe trên địa chỉ `127.0.0.1`. Admin Console của realm master dùng cổng này.
 - Hướng dẫn tạo tài khoản quản trị có OTP trong realm `saigonos` trong README.
+- Service `seaweedfs` lưu file của các ứng dụng theo chuẩn S3. Hai bucket `quarantine` và `clean` được tạo sẵn. Lời gọi S3 phải được ký bằng khóa trong file `.env`. Service này nằm trong một mạng Docker riêng. Do đó, API Gateway và các service khác không kết nối được tới SeaweedFS. SeaweedFS không gửi thống kê ra ngoài và không liệt kê nội dung thư mục.
+- Admin UI của SeaweedFS ở địa chỉ http://127.0.0.1:9380/, chỉ truy cập được từ chính máy cài đặt. Tùy chọn `--seaweedfs-port` của lệnh `saigonos init` đổi cổng này.
+- Lệnh `saigonos init` tạo khóa S3 và mật khẩu Admin UI của SeaweedFS trong file `.env`. Khi cập nhật từ phiên bản cũ, lệnh thêm các giá trị này và giữ nguyên các mật khẩu đã có.
 
 ### Thay đổi
 
