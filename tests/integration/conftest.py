@@ -111,12 +111,20 @@ class Stack:
         command = [sys.executable, "-m", "saigonos", *args, "--home", str(self.home)]
         return subprocess.run(command, check=False, capture_output=True, text=True, timeout=600)
 
-    def compose(self, *args):
+    def compose_result(self, *args, timeout=120):
         command = [self.docker, "compose", *args]
-        result = subprocess.run(
-            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=120
+        return subprocess.run(
+            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=timeout
         )
-        return result.stdout.strip()
+
+    def compose(self, *args):
+        return self.compose_result(*args).stdout.strip()
+
+    def exec(self, service, *command):
+        return self.compose_result("exec", "-T", service, *command)
+
+    def network(self, name):
+        return json.loads(self.compose("config", "--format", "json"))["networks"][name]["name"]
 
     @property
     def env(self):
@@ -285,6 +293,25 @@ class Stack:
             command, cwd=self.home, check=False, capture_output=True, text=True, timeout=60
         )
         return http_status(result)
+
+    @property
+    def s3_key(self):
+        env = self.env
+        return env["SEAWEEDFS_ACCESS_KEY"], env["SEAWEEDFS_SECRET_KEY"]
+
+    def storage_call(self, method, url, key=None, body=None):
+        image = self.inspect(self.container("seaweedfs"), "{{.Config.Image}}")
+        options = ["--rm", "--network", self.network("storage"), "--entrypoint", "curl"]
+        fields = ["--silent", "--dump-header", "/dev/stderr", "--request", method]
+        if key is not None:
+            fields += ["--aws-sigv4", "aws:amz:us-east-1:s3", "--user", ":".join(key)]
+        if body is not None:
+            fields += ["--data-binary", body]
+        result = self.run_docker("run", *options, image, *fields, url, check=False)
+        return http_status(result), result.stdout
+
+    def s3(self, method, path, key=None, body=None):
+        return self.storage_call(method, f"http://seaweedfs:8333{path}", key, body)
 
     def add_migration(self, name, text):
         path = self.home / "config" / "postgres" / "migrations" / name
