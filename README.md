@@ -18,6 +18,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Python 3.11 trở lên và pip.
 - Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
+- Kết nối Internet để tải các image Docker và bản cập nhật của cơ sở dữ liệu mã độc.
 - Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các service.
 
 ## Cài đặt
@@ -67,7 +68,9 @@ Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
 BÌNH THƯỜNG    apisix       đang chạy
+BÌNH THƯỜNG    clamav       đang chạy
 BÌNH THƯỜNG    etcd         đang chạy
+BÌNH THƯỜNG    freshclam    đang chạy
 BÌNH THƯỜNG    jwks         đã chạy xong
 BÌNH THƯỜNG    keycloak     đang chạy
 BÌNH THƯỜNG    migrate      đã chạy xong
@@ -350,6 +353,22 @@ Dòng 57 của audit log không khớp mã băm. Nội dung hoặc mã băm củ
 Tài khoản superuser của PostgreSQL vẫn tắt được trigger chặn sửa và xóa. Lệnh `saigonos audit verify` phát hiện các dòng đã bị sửa hoặc bị xóa theo cách này. Lệnh tự tính mã băm và không dùng hàm lưu trong cơ sở dữ liệu.
 
 Lệnh không phát hiện được hai trường hợp. Trường hợp thứ nhất là các dòng cuối cùng bị xóa. Trường hợp thứ hai là một dòng bị sửa và mã băm của mọi dòng từ đó về sau được tính lại. Trong cả hai trường hợp, các dòng còn lại vẫn nối đúng với nhau. Do đó, nên lưu kết quả của lệnh ở một nơi ngoài máy chủ sau mỗi lần kiểm tra. Số dòng của audit log chỉ tăng. Với cùng một số dòng, mã băm của dòng cuối không đổi.
+
+## Quét mã độc
+
+SaigonOS dùng ClamAV để quét mã độc. ClamAV chạy trong hai service:
+
+- Service `clamav` quét nội dung được gửi tới. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. API Gateway và các service khác không kết nối được tới ClamAV.
+- Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày. Bản cập nhật được tải từ `database.clamav.net`.
+
+Cơ sở dữ liệu mã độc được lưu trong volume `clamav-data`. Do đó, các bản cập nhật được giữ lại khi khởi động lại hệ thống. Service `clamav` kiểm tra cơ sở dữ liệu 10 phút một lần và tự nạp bản mới. Trong lúc nạp, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM để dùng khoảng 1 GB RAM thay vì 2 GB. Do đó, các yêu cầu quét phải chờ khoảng 15 giây cho tới khi nạp xong.
+
+Để xem kết quả của các lần cập nhật gần nhất:
+
+```bash
+cd ~/saigonos
+docker compose logs --tail 20 freshclam
+```
 
 ## Cập nhật phiên bản
 
