@@ -143,10 +143,49 @@ EDITS = {
     "occurred_at": "occurred_at = occurred_at - interval '1 day'",
     "hash": "hash = repeat('0', 64)",
 }
+PHONES = {
+    "0912345678": "091****678",
+    "+84912345678": "+84****678",
+    "091 234 5678": "091****678",
+    "091234567": "*********",
+    "": "",
+}
+EMAILS = {
+    "nguyenvana@gmail.com": "ngu*******@gmail.com",
+    "nguyễnvăna@hcmue.edu.vn": "ngu*******@hcmue.edu.vn",
+    "abcdef@example.com": "abc***@example.com",
+    "abcde@example.com": "*****@example.com",
+    "a@b@example.com": "***@example.com",
+    "khongcoacong": "kho*********",
+    "": "",
+}
+CONTACTS = """\
+CREATE SCHEMA {schema};
+CREATE TABLE {schema}.contacts (owner text NOT NULL, phone text NOT NULL, email text NOT NULL);
+ALTER TABLE {schema}.contacts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_rows ON {schema}.contacts FOR SELECT TO authenticated
+    USING (owner = core.uid() OR core.has_role('{lead}'));
+GRANT USAGE ON SCHEMA {schema} TO authenticated;
+GRANT SELECT ON {schema}.contacts TO authenticated;
+CREATE VIEW api.{schema} WITH (security_invoker = true) AS
+SELECT owner,
+    CASE WHEN core.has_role('{lead}') THEN phone ELSE core.mask_phone(phone) END AS phone,
+    CASE WHEN core.has_role('{lead}') THEN email ELSE core.mask_email(email) END AS email
+FROM {schema}.contacts;
+GRANT SELECT ON api.{schema} TO authenticated;
+"""
 
 
 def unique(prefix):
     return f"{prefix}_{secrets.token_hex(4)}"
+
+
+def served(stack, url):
+    token = stack.token(stack.new_user())
+    deadline = time.monotonic() + 10
+    while (reply := stack.call("GET", url, token=token)).status != 200:
+        assert time.monotonic() < deadline, reply.body
+        time.sleep(0.5)
 
 
 class Notes:
@@ -252,12 +291,18 @@ def notes(stack):
     stack.add_migration(f"9005_{notes.table}.sql", text)
     started = stack.saigonos("up")
     assert started.returncode == 0, started.stderr
-    token = stack.token(stack.new_user())
-    deadline = time.monotonic() + 10
-    while (reply := stack.call("GET", notes.url, token=token)).status != 200:
-        assert time.monotonic() < deadline, reply.body
-        time.sleep(0.5)
+    served(stack, notes.url)
     return notes
+
+
+@pytest.fixture(scope="module")
+def contacts(stack):
+    schema = unique("contacts")
+    stack.add_migration(f"9006_{schema}.sql", CONTACTS.format(schema=schema, lead=LEAD))
+    started = stack.saigonos("up")
+    assert started.returncode == 0, started.stderr
+    served(stack, f"{stack.url}/api/{schema}")
+    return schema
 
 
 def test_migrate_records_each_shipped_file(stack):
@@ -743,3 +788,46 @@ def test_audit_verify_points_at_first_of_several_broken_rows(stack, notes):
     assert edited_first == (1, CHANGED.format(row=first))
     assert deleted_first == (1, MISSING.format(row=first))
     assert verify(stack)[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("function", "examples"),
+    [("mask_phone", PHONES), ("mask_email", EMAILS)],
+    ids=["phone", "email"],
+)
+def test_mask_function_hides_part_of_value(stack, function, examples):
+    values = ", ".join(f"'{value}'" for value in examples)
+    query = f"SELECT value, core.{function}(value) FROM unnest(ARRAY[{values}]) AS value"
+
+    assert dict(stack.sql(query)) == examples
+    assert stack.sql(f"SELECT core.{function}(NULL) IS NULL") == [["t"]]
+
+
+@pytest.mark.parametrize("role", ["anon", "authenticated"])
+def test_api_roles_can_call_mask_functions(stack, role):
+    query = "SELECT core.mask_phone('0912345678'), core.mask_email('nguyenvana@gmail.com')"
+
+    assert stack.sql(f"SET ROLE {role}; {query}")[-1] == ["091****678", "ngu*******@gmail.com"]
+
+
+def test_view_with_security_invoker_masks_contacts_and_keeps_row_security(stack, contacts):
+    owner, other = stack.new_user(), stack.new_user()
+    rows = {owner.id: ["0912345678", "nguyenvana@gmail.com"], other.id: ["0987654321", "b@b.vn"]}
+    values = ", ".join(f"('{user}', '{phone}', '{email}')" for user, [phone, email] in rows.items())
+    stack.sql(f"INSERT INTO {contacts}.contacts VALUES {values}")
+
+    def read(user, path=contacts, headers=None):
+        url = f"{stack.url}/api/{path}?order=phone"
+        reply = stack.call("GET", url, token=stack.token(user), headers=headers)
+        return reply.status, json.loads(reply.body)
+
+    lead = stack.new_user(role=LEAD)
+    assert read(owner) == (
+        200,
+        [{"owner": owner.id, "phone": "091****678", "email": "ngu*******@gmail.com"}],
+    )
+    assert read(lead) == (
+        200,
+        [{"owner": user, "phone": phone, "email": email} for user, [phone, email] in rows.items()],
+    )
+    assert read(lead, "contacts", {"Accept-Profile": contacts})[0] == 406
