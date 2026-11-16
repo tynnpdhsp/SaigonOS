@@ -7,6 +7,37 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Service `migrate` chạy các file SQL của cơ sở dữ liệu mỗi khi hệ thống khởi động. Các file chạy theo thứ tự tên. Mỗi file chỉ chạy một lần và chạy trong một transaction. Bảng `core.migrations` ghi lại các file đã chạy. Khi nội dung của một file đã chạy bị thay đổi, service dừng và báo lỗi. PostgREST nhận ngay các bảng và view mới mà không cần khởi động lại.
+- Các hàm `core.uid()`, `core.has_role()` và `core.unit()` cho biết thông tin của người gọi API. Hàm `core.uid()` trả về mã người dùng trong Keycloak. Hàm `core.has_role()` kiểm tra một realm role của người dùng. Hàm `core.unit()` trả về đơn vị của người dùng. Hàm `core.claims()` trả về toàn bộ nội dung của access token. Các hàm này đọc access token mà PostgREST đã kiểm tra. Chính sách phân quyền từng dòng (row-level security) của bảng dùng các hàm này để giới hạn dữ liệu theo người dùng, vai trò và đơn vị.
+- Thuộc tính `unit` (Đơn vị) của người dùng trong realm `saigonos`. Quản trị viên đặt giá trị này ở trang thông tin người dùng trong Admin Console của Keycloak. Người dùng không tự đổi được giá trị này. Access token mang giá trị này trong claim `unit`.
+- Service `realm` thêm các thiết lập mới vào realm `saigonos` mỗi khi hệ thống khởi động. Nhờ đó, realm được tạo từ phiên bản cũ cũng có thuộc tính `unit`. Service chỉ thêm thiết lập còn thiếu và giữ nguyên các thiết lập khác của realm.
+- Role `anon` của cơ sở dữ liệu dành cho lời gọi API không có access token. Role này chưa được cấp quyền trên bảng, view hay hàm nào của API. Để mở một bảng, view hoặc hàm cho người chưa đăng nhập, cấp quyền cho role này bằng lệnh `GRANT`.
+- Hàm `core.pre_request()` xóa các query plan đã lưu trước mỗi lời gọi API. PostgREST cũng không dùng prepared statement. Nhờ đó, quyền `EXECUTE` của hàm được kiểm tra lại ở mỗi lời gọi. Khi dùng lại query plan đã lập cho một role khác, PostgreSQL không kiểm tra lại quyền này.
+- Bảng `core.audit_log` và hàm `core.audit()` ghi audit log của cơ sở dữ liệu. Để ghi audit log cho một bảng, gắn hàm `core.audit()` vào bảng đó bằng một lệnh `CREATE TRIGGER`. Mỗi lần một dòng được thêm, sửa hoặc xóa, audit log ghi người thực hiện, thời điểm, tên bảng, thao tác, giá trị trước và giá trị sau. Mỗi dòng audit log mang một mã băm SHA-256. Mã băm này được tính từ nội dung của dòng và mã băm của dòng trước. Do đó, khi một dòng audit log bị sửa hoặc bị xóa, chuỗi mã băm không còn khớp. Role `anon` và `authenticated` không đọc và không ghi được bảng `core.audit_log`.
+- Bảng `core.audit_log` chỉ cho phép thêm dòng. Các lệnh `UPDATE`, `DELETE` và `TRUNCATE` trên bảng này bị từ chối, kể cả với role sở hữu bảng. Hàm `core.append_only()` cũng dùng được cho các bảng khác chỉ cho phép thêm dòng.
+- Lệnh `saigonos audit verify` tính lại chuỗi mã băm của audit log. Khi một dòng đã bị sửa hoặc bị xóa, lệnh chỉ ra dòng sai đầu tiên và kết thúc với mã thoát 1. Lệnh tự tính mã băm và không dùng hàm lưu trong cơ sở dữ liệu.
+- Tài liệu OpenAPI 2.0 của REST API ở địa chỉ `/api/`. PostgREST tự sinh tài liệu này. Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Các địa chỉ trong tài liệu được lấy từ `SAIGONOS_URL`. Tài liệu cũng ghi cách gửi access token trong header `Authorization`. Ở phiên bản 0.2.0, tài liệu ghi địa chỉ `0.0.0.0:3000` của PostgREST bên trong container.
+- Hàm `core.mask_phone()` và `core.mask_email()` che một phần số điện thoại và email. Ví dụ: `0912345678` thành `091****678`, `nguyenvana@gmail.com` thành `ngu*******@gmail.com`. Role `anon` và `authenticated` gọi được hai hàm này. Khi dùng trong view, hai hàm cho phép chỉ hiện đủ dữ liệu cho người có quyền.
+- Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
+- Tùy chọn `--keycloak-port` của lệnh `saigonos init` đặt cổng của Keycloak trên máy cài đặt. Cổng này mặc định là 9280 và chỉ lắng nghe trên địa chỉ `127.0.0.1`. Admin Console của realm master dùng cổng này.
+- Hướng dẫn tạo tài khoản quản trị có OTP trong realm `saigonos` trong README.
+
+### Thay đổi
+
+- Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật. Service chỉ đăng nhập bằng mật khẩu, nên không bật OTP cho tài khoản này.
+- Admin Console của realm master có địa chỉ mới là http://localhost:9280/auth/admin/master/console/ trên máy cài đặt. Admin Console của realm `saigonos` vẫn mở qua API Gateway tại `/auth/admin/saigonos/console/`.
+- Lời gọi `/api` không có access token chạy với role `anon`. Ở phiên bản 0.2.0, API Gateway trả về mã 401 cho lời gọi này. Khi dùng một bảng hoặc hàm chưa cấp cho `anon`, lời gọi nhận mã 401. Access token giả hoặc hết hạn vẫn nhận mã 401. Giới hạn tần suất gọi áp dụng cho cả lời gọi không có access token.
+- Access token hợp lệ nhưng không có realm role `authenticated` chạy với role `anon`. Ở phiên bản 0.2.0, lời gọi này nhận mã 401.
+- Hàm mới trong cơ sở dữ liệu `saigonos` chỉ gọi được sau khi được cấp quyền `EXECUTE`. Ở phiên bản 0.2.0, mọi role đều gọi được hàm mới. Các hàm đã có trong schema `api` được cấp cho role `authenticated`. Do đó, người dùng đã đăng nhập vẫn gọi được các hàm này sau khi cập nhật.
+- Lệnh `saigonos doctor` kiểm tra hai lời gọi tới `/api/`. Lời gọi không có access token phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+
+### Bảo mật
+
+- API Gateway trả về mã 404 cho mọi địa chỉ của realm master. Realm master chỉ mở qua cổng của Keycloak trên chính máy cài đặt. Ở phiên bản 0.2.0, trang đăng nhập và Admin Console của realm master mở ra ngoài qua API Gateway và chỉ cần mật khẩu.
+- Realm master khóa tạm một tài khoản sau nhiều lần đăng nhập sai. Ở phiên bản 0.2.0, realm master không giới hạn số lần đăng nhập sai.
+
 ## [0.2.0] - 2026-11-14
 
 ### Thêm

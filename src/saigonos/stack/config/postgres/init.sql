@@ -12,6 +12,3 @@ CREATE ROLE authenticated NOLOGIN;
 GRANT authenticated TO authenticator;
 REVOKE CONNECT ON DATABASE saigonos FROM PUBLIC;
 GRANT CONNECT ON DATABASE saigonos TO authenticator;
-
-CREATE SCHEMA api;
-GRANT USAGE ON SCHEMA api TO authenticated;

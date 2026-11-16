@@ -10,7 +10,7 @@ services:
       POSTGREST_DB_PASSWORD: ${POSTGREST_DB_PASSWORD:?}
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./config/postgres:/docker-entrypoint-initdb.d:ro
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres", "--dbname=saigonos"]
       interval: 30s
@@ -40,8 +40,12 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx512m
+    ports:
+      - host_ip: 127.0.0.1
+        published: ${SAIGONOS_KEYCLOAK_PORT:?}
+        target: 8080
     volumes:
-      - ./config/keycloak:/opt/keycloak/data/import:ro
+      - ./config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
       interval: 30s
@@ -108,6 +112,21 @@ services:
     entrypoint: ["sh", "-c"]
     command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/load-routes.lua /config/routes/*.json"]
 
+  realm:
+    image: apache/apisix:3.19.0-ubuntu
+    restart: "no"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      MASTER_FRONTEND_URL: http://localhost:${SAIGONOS_KEYCLOAK_PORT:?}/auth
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+    volumes:
+      - ./config/keycloak:/config:ro
+    entrypoint: ["resty", "-I", "/usr/local/apisix/deps/share/lua/5.1", "/config/setup-realm.lua"]
+
   jwks:
     image: postgres:18.6-alpine
     restart: "no"
@@ -130,6 +149,24 @@ services:
       - /var/lib/postgresql
     entrypoint: ["sh", "/config/fetch-jwks.sh"]
 
+  migrate:
+    image: postgres:18.6-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: saigonos
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ./config/postgres:/config:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["sh", "/config/migrate.sh"]
+    command: ["core", "/config/migrations"]
+
   postgrest:
     image: postgrest/postgrest:v16.5
     restart: unless-stopped
@@ -137,6 +174,10 @@ services:
       postgres:
         condition: service_healthy
       jwks:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      realm:
         condition: service_completed_successfully
       routes:
         condition: service_completed_successfully
@@ -146,8 +187,14 @@ services:
       PGUSER: authenticator
       PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
       PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_PRE_REQUEST: core.pre_request
+      PGRST_DB_PREPARED_STATEMENTS: "false"
       PGRST_JWT_SECRET: "@/jwks/jwks.json"
       PGRST_JWT_ROLE_CLAIM_KEY: '$$.realm_access.roles[?(@ == "authenticated")]'
+      PGRST_OPENAPI_MODE: follow-privileges
+      PGRST_OPENAPI_SECURITY_ACTIVE: "true"
+      PGRST_OPENAPI_SERVER_PROXY_URI: ${SAIGONOS_URL:?}/api
       PGRST_ADMIN_SERVER_HOST: 127.0.0.1
       PGRST_ADMIN_SERVER_PORT: 3001
     volumes:

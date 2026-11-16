@@ -8,11 +8,13 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
+from saigonos.audit import verify as verify_chain
 from saigonos.doctor import run_checks
 from saigonos.home import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_KEYCLOAK_PORT,
     SettingsError,
     disabled_services,
     init_home,
@@ -120,6 +122,15 @@ def main() -> None:
     ),
 )
 @click.option(
+    "--keycloak-port",
+    type=PORT,
+    help=(
+        "Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. "
+        "Admin Console của realm master dùng cổng này. "
+        f"Mặc định là {DEFAULT_KEYCLOAK_PORT}."
+    ),
+)
+@click.option(
     "--caddy/--no-caddy",
     default=None,
     help=(
@@ -135,6 +146,7 @@ def init(
     http_host: str | None,
     http_port: int | None,
     admin_port: int | None,
+    keycloak_port: int | None,
     caddy: bool | None,
 ) -> None:
     try:
@@ -144,6 +156,7 @@ def init(
             http_host=http_host,
             http_port=http_port,
             admin_port=admin_port,
+            keycloak_port=keycloak_port,
             caddy=caddy,
         )
     except SettingsError as error:
@@ -220,3 +233,28 @@ def doctor(ctx: click.Context, home: Path) -> None:
         click.echo(f"Có {failed} mục lỗi.")
         ctx.exit(1)
     click.echo("Hệ thống hoạt động bình thường.")
+
+
+@main.group(help="Làm việc với audit log của cơ sở dữ liệu.")
+def audit() -> None:
+    pass
+
+
+@audit.command(
+    short_help="Tính lại chuỗi mã băm của audit log.",
+    help=(
+        "Tính lại chuỗi mã băm của bảng core.audit_log và so sánh với mã băm đã lưu.\n\n"
+        "Khi một dòng đã bị sửa hoặc bị xóa, lệnh chỉ ra dòng sai đầu tiên "
+        "và kết thúc với mã thoát 1."
+    ),
+)
+@home_option
+@click.pass_context
+def verify(ctx: click.Context, home: Path) -> None:
+    try:
+        verdict = verify_chain(home)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(verdict.detail)
+    if not verdict.ok:
+        ctx.exit(1)

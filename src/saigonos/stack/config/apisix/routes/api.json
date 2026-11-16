@@ -1,9 +1,12 @@
 {
   "name": "api",
-  "desc": "PostgREST: API dữ liệu, yêu cầu access token và giới hạn tần suất theo địa chỉ IP",
+  "desc": "PostgREST: API dữ liệu, kiểm tra access token khi lời gọi có header Authorization và giới hạn tần suất theo địa chỉ IP",
   "uris": ["/api", "/api/*"],
   "plugins": {
     "openid-connect": {
+      "_meta": {
+        "filter": [["http_authorization", "~~", "."]]
+      },
       "client_id": "apisix",
       "discovery": "http://keycloak:8080/auth/realms/saigonos/.well-known/openid-configuration",
       "realm": "saigonos",

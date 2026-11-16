@@ -46,7 +46,7 @@ saigonos init
 
 Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
-Hệ thống dùng hai cổng 9080 và 9180. Nếu một trong hai cổng đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
+Hệ thống dùng ba cổng 9080, 9180 và 9280. Nếu một trong ba cổng đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
 ### 3. Khởi động các service
 
@@ -70,11 +70,13 @@ BÌNH THƯỜNG    apisix       đang chạy
 BÌNH THƯỜNG    etcd         đang chạy
 BÌNH THƯỜNG    jwks         đã chạy xong
 BÌNH THƯỜNG    keycloak     đang chạy
+BÌNH THƯỜNG    migrate      đã chạy xong
 BÌNH THƯỜNG    postgres     đang chạy
 BÌNH THƯỜNG    postgrest    đang chạy
+BÌNH THƯỜNG    realm        đã chạy xong
 BÌNH THƯỜNG    routes       đã chạy xong
 BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
-BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối
+BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
 Hệ thống hoạt động bình thường.
 ```
 
@@ -84,15 +86,69 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
-| http://localhost:9080/auth/admin/ | Admin Console của Keycloak | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
+| http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP. Cách tạo tài khoản được trình bày ở mục [Tài khoản quản trị](#tài-khoản-quản-trị) |
+| http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
-| http://localhost:9080/api/ | REST API của PostgREST | Access token do Keycloak cấp |
+| http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
 ```bash
 grep KEYCLOAK_ADMIN_PASSWORD ~/saigonos/.env
 ```
+
+Mỗi khi hệ thống khởi động, service `realm` đăng nhập Keycloak bằng tài khoản `admin` này để cập nhật realm master và realm `saigonos`. Service này chỉ đăng nhập bằng mật khẩu. Do đó, không xóa tài khoản này và không bật OTP cho tài khoản này. Sau khi đổi mật khẩu của tài khoản trong Admin Console, cần ghi mật khẩu mới vào dòng `KEYCLOAK_ADMIN_PASSWORD` của file `.env`.
+
+## Tài khoản quản trị
+
+Keycloak có hai loại tài khoản quản trị:
+
+- Tài khoản `admin` của realm master có toàn quyền trên Keycloak. Tài khoản này đăng nhập bằng mật khẩu và chỉ dùng được trên chính máy cài đặt.
+- Tài khoản quản trị của realm `saigonos` chỉ quản lý được realm `saigonos`, ví dụ người dùng, role và client. Tài khoản này đăng nhập bằng mật khẩu và OTP, dùng được từ mọi máy. Nên dùng loại tài khoản này cho công việc hằng ngày.
+
+### Realm master
+
+API Gateway trả về mã 404 cho mọi địa chỉ của realm master. Realm master chỉ mở qua cổng 9280 của Keycloak trên chính máy cài đặt. Realm master khóa tạm một tài khoản sau nhiều lần đăng nhập sai. Mỗi khi hệ thống khởi động, service `realm` bật lại tính năng này nếu tính năng đã bị tắt.
+
+Để mở Admin Console của realm master từ một máy khác, tạo SSH tunnel tới máy cài đặt. Thay `ubuntu@dx.example.com` bằng tài khoản SSH và địa chỉ của máy cài đặt.
+
+```bash
+ssh -L 9280:127.0.0.1:9280 ubuntu@dx.example.com
+```
+
+Sau đó, mở địa chỉ http://localhost:9280/auth/admin/master/console/ trên máy đang dùng. Cổng trên máy đang dùng cũng phải là 9280, vì Keycloak tạo các địa chỉ của realm master theo cổng này.
+
+Trên máy chủ có tên miền, có thể kiểm tra realm master từ một máy khác bằng lệnh sau. Kết quả đúng là `404`.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://dx.example.com/auth/realms/master
+```
+
+### Tạo tài khoản quản trị của realm saigonos
+
+Tài khoản quản trị của realm `saigonos` có realm role `admin`. Các lệnh sau dùng công cụ `kcadm.sh` có sẵn trong container của Keycloak. Thay `quantri` và các thông tin đi kèm bằng giá trị thật.
+
+```bash
+cd ~/saigonos
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080/auth --realm master --user admin
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh create users -r saigonos -s username=quantri -s email=quantri@example.com -s firstName=Quản -s lastName=Trị -s enabled=true -s 'requiredActions=["CONFIGURE_TOTP"]'
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh set-password -r saigonos --username quantri
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh add-roles -r saigonos --uusername quantri --rolename admin
+```
+
+Lệnh thứ hai hỏi mật khẩu của tài khoản `admin`, tức giá trị `KEYCLOAK_ADMIN_PASSWORD`. Lệnh thứ tư hỏi mật khẩu cho tài khoản mới.
+
+Sau đó, mở địa chỉ http://localhost:9080/auth/admin/saigonos/console/ và đăng nhập bằng tài khoản mới. Trên máy chủ có tên miền, địa chỉ này có dạng `https://dx.example.com/auth/admin/saigonos/console/`. Ở lần đăng nhập đầu tiên, Keycloak yêu cầu cài đặt OTP. Hãy quét mã QR bằng một ứng dụng xác thực, ví dụ FreeOTP hoặc Google Authenticator, rồi nhập mã gồm 6 chữ số. Từ lần sau, tài khoản đăng nhập bằng mật khẩu và mã OTP.
+
+Trước khi cài đặt OTP, tài khoản chưa lấy được access token. Tuy vậy, người nào biết mật khẩu cũng có thể đăng nhập lần đầu và cài đặt OTP cho tài khoản. Do đó, hãy đăng nhập lần đầu ngay sau khi tạo tài khoản.
+
+## Tài liệu API
+
+PostgREST tự sinh tài liệu OpenAPI 2.0 cho REST API. Tài liệu nằm ở địa chỉ gốc của REST API, mặc định là http://localhost:9080/api/. Tài liệu có thể được mở bằng trình duyệt hoặc nạp vào các công cụ hỗ trợ OpenAPI 2.0, ví dụ Swagger UI.
+
+Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Lời gọi không có access token nhận tài liệu theo quyền của role `anon`. Lời gọi có access token trong header `Authorization` nhận tài liệu theo quyền của role `authenticated`. Quyền được kiểm tra ở mỗi lời gọi. Do đó, sau khi một quyền được cấp hoặc thu hồi, tài liệu thay đổi ngay ở lời gọi tiếp theo.
+
+Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Ví dụ, với địa chỉ truy cập `https://dx.example.com`, các lời gọi trong tài liệu bắt đầu bằng `https://dx.example.com/api`.
 
 ## Cấu hình
 
@@ -104,6 +160,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--http-host` | `127.0.0.1` | Địa chỉ IP mà cổng HTTP của API Gateway lắng nghe. Với giá trị mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt |
 | `--http-port` | `9080` | Cổng HTTP của API Gateway |
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
+| `--keycloak-port` | `9280` | Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. Admin Console của realm master dùng cổng này |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
 
@@ -189,7 +246,7 @@ saigonos doctor
 
 Kết quả có thêm dòng của service `caddy`. Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được chứng chỉ. Ở lần khởi động đầu tiên, Caddy cần thêm vài giây để lấy chứng chỉ. Nếu lệnh báo lỗi chứng chỉ, hãy chờ một lúc rồi chạy lại.
 
-Sau khi triển khai, Admin Console của Keycloak có địa chỉ `https://dx.example.com/auth/admin/`. REST API có địa chỉ `https://dx.example.com/api/`. Dashboard của APISIX vẫn chỉ truy cập được từ chính máy cài đặt.
+Sau khi triển khai, Admin Console của realm `saigonos` có địa chỉ `https://dx.example.com/auth/admin/saigonos/console/`. REST API có địa chỉ `https://dx.example.com/api/`. Admin Console của realm master và Dashboard của APISIX vẫn chỉ truy cập được từ chính máy cài đặt.
 
 ### Chứng chỉ
 
@@ -262,6 +319,35 @@ saigonos doctor
 
 Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được.
 
+## Kiểm tra audit log
+
+Bảng `core.audit_log` của cơ sở dữ liệu lưu audit log. Với những bảng đã gắn hàm `core.audit()`, mỗi lần một dòng được thêm, sửa hoặc xóa đều được ghi lại. Cách gắn hàm này cho một bảng được trình bày trong [CONTRIBUTING.md](CONTRIBUTING.md#ghi-audit-log-cho-bảng).
+
+Bảng `core.audit_log` chỉ cho phép thêm dòng. Các lệnh `UPDATE`, `DELETE` và `TRUNCATE` trên bảng này bị từ chối, kể cả với role sở hữu bảng. Mỗi dòng audit log mang một mã băm được tính từ nội dung của dòng và mã băm của dòng trước. Do đó, các dòng nối thành một chuỗi.
+
+Để kiểm tra audit log có bị sửa hoặc bị xóa bớt hay không:
+
+```bash
+saigonos audit verify
+```
+
+Lệnh này tính lại mã băm của từng dòng và so sánh với mã băm đã lưu. Khi mọi dòng đều khớp, lệnh in ra kết quả sau:
+
+```text
+Audit log có 1250 dòng. Chuỗi mã băm khớp.
+Mã băm của dòng cuối: 1df5c68192da0b9f077c8e6dd77ad3196de0d1d42fae945e2e31f4ad1c5710f9
+```
+
+Khi một dòng đã bị sửa hoặc bị xóa, lệnh chỉ ra dòng sai đầu tiên và kết thúc với mã thoát 1. Ví dụ:
+
+```text
+Dòng 57 của audit log không khớp mã băm. Nội dung hoặc mã băm của dòng này đã bị sửa.
+```
+
+Tài khoản superuser của PostgreSQL vẫn tắt được trigger chặn sửa và xóa. Lệnh `saigonos audit verify` phát hiện các dòng đã bị sửa hoặc bị xóa theo cách này. Lệnh tự tính mã băm và không dùng hàm lưu trong cơ sở dữ liệu.
+
+Lệnh không phát hiện được hai trường hợp. Trường hợp thứ nhất là các dòng cuối cùng bị xóa. Trường hợp thứ hai là một dòng bị sửa và mã băm của mọi dòng từ đó về sau được tính lại. Trong cả hai trường hợp, các dòng còn lại vẫn nối đúng với nhau. Do đó, nên lưu kết quả của lệnh ở một nơi ngoài máy chủ sau mỗi lần kiểm tra. Số dòng của audit log chỉ tăng. Với cùng một số dòng, mã băm của dòng cuối không đổi.
+
 ## Cập nhật phiên bản
 
 Các thay đổi của từng phiên bản được ghi trong [CHANGELOG.md](CHANGELOG.md). Khi cập nhật, dữ liệu, các mật khẩu trong file `.env` và chứng chỉ của Caddy được giữ nguyên.
@@ -291,7 +377,7 @@ saigonos up
 saigonos doctor
 ```
 
-Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới.
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
 
 ## Tham gia phát triển
 

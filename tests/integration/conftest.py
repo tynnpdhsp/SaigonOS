@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import base64
 import hashlib
 import ipaddress
 import json
@@ -53,10 +54,29 @@ class Connection(HTTPConnection):
             self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
 
 
+def encode(data):
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
+
+
+def decode(segment):
+    return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+
+
+def http_status(result):
+    status = re.search(r"HTTP/\S+ (\d{3})", result.stderr)
+    assert status, result.stderr
+    return int(status[1])
+
+
 def free_port():
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return listener.getsockname()[1]
+
+
+def free_ports():
+    options = ("--http-port", "--admin-port", "--keycloak-port")
+    return [value for option in options for value in (option, str(free_port()))]
 
 
 def send(method, url, token=None, form=None, body=None, headers=None, context=None, address=None):
@@ -107,23 +127,29 @@ class Stack:
     def url(self):
         return self.env["SAIGONOS_URL"]
 
+    @property
+    def keycloak(self):
+        return f"http://localhost:{self.env['SAIGONOS_KEYCLOAK_PORT']}/auth"
+
     def call(self, method, url, **options):
         return send(method, url, context=self.context, **options)
 
-    def admin(self, method, path, body=None):
+    def master_login(self, username, password, base=None):
         form = {
             "grant_type": "password",
             "client_id": "admin-cli",
-            "username": "admin",
-            "password": self.env["KEYCLOAK_ADMIN_PASSWORD"],
+            "username": username,
+            "password": password,
         }
-        reply = self.call(
-            "POST", f"{self.url}/auth/realms/master/protocol/openid-connect/token", form=form
-        )
+        url = f"{base or self.keycloak}/realms/master/protocol/openid-connect/token"
+        return self.call("POST", url, form=form)
+
+    def admin(self, method, path, body=None, realm=REALM):
+        reply = self.master_login("admin", self.env["KEYCLOAK_ADMIN_PASSWORD"])
         assert reply.status == 200, reply.body
         token = json.loads(reply.body)["access_token"]
         return self.call(
-            method, f"{self.url}/auth/admin/realms/{REALM}{path}", token=token, body=body
+            method, f"{self.keycloak}/admin/realms/{realm}{path}", token=token, body=body
         )
 
     def create_client(self):
@@ -136,7 +162,7 @@ class Stack:
         reply = self.admin("POST", "/clients", client)
         assert reply.status == 201, reply.body
 
-    def new_user(self):
+    def new_user(self, unit=None, role=None):
         name = f"thu-{secrets.token_hex(4)}"
         password = secrets.token_urlsafe(12)
         user = {
@@ -146,11 +172,28 @@ class Stack:
             "lastName": "Thử",
             "email": f"{name}@example.com",
             "emailVerified": True,
+            "attributes": {"unit": [unit]} if unit else {},
             "credentials": [{"type": "password", "value": password, "temporary": False}],
         }
         reply = self.admin("POST", "/users", user)
         assert reply.status == 201, reply.body
-        return User(reply.headers["Location"].rsplit("/", 1)[1], name, password)
+        user = User(reply.headers["Location"].rsplit("/", 1)[1], name, password)
+        if role:
+            self.grant_role(user, role)
+        return user
+
+    def grant_role(self, user, role):
+        created = self.admin("POST", "/roles", {"name": role})
+        assert created.status in (201, 409), created.body
+        found = json.loads(self.admin("GET", f"/roles/{role}").body)
+        reply = self.admin("POST", f"/users/{user.id}/role-mappings/realm", [found])
+        assert reply.status == 204, reply.body
+
+    def revoke_roles(self, user):
+        path = f"/users/{user.id}/role-mappings/realm"
+        roles = json.loads(self.admin("GET", path).body)
+        reply = self.admin("DELETE", path, roles)
+        assert reply.status == 204, reply.body
 
     def login(self, user):
         form = {
@@ -173,6 +216,15 @@ class Stack:
         reply = self.login(user)
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
+
+    def forged_tokens(self, user):
+        header, payload, signature = self.token(user).split(".")
+        claims = decode(payload) | {"preferred_username": "admin"}
+        return {
+            "không phải JWT": "khong-phai-token",
+            "sửa nội dung": f"{header}.{encode(claims)}.{signature}",
+            "không ký": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
+        }
 
     def api(self, token=None, headers=None, address=None):
         return self.call("GET", f"{self.url}/api/", token=token, headers=headers, address=address)
@@ -211,6 +263,33 @@ class Stack:
         }
         reply = self.admin("POST", "/components", component)
         assert reply.status == 201, reply.body
+
+    def logs(self, service):
+        return self.compose("logs", "--no-log-prefix", service)
+
+    def sql(self, query):
+        options = ["--username=postgres", "--dbname=saigonos", "--no-psqlrc", "--tuples-only"]
+        options += ["--no-align", "--set=ON_ERROR_STOP=1", f"--command={query}"]
+        command = [self.docker, "compose", "exec", "-T", "postgres", "psql", *options]
+        result = subprocess.run(
+            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=60
+        )
+        assert result.returncode == 0, result.stderr
+        return [line.split("|") for line in result.stdout.splitlines()]
+
+    def postgrest_status(self, path, token=None):
+        fields = ["--header", f"Authorization: Bearer {token}"] if token else []
+        options = ["-S", "-O", "/dev/null", *fields, f"http://postgrest:3000{path}"]
+        command = [self.docker, "compose", "exec", "-T", "postgres", "wget", *options]
+        result = subprocess.run(
+            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=60
+        )
+        return http_status(result)
+
+    def add_migration(self, name, text):
+        path = self.home / "config" / "postgres" / "migrations" / name
+        path.write_text(text, encoding="utf-8")
+        return path
 
     def container(self, service):
         return self.compose("ps", "--all", "--quiet", service)
@@ -255,9 +334,7 @@ class Stack:
         result = self.run_docker(
             "run", *options, image, "-S", "-O", "/dev/null", *fields, url, check=False
         )
-        status = re.search(r"HTTP/\S+ (\d{3})", result.stderr)
-        assert status, result.stderr
-        return int(status[1])
+        return http_status(result)
 
     @contextmanager
     def public_network(self, family):
@@ -335,8 +412,7 @@ def run_stack(stack, request):
 @pytest.fixture(scope="module")
 def stack(tmp_path_factory, request):
     stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-it-{secrets.token_hex(4)}")
-    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
-    created = stack.saigonos("init", *ports)
+    created = stack.saigonos("init", *free_ports())
     assert created.returncode == 0, created.stdout + created.stderr
     yield from run_stack(stack, request)
 
@@ -347,7 +423,6 @@ def caddy_stack(tmp_path_factory, request):
     stack.home.mkdir()
     (stack.home / ".env").write_text(f"CADDY_HTTP_PORT={free_port()}\n", encoding="utf-8")
     options = ["--caddy", "--url", f"https://localhost:{free_port()}"]
-    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
-    created = stack.saigonos("init", *options, *ports)
+    created = stack.saigonos("init", *options, *free_ports())
     assert created.returncode == 0, created.stdout + created.stderr
     yield from run_stack(stack, request)

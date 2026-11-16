@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 import re
 import shlex
 from pathlib import Path
 
+import click
 import pytest
 
 from saigonos.cli import main
@@ -21,13 +23,23 @@ BLOCK_LINES = [
 ]
 INLINE = re.findall(r"`([^`\n]+)`", README)
 COMMANDS = sorted({text for text in [*BLOCK_LINES, *INLINE] if text.startswith("saigonos ")})
-DOCTOR_SAMPLE = re.search(r"```text\n(.*?)```", README, re.DOTALL)[1]
+SAMPLES = re.findall(r"```text\n(.*?)```", README, re.DOTALL)
+DOCTOR_SAMPLE = SAMPLES[0]
+VERIFY_SAMPLES = [sample for sample in SAMPLES if "audit log" in sample.lower()]
 PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
 HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
 
 
 def anchor(heading):
     return re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+
+
+def leaf_commands(group):
+    for command in group.commands.values():
+        if isinstance(command, click.Group):
+            yield from leaf_commands(command)
+        else:
+            yield command
 
 
 def test_readme_shows_the_whole_install_path():
@@ -37,18 +49,21 @@ def test_readme_shows_the_whole_install_path():
 
 @pytest.mark.parametrize("line", COMMANDS)
 def test_readme_command_is_accepted_by_cli(line):
-    name, *arguments = shlex.split(line)[1:]
+    command, arguments = main, shlex.split(line)[1:]
+    while isinstance(command, click.Group):
+        name, *arguments = arguments
+        assert name in command.commands
+        command = command.commands[name]
 
-    assert name in main.commands
-    with main.commands[name].make_context(name, arguments) as context:
-        assert context.command.name == name
+    with command.make_context(command.name, arguments) as context:
+        assert context.command is command
 
 
 def test_readme_options_exist_in_cli():
     documented = {text for text in INLINE if text.startswith("--")}
     known = {
         option
-        for command in main.commands.values()
+        for command in leaf_commands(main)
         for parameter in command.params
         for option in [*parameter.opts, *parameter.secondary_opts]
     }
@@ -73,6 +88,22 @@ def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
 
     assert finished
     assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
+
+
+def test_readme_shows_real_output_of_audit_verify(tmp_path, cli, docker):
+    unbroken, changed = VERIFY_SAMPLES
+    states = [
+        {"rows": int(re.search(r"\d+", unbroken)[0]), "last_hash": unbroken.split()[-1]},
+        {"rows": 1250, "last_hash": "", "changed": int(re.search(r"\d+", changed)[0])},
+    ]
+    cli("init", "--home", tmp_path / "home")
+    outputs = []
+
+    for state in states:
+        docker.reply("exec", json.dumps({"missing": None, "changed": None} | state))
+        outputs.append(cli("audit", "verify", "--home", tmp_path / "home").output)
+
+    assert outputs == VERIFY_SAMPLES
 
 
 def test_readme_lists_ports_that_http_port_cannot_use():

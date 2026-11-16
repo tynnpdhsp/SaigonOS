@@ -73,7 +73,7 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
         "BÌNH THƯỜNG    routes       đã chạy xong",
         "BÌNH THƯỜNG    jwks         đã chạy xong",
         f"BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại {gateway.url}/auth",
-        "BÌNH THƯỜNG    API          lời gọi không có access token bị từ chối",
+        "BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -84,15 +84,29 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
 
 def test_doctor_reports_each_failure_and_exits_with_1(home, cli, docker, gateway):
     docker.services(SERVICES, HEALTHY[1:])
-    gateway.routes["/api/"] = (200, b"[]")
+    gateway.routes["/api/", False] = (401, b"")
 
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
     assert "LỖI            postgres     chưa được tạo\n" in result.output
     assert "BÌNH THƯỜNG    routes       đã chạy xong\n" in result.output
-    assert "LỖI            API          lời gọi không có access token nhận mã 200" in result.output
+    assert "LỖI            API          lời gọi không có access token nhận mã 401" in result.output
     assert result.output.endswith("Có 2 mục lỗi.\n")
+
+
+def test_doctor_reports_gateway_that_accepts_invalid_access_token(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    gateway.routes["/api/", True] = (200, b"{}")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert (
+        "LỖI            API          lời gọi có access token không hợp lệ nhận mã 200, "
+        "đúng ra là 401\n" in result.output
+    )
+    assert result.output.endswith("Có 1 mục lỗi.\n")
 
 
 def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
@@ -203,9 +217,19 @@ def test_doctor_reports_reverse_proxy_that_sends_wrong_address(home, cli, docker
     assert result.output.endswith("Có 1 mục lỗi.\n")
 
 
-def test_api_state_requires_401_without_token():
-    assert api_state(URL, 401, b"") == (True, "lời gọi không có access token bị từ chối")
-    assert api_state(URL, 200, b"[]")[0] is False
+def test_api_state_requires_answer_without_token_and_401_for_invalid_token():
+    assert api_state(200, 401) == (
+        True,
+        "PostgREST trả lời, access token không hợp lệ bị từ chối",
+    )
+    assert api_state(401, 401) == (
+        False,
+        "lời gọi không có access token nhận mã 401, đúng ra là 200",
+    )
+    assert api_state(200, 200) == (
+        False,
+        "lời gọi có access token không hợp lệ nhận mã 200, đúng ra là 401",
+    )
 
 
 def test_gateway_checks_use_tls_for_https_address(gateway):

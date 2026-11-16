@@ -10,6 +10,9 @@ from saigonos import compose
 
 REALM_PATH = "/auth/realms/saigonos"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
+DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
+API_PATH = "/api/"
+INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
 TIMEOUT = 5
@@ -69,7 +72,9 @@ def caddy_root_certificate(home: Path) -> str | None:
         return None
 
 
-def fetch(url: str, certificate: str | None = None) -> tuple[int, bytes]:
+def fetch(
+    url: str, certificate: str | None = None, headers: dict[str, str] | None = None
+) -> tuple[int, bytes]:
     parts = urlsplit(url)
     connection: HTTPConnection
     if parts.scheme == "https":
@@ -80,7 +85,7 @@ def fetch(url: str, certificate: str | None = None) -> tuple[int, bytes]:
     else:
         connection = HTTPConnection(parts.netloc, timeout=TIMEOUT)
     try:
-        connection.request("GET", parts.path)
+        connection.request("GET", parts.path, headers=headers or {})
         response = connection.getresponse()
         return response.status, response.read()
     finally:
@@ -107,27 +112,35 @@ def login_state(url: str, status: int, body: bytes) -> tuple[bool, str]:
     return True, f"Keycloak trả lời tại {url}/auth"
 
 
-def api_state(url: str, status: int, body: bytes) -> tuple[bool, str]:
-    if status != 401:
-        return False, f"lời gọi không có access token nhận mã {status}, đúng ra là 401"
-    return True, "lời gọi không có access token bị từ chối"
+def api_state(anonymous: int, invalid: int) -> tuple[bool, str]:
+    if anonymous != 200:
+        return False, f"lời gọi không có access token nhận mã {anonymous}, đúng ra là 200"
+    if invalid != 401:
+        return False, f"lời gọi có access token không hợp lệ nhận mã {invalid}, đúng ra là 401"
+    return True, "PostgREST trả lời, access token không hợp lệ bị từ chối"
 
 
-PROBES = (
-    ("Đăng nhập", f"{REALM_PATH}/.well-known/openid-configuration", login_state),
-    ("API", "/api/", api_state),
-)
+def login_check(url: str, certificate: str | None) -> tuple[bool, str]:
+    status, body = fetch(f"{url}{DISCOVERY_PATH}", certificate)
+    return login_state(url, status, body)
+
+
+def api_check(url: str, certificate: str | None) -> tuple[bool, str]:
+    anonymous, _ = fetch(f"{url}{API_PATH}", certificate)
+    invalid, _ = fetch(f"{url}{API_PATH}", certificate, INVALID_AUTHORIZATION)
+    return api_state(anonymous, invalid)
+
+
+PROBES = (("Đăng nhập", login_check), ("API", api_check))
 
 
 def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:
     checks = []
-    for name, path, state in PROBES:
+    for name, probe in PROBES:
         try:
-            status, body = fetch(f"{url}{path}", certificate)
+            checks.append(Check(name, *probe(url, certificate)))
         except (OSError, HTTPException) as error:
             checks.append(Check(name, False, f"không kết nối được tới {url}: {error}"))
-        else:
-            checks.append(Check(name, *state(url, status, body)))
     return checks
 
 

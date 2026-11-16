@@ -16,6 +16,7 @@ SETTING_KEYS = [
     "SAIGONOS_HTTP_HOST",
     "SAIGONOS_HTTP_PORT",
     "SAIGONOS_ADMIN_PORT",
+    "SAIGONOS_KEYCLOAK_PORT",
     *SECRET_KEYS,
 ]
 HTTPS_URL = "https://dx.example.com"
@@ -80,6 +81,7 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     assert env["SAIGONOS_HTTP_HOST"] == "127.0.0.1"
     assert env["SAIGONOS_HTTP_PORT"] == "9080"
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
+    assert env["SAIGONOS_KEYCLOAK_PORT"] == "9280"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
     assert not (home / ".env.tmp").exists()
@@ -142,35 +144,58 @@ def test_init_fills_only_missing_and_empty_values(home):
     assert f"Đã tạo {len(SECRET_KEYS) - 1} mật khẩu ngẫu nhiên" in result.output
 
 
-def test_init_adds_http_host_to_env_of_older_version(home):
+@pytest.mark.parametrize("line", ["SAIGONOS_HTTP_HOST=127.0.0.1", "SAIGONOS_KEYCLOAK_PORT=9280"])
+def test_init_adds_setting_missing_from_env_of_older_version(home, line):
     init("--home", home)
     env_file = home / ".env"
     older = [
-        line
-        for line in env_file.read_text(encoding="utf-8").splitlines()
-        if not line.startswith("SAIGONOS_HTTP_HOST=")
+        kept
+        for kept in env_file.read_text(encoding="utf-8").splitlines()
+        if kept.partition("=")[0] != line.partition("=")[0]
     ]
     env_file.write_text("\n".join(older) + "\n", encoding="utf-8")
 
     result = init("--home", home)
 
     assert result.exit_code == 0
-    assert env_file.read_text(encoding="utf-8").splitlines() == [
-        *older,
-        "SAIGONOS_HTTP_HOST=127.0.0.1",
-    ]
+    assert env_file.read_text(encoding="utf-8").splitlines() == [*older, line]
 
 
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
 
-    result = init("--home", home, *options)
+    result = init("--home", home, *options, "--keycloak-port", 9998)
 
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
     assert env["SAIGONOS_HTTP_PORT"] == "8000"
     assert env["SAIGONOS_ADMIN_PORT"] == "9999"
+    assert env["SAIGONOS_KEYCLOAK_PORT"] == "9998"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (["--keycloak-port", 9080], "Cổng 9080 của Keycloak trùng với cổng HTTP của API Gateway."),
+        (["--keycloak-port", 9180], "Cổng 9180 của Keycloak trùng với cổng quản trị của APISIX."),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 80],
+            "Cổng 80 của Keycloak trùng với cổng HTTP của Caddy.",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 443],
+            "Cổng 443 của Keycloak trùng với cổng HTTPS của Caddy.",
+        ),
+    ],
+)
+def test_keycloak_port_used_by_another_service_is_rejected(home, options, message):
+    result = init("--home", home, *options)
+
+    assert result.exit_code == 2
+    assert message in result.output
+    assert "Hãy chọn cổng khác bằng tùy chọn --keycloak-port." in result.output
+    assert not home.exists()
 
 
 def test_url_follows_http_port_until_set_explicitly(home):
@@ -370,7 +395,7 @@ def test_invalid_url_is_rejected(home, url):
     assert not home.exists()
 
 
-@pytest.mark.parametrize("option", ["--http-port", "--admin-port"])
+@pytest.mark.parametrize("option", ["--http-port", "--admin-port", "--keycloak-port"])
 @pytest.mark.parametrize("port", ["0", "65536", "abc"])
 def test_invalid_port_is_rejected(home, option, port):
     result = init("--home", home, option, port)
