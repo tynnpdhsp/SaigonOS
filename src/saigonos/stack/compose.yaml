@@ -160,6 +160,7 @@ services:
       PGDATABASE: saigonos
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD:?}
     volumes:
       - ./config/postgres:/config:ro
     tmpfs:
