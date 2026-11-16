@@ -11,6 +11,9 @@ pytestmark = pytest.mark.integration
 BUCKETS = ["clean", "quarantine"]
 ADMIN_UI_PORT = "12535"
 TELEMETRY = "Reporting anonymous cluster statistics"
+# ghép từ hai phần để phần mềm diệt virus không xóa file này
+EICAR = b"".join([b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$", b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"])
+FOUND = "stream: Eicar-Test-Signature FOUND"
 
 
 def wait_for(condition, timeout=60):
@@ -55,11 +58,22 @@ def can_connect(stack, service, host, port):
     return stack.exec(service, "timeout", "3", "bash", "-c", script).returncode == 0
 
 
-def test_doctor_reports_seaweedfs(stack):
+def address_of(stack, service):
+    template = "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"
+    return stack.inspect(stack.container(service), template)
+
+
+def process_id(stack, container, name):
+    rows = stack.run_docker("top", container, "-eo", "pid,comm").stdout.splitlines()[1:]
+    return next(pid for pid, command in (row.split() for row in rows) if command == name)
+
+
+def test_doctor_reports_seaweedfs_clamav_and_freshclam(stack):
     result = stack.saigonos("doctor")
 
     assert result.returncode == 0, result.stdout
-    assert re.search(r"BÌNH THƯỜNG\s+seaweedfs\s+đang chạy", result.stdout)
+    for service in ["seaweedfs", "clamav", "freshclam"]:
+        assert re.search(rf"BÌNH THƯỜNG\s+{service}\s+đang chạy", result.stdout)
 
 
 def test_seaweedfs_has_only_the_two_buckets(stack):
@@ -147,8 +161,7 @@ def test_only_seaweedfs_joins_storage_network(stack):
 
 
 def test_gateway_cannot_reach_seaweedfs(stack):
-    container = stack.container("seaweedfs")
-    address = stack.inspect(container, "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}")
+    address = address_of(stack, "seaweedfs")
 
     for path in ["/clean/a.txt", "/quarantine", "/buckets/clean/", "/admin"]:
         assert stack.call("GET", f"{stack.url}{path}").status == 404
@@ -200,3 +213,80 @@ def test_seaweedfs_accepts_only_new_key_after_change_in_env(stack):
     assert stack.s3_key != old_key
     assert stack.s3("GET", path, old_key)[0] == 403
     assert stack.s3("GET", path, stack.s3_key) == (200, content)
+
+
+def test_clamav_finds_eicar_and_passes_clean_file(stack):
+    assert stack.scan(EICAR) == FOUND
+    assert stack.scan(b"noi dung binh thuong\n") == "stream: OK"
+
+
+def test_clamav_keeps_one_database_in_memory(stack):
+    clamd = stack.exec("clamav", "clamconf", "--non-default").stdout
+    freshclam = stack.exec("freshclam", "clamconf", "--non-default").stdout
+
+    assert "ConcurrentDatabaseReload disabled" in clamd
+    assert "TestDatabases disabled" in freshclam
+
+
+def test_clamav_and_freshclam_run_in_own_networks(stack):
+    config = json.loads(stack.compose("config", "--format", "json"))
+    networks = {name: set(service["networks"]) for name, service in config["services"].items()}
+
+    members = {name for name, joined in networks.items() if joined & {"scan", "updates"}}
+
+    assert members == {"clamav", "freshclam"}
+    assert networks["clamav"] == {"scan"}
+    assert networks["freshclam"] == {"updates"}
+    assert config["networks"]["scan"]["internal"] is True
+
+
+def test_clamav_reaches_no_other_service_and_no_internet(stack):
+    routes = stack.exec("clamav", "cat", "/proc/net/route").stdout.splitlines()[1:]
+
+    assert routes
+    assert all(route.split()[1] != "00000000" for route in routes)
+    assert not can_connect(stack, "clamav", "postgres", 5432)
+    assert not can_connect(stack, "clamav", address_of(stack, "postgres"), 5432)
+    assert not can_connect(stack, "clamav", address_of(stack, "seaweedfs"), 8333)
+
+
+def test_gateway_and_freshclam_cannot_reach_clamav(stack):
+    address = address_of(stack, "clamav")
+
+    assert can_connect(stack, "apisix", "keycloak", 8080)
+    assert not can_connect(stack, "apisix", "clamav", 3310)
+    assert not can_connect(stack, "apisix", address, 3310)
+    assert not can_connect(stack, "freshclam", "clamav", 3310)
+    assert not can_connect(stack, "freshclam", address, 3310)
+
+
+def test_clamav_keeps_database_when_containers_are_recreated(stack):
+    marker = f"/var/lib/clamav/kiem-thu-{secrets.token_hex(4)}"
+    assert stack.exec("freshclam", "touch", marker).returncode == 0
+    containers = {service: stack.container(service) for service in ["clamav", "freshclam"]}
+
+    result = stack.compose_result("up", "-d", "--wait", "--force-recreate", *containers)
+
+    assert result.returncode == 0, result.stderr
+    for service, container in containers.items():
+        assert stack.container(service) != container
+    assert stack.exec("clamav", "test", "-f", marker).returncode == 0
+    assert stack.scan(EICAR) == FOUND
+
+
+@pytest.mark.parametrize(
+    ("service", "process", "health"),
+    [("clamav", "clamd", " healthy"), ("freshclam", "freshclam", "")],
+    ids=["clamd", "freshclam"],
+)
+def test_container_restarts_when_clamav_process_dies(stack, service, process, health):
+    container = stack.container(service)
+    restarts = int(stack.inspect(container, "{{.RestartCount}}"))
+    state = (
+        "{{.RestartCount}} {{.State.Status}}{{if .State.Health}} {{.State.Health.Status}}{{end}}"
+    )
+
+    stack.kill_process(process_id(stack, container, process))
+
+    wait_for(lambda: stack.inspect(container, state) == f"{restarts + 1} running{health}", 120)
+    assert stack.scan(EICAR) == FOUND

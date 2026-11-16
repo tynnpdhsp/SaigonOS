@@ -8,6 +8,7 @@ import secrets
 import shutil
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import time
@@ -313,6 +314,17 @@ class Stack:
     def s3(self, method, path, key=None, body=None):
         return self.storage_call(method, f"http://seaweedfs:8333{path}", key, body)
 
+    def scan(self, content):
+        image = self.inspect(self.container("clamav"), "{{.Config.Image}}")
+        options = ["--rm", "--interactive", "--network", self.network("scan"), "--entrypoint", "nc"]
+        command = [self.docker, "run", *options, image, "clamav", "3310"]
+        chunks = struct.pack(">I", len(content)) + content + struct.pack(">I", 0)
+        result = subprocess.run(
+            command, input=b"zINSTREAM\0" + chunks, check=False, capture_output=True, timeout=60
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.rstrip(b"\0").decode()
+
     def add_migration(self, name, text):
         path = self.home / "config" / "postgres" / "migrations" / name
         path.write_text(text, encoding="utf-8")
@@ -327,7 +339,9 @@ class Stack:
         return result.stdout.strip()
 
     def kill(self, container):
-        pid = self.inspect(container, "{{.State.Pid}}")
+        self.kill_process(self.inspect(container, "{{.State.Pid}}"))
+
+    def kill_process(self, pid):
         image = self.inspect(self.container("postgres"), "{{.Config.Image}}")
         options = ["--rm", "--pid=host", "--privileged", "--entrypoint", "kill"]
         command = [self.docker, "run", *options, image, "-9", pid]
