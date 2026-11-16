@@ -13,6 +13,8 @@ from saigonos.home import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_KEYCLOAK_PORT,
+    DEFAULT_SEAWEEDFS_PORT,
 )
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
@@ -112,6 +114,13 @@ def test_readme_lists_ports_that_http_port_cannot_use():
     assert f"Cổng HTTP không được trùng các cổng {', '.join(first)} và {last}." in README
 
 
+def test_readme_lists_ports_used_by_default():
+    ports = [DEFAULT_HTTP_PORT, DEFAULT_ADMIN_PORT, DEFAULT_KEYCLOAK_PORT, DEFAULT_SEAWEEDFS_PORT]
+    *first, last = map(str, ports)
+
+    assert f"Hệ thống dùng các cổng {', '.join(first)} và {last}." in README
+
+
 def test_readme_links_point_to_existing_sections():
     links = re.findall(r"\]\(#([^)]+)\)", PROSE)
 
@@ -123,6 +132,8 @@ def test_readme_states_the_default_values():
     assert f"| `--http-host` | `{DEFAULT_HTTP_HOST}` |" in README
     assert f"| `--http-port` | `{DEFAULT_HTTP_PORT}` |" in README
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
+    assert f"| `--keycloak-port` | `{DEFAULT_KEYCLOAK_PORT}` |" in README
+    assert f"| `--seaweedfs-port` | `{DEFAULT_SEAWEEDFS_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
     assert "| `--caddy`, `--no-caddy` | Tắt |" in README
