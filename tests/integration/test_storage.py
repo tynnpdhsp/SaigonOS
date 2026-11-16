@@ -151,12 +151,12 @@ def test_admin_ui_requires_password(stack):
     assert sorted(bucket["name"] for bucket in json.loads(reply.body)["buckets"]) == BUCKETS
 
 
-def test_only_seaweedfs_joins_storage_network(stack):
+def test_only_seaweedfs_and_core_join_storage_network(stack):
     services = json.loads(stack.compose("config", "--format", "json"))["services"]
 
     members = {name for name, service in services.items() if "storage" in service["networks"]}
 
-    assert members == {"seaweedfs"}
+    assert members == {"seaweedfs", "core"}
     assert set(services["seaweedfs"]["networks"]) == {"storage"}
 
 
@@ -234,9 +234,10 @@ def test_clamav_and_freshclam_run_in_own_networks(stack):
 
     members = {name for name, joined in networks.items() if joined & {"scan", "updates"}}
 
-    assert members == {"clamav", "freshclam"}
+    assert members == {"clamav", "freshclam", "core"}
     assert networks["clamav"] == {"scan"}
     assert networks["freshclam"] == {"updates"}
+    assert networks["core"] == {"default", "storage", "scan"}
     assert config["networks"]["scan"]["internal"] is True
 
 

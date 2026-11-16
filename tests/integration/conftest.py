@@ -447,6 +447,7 @@ def run_stack(stack, request):
                 print(stack.compose("logs", "--tail", "50"))
     finally:
         stack.saigonos("down", "--volumes")
+        stack.compose_result("down", "--rmi", "local")
         stack.remove_data()
 
 
