@@ -21,14 +21,22 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Tài liệu OpenAPI 2.0 của REST API ở địa chỉ `/api/`. PostgREST tự sinh tài liệu này. Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Các địa chỉ trong tài liệu được lấy từ `SAIGONOS_URL`. Tài liệu cũng ghi cách gửi access token trong header `Authorization`. Ở phiên bản 0.2.0, tài liệu ghi địa chỉ `0.0.0.0:3000` của PostgREST bên trong container.
 - Hàm `core.mask_phone()` và `core.mask_email()` che một phần số điện thoại và email. Ví dụ: `0912345678` thành `091****678`, `nguyenvana@gmail.com` thành `ngu*******@gmail.com`. Role `anon` và `authenticated` gọi được hai hàm này. Khi dùng trong view, hai hàm cho phép chỉ hiện đủ dữ liệu cho người có quyền.
 - Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
+- Tùy chọn `--keycloak-port` của lệnh `saigonos init` đặt cổng của Keycloak trên máy cài đặt. Cổng này mặc định là 9280 và chỉ lắng nghe trên địa chỉ `127.0.0.1`. Admin Console của realm master dùng cổng này.
+- Hướng dẫn tạo tài khoản quản trị có OTP trong realm `saigonos` trong README.
 
 ### Thay đổi
 
-- Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật.
+- Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật. Service chỉ đăng nhập bằng mật khẩu, nên không bật OTP cho tài khoản này.
+- Admin Console của realm master có địa chỉ mới là http://localhost:9280/auth/admin/master/console/ trên máy cài đặt. Admin Console của realm `saigonos` vẫn mở qua API Gateway tại `/auth/admin/saigonos/console/`.
 - Lời gọi `/api` không có access token chạy với role `anon`. Ở phiên bản 0.2.0, API Gateway trả về mã 401 cho lời gọi này. Khi dùng một bảng hoặc hàm chưa cấp cho `anon`, lời gọi nhận mã 401. Access token giả hoặc hết hạn vẫn nhận mã 401. Giới hạn tần suất gọi áp dụng cho cả lời gọi không có access token.
 - Access token hợp lệ nhưng không có realm role `authenticated` chạy với role `anon`. Ở phiên bản 0.2.0, lời gọi này nhận mã 401.
 - Hàm mới trong cơ sở dữ liệu `saigonos` chỉ gọi được sau khi được cấp quyền `EXECUTE`. Ở phiên bản 0.2.0, mọi role đều gọi được hàm mới. Các hàm đã có trong schema `api` được cấp cho role `authenticated`. Do đó, người dùng đã đăng nhập vẫn gọi được các hàm này sau khi cập nhật.
 - Lệnh `saigonos doctor` kiểm tra hai lời gọi tới `/api/`. Lời gọi không có access token phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+
+### Bảo mật
+
+- API Gateway trả về mã 404 cho mọi địa chỉ của realm master. Realm master chỉ mở qua cổng của Keycloak trên chính máy cài đặt. Ở phiên bản 0.2.0, trang đăng nhập và Admin Console của realm master mở ra ngoài qua API Gateway và chỉ cần mật khẩu.
+- Realm master khóa tạm một tài khoản sau nhiều lần đăng nhập sai. Ở phiên bản 0.2.0, realm master không giới hạn số lần đăng nhập sai.
 
 ## [0.2.0] - 2026-11-14
 
