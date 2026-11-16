@@ -35,7 +35,7 @@ jobs:
       - name: Kiểm tra lock file khớp với pyproject.toml
         run: |
           make lock
-          git diff --exit-code -- requirements.txt requirements-dev.txt
+          git diff --exit-code -- requirements.txt requirements-dev.txt src/saigonos/stack/core/requirements.txt
 
   test:
     runs-on: ubuntu-24.04

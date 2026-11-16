@@ -16,22 +16,40 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECT_FILE = ROOT / "pyproject.toml"
 LOCK_FILE = ROOT / "requirements.txt"
 DEV_LOCK_FILE = ROOT / "requirements-dev.txt"
+CORE_LOCK_FILE = ROOT / "src" / "saigonos" / "stack" / "core" / "requirements.txt"
 STACK_FILE = ROOT / "src" / "saigonos" / "stack" / "compose.yaml"
 TABLE_FILE = ROOT / "DEPENDENCIES.md"
 
-ALLOWED_LICENSES = {"Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "PSF-2.0"}
+ALLOWED_LICENSES = {
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "PSF-2.0",
+}
 DEV_ONLY_LICENSES = {"CC-BY-SA-4.0", "CC0-1.0", "GPL-3.0-or-later"}
 IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL"}
-VERIFIED_LICENSES = {"reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later"}
+VERIFIED_LICENSES = {
+    "h11": "MIT",
+    "httpx": "BSD-3-Clause",
+    "reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later",
+}
 DESCRIPTIONS = {
+    "asyncpg": "Kết nối service `core` với PostgreSQL",
     "click": "Xây dựng giao diện dòng lệnh cho lệnh `saigonos`",
+    "fastapi": "Xây dựng REST API của service `core`",
+    "httpx": "Gọi service `core` trong kiểm thử",
     "packaging": "Đọc và so sánh số phiên bản",
     "pip-licenses": "Đọc giấy phép của các thư viện đã cài đặt",
+    "pyjwt": "Kiểm tra chữ ký và thời hạn của access token",
     "pytest": "Chạy kiểm thử",
     "pytest-cov": "Đo coverage khi chạy kiểm thử",
     "reuse": "Kiểm tra thông tin giấy phép của mọi file",
     "ruff": "Kiểm tra lỗi và định dạng mã Python",
     "uv": "Tạo lock file từ `pyproject.toml`",
+    "uvicorn": "Chạy service `core` trong container",
 }
 INDIRECT = "Phụ thuộc gián tiếp"
 
@@ -91,14 +109,24 @@ HEADER = f"""\
 # Thư viện và gói phụ thuộc
 
 File này liệt kê các thư viện, phần mềm và công cụ mà SaigonOS sử dụng. Mỗi dòng ghi phiên bản, \
-giấy phép, mô tả và nguồn. File do lệnh `make dependencies` tạo ra từ lock file, các thư viện đã \
-cài đặt và file `compose.yaml`. Không sửa trực tiếp file này.
+giấy phép, mô tả và nguồn. File do lệnh `make dependencies` tạo ra từ các lock file, các thư viện \
+đã cài đặt và file `compose.yaml`. Không sửa trực tiếp file này.
 """
 RUNTIME_SECTION = """
 ## Thư viện đi kèm sản phẩm
 
 Các thư viện này được cài đặt cùng SaigonOS. Danh sách được lấy từ `requirements.txt`, kể cả \
 phụ thuộc gián tiếp.
+
+| Thư viện | Phiên bản | Giấy phép | Mô tả | Nguồn |
+|---|---|---|---|---|
+"""
+CORE_SECTION = """
+## Thư viện của service `core`
+
+Các thư viện này được cài đặt vào image của service `core` khi Docker Compose build image trên \
+máy cài đặt. Danh sách được lấy từ `src/saigonos/stack/core/requirements.txt`, kể cả phụ thuộc \
+gián tiếp. Lock file này ghi mã băm của từng file. Khi cài đặt, pip từ chối file có mã băm khác.
 
 | Thư viện | Phiên bản | Giấy phép | Mô tả | Nguồn |
 |---|---|---|---|---|
@@ -156,7 +184,8 @@ Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu 
 ## Quy tắc về giấy phép
 
 - Mỗi thư viện và phần mềm giữ nguyên giấy phép gốc.
-- Thư viện đi kèm sản phẩm chỉ được dùng các giấy phép {vietnamese_list(ALLOWED_LICENSES)}.
+- Thư viện đi kèm sản phẩm và thư viện của service `core` chỉ được dùng các giấy phép \
+{vietnamese_list(ALLOWED_LICENSES)}.
 - Phần mềm chạy trong container chỉ được dùng các giấy phép {vietnamese_list(IMAGE_LICENSES)}. \
 Các giấy phép này đều được OSI công nhận.
 - Phần mềm theo giấy phép GPL-2.0-only chỉ được chạy trong container riêng. SaigonOS chỉ trao đổi \
@@ -175,15 +204,19 @@ def read_lock(path: Path) -> dict[str, str]:
     return {normalize(name): version for name, version in pins}
 
 
-def read_declared(project_file: Path) -> tuple[set[str], set[str]]:
+def read_declared(project_file: Path) -> tuple[set[str], set[str], set[str]]:
     with project_file.open("rb") as file:
         project = tomllib.load(file)
-    runtime = project["project"].get("dependencies", [])
-    dev = project.get("dependency-groups", {}).get("dev", [])
-    return (
-        {normalize(Requirement(spec).name) for spec in runtime},
-        {normalize(Requirement(spec).name) for spec in dev},
+    groups = project.get("dependency-groups", {})
+    runtime, core, dev = (
+        {normalize(Requirement(spec).name) for spec in specs}
+        for specs in (
+            project["project"].get("dependencies", []),
+            groups.get("core", []),
+            groups.get("dev", []),
+        )
     )
+    return runtime, core, dev
 
 
 def read_installed(names: list[str]) -> dict[str, dict[str, str]]:
@@ -205,13 +238,13 @@ def resolve_license(name: str, reported: str, allowed: set[str]) -> str:
 
 
 def describe(name: str, direct: set[str]) -> str:
-    if name in DESCRIPTIONS:
-        return DESCRIPTIONS[name]
-    if name in direct:
+    if name not in direct:
+        return INDIRECT
+    if name not in DESCRIPTIONS:
         raise DependencyError(
             f"{name} chưa có mô tả. Hãy thêm vào DESCRIPTIONS trong scripts/dependencies.py."
         )
-    return INDIRECT
+    return DESCRIPTIONS[name]
 
 
 def build_rows(
@@ -275,9 +308,11 @@ def build_table(
     dev_lock_file: Path = DEV_LOCK_FILE,
     project_file: Path = PROJECT_FILE,
     stack_file: Path = STACK_FILE,
+    core_lock_file: Path = CORE_LOCK_FILE,
 ) -> str:
-    runtime, dev = read_declared(project_file)
+    runtime, core, dev = read_declared(project_file)
     locked = read_lock(lock_file)
+    core_locked = read_lock(core_lock_file)
     dev_locked = read_lock(dev_lock_file)
     missing = sorted(dev - dev_locked.keys())
     if missing:
@@ -285,11 +320,13 @@ def build_table(
             f"{', '.join(missing)} chưa có trong requirements-dev.txt. Hãy chạy make lock."
         )
     dev_pins = {name: dev_locked[name] for name in dev}
-    installed = read_installed(sorted(locked.keys() | dev_pins.keys()))
+    installed = read_installed(sorted(locked.keys() | core_locked.keys() | dev_pins.keys()))
     return (
         HEADER
         + RUNTIME_SECTION
         + build_rows(locked, runtime, installed, ALLOWED_LICENSES)
+        + CORE_SECTION
+        + build_rows(core_locked, core, installed, ALLOWED_LICENSES)
         + IMAGE_SECTION
         + build_image_rows(read_images(stack_file))
         + DEV_SECTION
@@ -300,7 +337,7 @@ def build_table(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Tạo DEPENDENCIES.md từ lock file và file compose.yaml."
+        description="Tạo DEPENDENCIES.md từ các lock file và file compose.yaml."
     )
     parser.add_argument("--check", action="store_true", help="chỉ so sánh, không ghi file")
     arguments = parser.parse_args(argv)

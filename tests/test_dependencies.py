@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import re
 from importlib.metadata import version
 
 import dependencies
@@ -36,12 +37,13 @@ def test_read_lock_returns_pinned_versions(tmp_path):
     assert dependencies.read_lock(lock_file) == {"click": "8.5.1", "boolean-py": "5.0"}
 
 
-def test_read_declared_splits_product_and_dev_dependencies():
-    runtime, dev = dependencies.read_declared(dependencies.PROJECT_FILE)
+def test_read_declared_splits_product_core_and_dev_dependencies():
+    runtime, core, dev = dependencies.read_declared(dependencies.PROJECT_FILE)
 
     assert runtime == {"click"}
+    assert core == {"asyncpg", "fastapi", "pyjwt", "uvicorn"}
     assert {"pytest", "reuse", "ruff"} <= dev
-    assert "click" not in dev
+    assert not dev & (runtime | core)
 
 
 @pytest.mark.parametrize("reported", ["MIT", "Apache-2.0 OR BSD-2-Clause", "(MIT AND ISC)"])
@@ -82,7 +84,7 @@ def test_table_lists_every_product_library_and_dev_tool():
 
     locked = dependencies.read_lock(dependencies.LOCK_FILE)
     dev_locked = dependencies.read_lock(dependencies.DEV_LOCK_FILE)
-    _, dev = dependencies.read_declared(dependencies.PROJECT_FILE)
+    _, _, dev = dependencies.read_declared(dependencies.PROJECT_FILE)
     assert locked
     for name, pinned in locked.items():
         assert f"| {name} | {pinned} |" in table
@@ -91,10 +93,33 @@ def test_table_lists_every_product_library_and_dev_tool():
     assert table.index(dependencies.RUNTIME_SECTION) < table.index(dependencies.DEV_SECTION)
 
 
+def test_table_lists_every_library_of_core_service():
+    table = dependencies.build_table()
+
+    locked = dependencies.read_lock(dependencies.CORE_LOCK_FILE)
+    _, core, _ = dependencies.read_declared(dependencies.PROJECT_FILE)
+    rows = table[table.index(dependencies.CORE_SECTION) : table.index(dependencies.IMAGE_SECTION)]
+    assert core <= locked.keys()
+    for name, pinned in locked.items():
+        assert f"| {name} | {pinned} |" in rows
+    for name in core:
+        assert f"| {dependencies.DESCRIPTIONS[name]} |" in rows
+    assert f"| click | {locked['click']} | BSD-3-Clause | {dependencies.INDIRECT} |" in rows
+    assert table.index(dependencies.RUNTIME_SECTION) < table.index(dependencies.CORE_SECTION)
+
+
+def test_core_lock_pins_every_file_by_hash():
+    text = dependencies.CORE_LOCK_FILE.read_text(encoding="utf-8")
+
+    pins = re.findall(r"^\S+==\S+( \\\n    --hash=sha256:[0-9a-f]{64})?", text, re.MULTILINE)
+    assert pins
+    assert all(pins)
+
+
 def test_footer_states_allowed_licenses():
     table = dependencies.build_table()
 
-    assert "Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT và PSF-2.0" in table
+    assert "Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MIT-0 và PSF-2.0" in table
     assert "CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later" in table
     assert "Apache-2.0, GPL-2.0-only, MIT và PostgreSQL" in table
     assert "GPL-2.0-only chỉ được chạy trong container riêng" in table
@@ -111,7 +136,7 @@ def test_gpl_is_allowed_for_images_only():
 def test_empty_lock_gives_product_table_without_rows(tmp_path):
     table = dependencies.build_table(write_lock(tmp_path, ""))
 
-    assert dependencies.RUNTIME_SECTION + dependencies.IMAGE_SECTION in table
+    assert dependencies.RUNTIME_SECTION + dependencies.CORE_SECTION in table
 
 
 def test_indirect_dependency_gets_generic_description(tmp_path):
@@ -123,10 +148,11 @@ def test_indirect_dependency_gets_generic_description(tmp_path):
     assert f"| iniconfig | {pinned} | MIT | {dependencies.INDIRECT} |" in table
 
 
-def test_direct_dependency_without_description_is_rejected(monkeypatch):
-    monkeypatch.delitem(dependencies.DESCRIPTIONS, "click")
+@pytest.mark.parametrize("name", ["click", "fastapi", "httpx"])
+def test_direct_dependency_without_description_is_rejected(monkeypatch, name):
+    monkeypatch.delitem(dependencies.DESCRIPTIONS, name)
 
-    with pytest.raises(dependencies.DependencyError, match="click chưa có mô tả"):
+    with pytest.raises(dependencies.DependencyError, match=f"{name} chưa có mô tả"):
         dependencies.build_table()
 
 
@@ -142,6 +168,13 @@ def test_lock_that_differs_from_environment_is_rejected(tmp_path):
 
     with pytest.raises(dependencies.DependencyError, match=r"lock file ghi 0\.0\.1"):
         dependencies.build_table(lock_file)
+
+
+def test_core_lock_that_differs_from_environment_is_rejected(tmp_path):
+    core_lock_file = write_lock(tmp_path, "fastapi==0.0.1\n")
+
+    with pytest.raises(dependencies.DependencyError, match=r"fastapi: lock file ghi 0\.0\.1"):
+        dependencies.build_table(core_lock_file=core_lock_file)
 
 
 def test_package_that_is_not_installed_is_rejected(tmp_path):

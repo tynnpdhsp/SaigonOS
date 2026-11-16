@@ -34,7 +34,14 @@ Issues = "https://github.com/tynnpdhsp/SaigonOS/issues"
 Changelog = "https://github.com/tynnpdhsp/SaigonOS/blob/main/CHANGELOG.md"
 
 [dependency-groups]
+core = [
+    "asyncpg>=0.32",
+    "fastapi>=0.163",
+    "pyjwt[crypto]>=2.15",
+    "uvicorn>=0.54",
+]
 dev = [
+    "httpx>=0.28",
     "packaging>=24",
     "pip-licenses>=5.5",
     "pytest>=9",
