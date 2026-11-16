@@ -18,6 +18,7 @@ LOCK_FILE = ROOT / "requirements.txt"
 DEV_LOCK_FILE = ROOT / "requirements-dev.txt"
 CORE_LOCK_FILE = ROOT / "src" / "saigonos" / "stack" / "core" / "requirements.txt"
 STACK_FILE = ROOT / "src" / "saigonos" / "stack" / "compose.yaml"
+DOCKERFILE = ROOT / "src" / "saigonos" / "stack" / "core" / "Dockerfile"
 TABLE_FILE = ROOT / "DEPENDENCIES.md"
 
 ALLOWED_LICENSES = {
@@ -30,7 +31,7 @@ ALLOWED_LICENSES = {
     "PSF-2.0",
 }
 DEV_ONLY_LICENSES = {"CC-BY-SA-4.0", "CC0-1.0", "GPL-3.0-or-later"}
-IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL"}
+IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL", "Python-2.0.1"}
 VERIFIED_LICENSES = {
     "h11": "MIT",
     "reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later",
@@ -85,6 +86,11 @@ IMAGES = {
         "Lưu dữ liệu của Keycloak và của các ứng dụng",
         "https://github.com/postgres/postgres/tree/REL_18_6",
     ),
+    "python:3.14.10-slim-trixie": Image(
+        "Python-2.0.1",
+        "Làm base image của service `core`",
+        "https://github.com/python/cpython/tree/v3.14.10",
+    ),
     "postgrest/postgrest:v16.5": Image(
         "MIT",
         "Tạo REST API từ cơ sở dữ liệu PostgreSQL",
@@ -134,7 +140,8 @@ IMAGE_SECTION = """
 ## Phần mềm chạy trong container
 
 Các phần mềm này chạy trong container riêng. Danh sách image được lấy từ file \
-`src/saigonos/stack/compose.yaml`. Image không ghi địa chỉ máy chủ được tải từ Docker Hub.
+`src/saigonos/stack/compose.yaml` và dòng `FROM` của file `src/saigonos/stack/core/Dockerfile`. \
+Image không ghi địa chỉ máy chủ được tải từ Docker Hub.
 
 Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấy phép được kiểm tra tại mã \
 nguồn của đúng phiên bản đó. Địa chỉ mã nguồn nằm ở cột nguồn. Hệ điều hành nền và các thư viện \
@@ -175,9 +182,13 @@ def footer() -> str:
 ## Gói đính kèm
 
 - File release `saigonos-X.Y.Z.tar.gz` chỉ chứa mã nguồn của SaigonOS.
-- Các thư viện ở trên được pip tải từ PyPI khi cài đặt.
-- Các image ở trên được Docker tải về khi khởi động lần đầu. SaigonOS dùng nguyên image gốc. \
-Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu hình.
+- Các thư viện đi kèm sản phẩm được pip tải từ PyPI khi cài đặt.
+- Các image ở trên được Docker tải về khi khởi động lần đầu. Trừ image `python`, SaigonOS dùng \
+nguyên image gốc. Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu hình.
+- Image `python` là base image của service `core`. Docker Compose build image của service này \
+trên máy cài đặt và dùng pip để cài các thư viện của service `core` từ PyPI. File `Dockerfile` ghi \
+digest của base image. Lock file ghi mã băm của từng thư viện. Do đó, mọi file được tải về khi \
+build đều được đối chiếu mã băm. SaigonOS không phân phối image đã build.
 - SaigonOS không sao chép và không sửa mã nguồn của dự án khác.
 
 ## Quy tắc về giấy phép
@@ -192,7 +203,8 @@ với phần mềm này qua kết nối mạng và không phân phối lại ima
 hưởng đến giấy phép Apache-2.0 của SaigonOS.
 - Công cụ phát triển được dùng thêm {vietnamese_list(DEV_ONLY_LICENSES)}. Các công cụ này không \
 được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
-- Lệnh `make lint` báo lỗi khi gặp giấy phép khác hoặc gặp image chưa được khai báo.
+- Lệnh `make lint` báo lỗi khi gặp giấy phép khác, gặp image chưa được khai báo hoặc gặp base \
+image chưa ghi digest.
 """
 
 
@@ -272,6 +284,17 @@ def read_images(stack_file: Path) -> list[str]:
     return sorted(set(re.findall(r"^[ \t]+image:[ \t]*(\S+)[ \t]*$", text, re.MULTILINE)))
 
 
+def read_base_images(dockerfile: Path) -> list[str]:
+    text = dockerfile.read_text(encoding="utf-8")
+    images = []
+    for reference in re.findall(r"^FROM[ \t]+(\S+)", text, re.MULTILINE):
+        image, _, digest = reference.partition("@")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise DependencyError(f"Base image {reference} trong Dockerfile chưa ghi digest.")
+        images.append(image)
+    return images
+
+
 def build_image_rows(references: list[str]) -> str:
     rows = []
     for reference in references:
@@ -296,7 +319,7 @@ def build_image_rows(references: list[str]) -> str:
     unused = sorted(IMAGES.keys() - set(references))
     if unused:
         raise DependencyError(
-            f"{', '.join(unused)} không còn trong compose.yaml. "
+            f"{', '.join(unused)} không còn trong compose.yaml và Dockerfile. "
             "Hãy xóa khỏi IMAGES trong scripts/dependencies.py."
         )
     return "".join(rows)
@@ -308,6 +331,7 @@ def build_table(
     project_file: Path = PROJECT_FILE,
     stack_file: Path = STACK_FILE,
     core_lock_file: Path = CORE_LOCK_FILE,
+    dockerfile: Path = DOCKERFILE,
 ) -> str:
     runtime, core, dev = read_declared(project_file)
     locked = read_lock(lock_file)
@@ -327,7 +351,7 @@ def build_table(
         + CORE_SECTION
         + build_rows(core_locked, core, installed, ALLOWED_LICENSES)
         + IMAGE_SECTION
-        + build_image_rows(read_images(stack_file))
+        + build_image_rows(sorted({*read_images(stack_file), *read_base_images(dockerfile)}))
         + DEV_SECTION
         + build_rows(dev_pins, dev, installed, ALLOWED_LICENSES | DEV_ONLY_LICENSES)
         + footer()

@@ -121,7 +121,7 @@ def test_footer_states_allowed_licenses():
 
     assert "Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MIT-0 và PSF-2.0" in table
     assert "CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later" in table
-    assert "Apache-2.0, GPL-2.0-only, MIT và PostgreSQL" in table
+    assert "Apache-2.0, GPL-2.0-only, MIT, PostgreSQL và Python-2.0.1" in table
     assert "GPL-2.0-only chỉ được chạy trong container riêng" in table
 
 
@@ -201,6 +201,42 @@ def test_table_lists_every_image_of_the_stack():
         assert f"| {name} | {tag} | {image.license} | {image.description} |" in table
     assert table.index(dependencies.RUNTIME_SECTION) < table.index(dependencies.IMAGE_SECTION)
     assert table.index(dependencies.IMAGE_SECTION) < table.index(dependencies.DEV_SECTION)
+
+
+def write_dockerfile(tmp_path, *references):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("".join(f"FROM {image}\n" for image in references), encoding="utf-8")
+    return dockerfile
+
+
+def test_read_base_images_returns_images_without_digest(tmp_path):
+    digest = "sha256:" + "a" * 64
+    dockerfile = write_dockerfile(tmp_path, f"demo/a:1.0@{digest} AS build", f"demo/b:2.0@{digest}")
+
+    assert dependencies.read_base_images(dockerfile) == ["demo/a:1.0", "demo/b:2.0"]
+
+
+@pytest.mark.parametrize("reference", ["python:3.14.10-slim", "python:3.14.10-slim@sha256:abc"])
+def test_base_image_without_digest_is_rejected(tmp_path, reference):
+    with pytest.raises(dependencies.DependencyError, match="chưa ghi digest"):
+        dependencies.build_table(dockerfile=write_dockerfile(tmp_path, reference))
+
+
+def test_table_lists_base_image_of_core_service():
+    table = dependencies.build_table()
+
+    [reference] = dependencies.read_base_images(dependencies.DOCKERFILE)
+    name, _, tag = reference.rpartition(":")
+    image = dependencies.IMAGES[reference]
+    assert f"| {name} | {tag} | {image.license} | {image.description} |" in table
+    assert reference not in dependencies.read_images(dependencies.STACK_FILE)
+
+
+def test_undeclared_base_image_is_rejected(tmp_path):
+    dockerfile = write_dockerfile(tmp_path, "python:3.15.2-slim-trixie@sha256:" + "a" * 64)
+
+    with pytest.raises(dependencies.DependencyError, match="chưa được khai báo"):
+        dependencies.build_table(dockerfile=dockerfile)
 
 
 @pytest.mark.parametrize("reference", ["demo/new:1.0", "postgres:19.0-alpine"])
