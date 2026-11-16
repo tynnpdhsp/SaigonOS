@@ -60,7 +60,7 @@ Các công cụ này chỉ dùng khi phát triển và khi chạy CI. Chúng kh�
 
 | Công cụ | Phiên bản | Giấy phép | Mô tả | Nguồn |
 |---|---|---|---|---|
-| httpx | 0.28.1 | BSD-3-Clause | Gọi service `core` trong kiểm thử | https://pypi.org/project/httpx/0.28.1/ |
+| httpx2 | 2.16.2 | BSD-3-Clause | Gọi service `core` trong kiểm thử | https://pypi.org/project/httpx2/2.16.2/ |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | Đọc và so sánh số phiên bản | https://pypi.org/project/packaging/26.3/ |
 | pip-licenses | 5.5.5 | MIT | Đọc giấy phép của các thư viện đã cài đặt | https://pypi.org/project/pip-licenses/5.5.5/ |
 | pytest | 9.2.0 | MIT | Chạy kiểm thử | https://pypi.org/project/pytest/9.2.0/ |

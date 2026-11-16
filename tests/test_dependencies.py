@@ -148,7 +148,7 @@ def test_indirect_dependency_gets_generic_description(tmp_path):
     assert f"| iniconfig | {pinned} | MIT | {dependencies.INDIRECT} |" in table
 
 
-@pytest.mark.parametrize("name", ["click", "fastapi", "httpx"])
+@pytest.mark.parametrize("name", ["click", "fastapi", "httpx2"])
 def test_direct_dependency_without_description_is_rejected(monkeypatch, name):
     monkeypatch.delitem(dependencies.DESCRIPTIONS, name)
 

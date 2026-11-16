@@ -45,6 +45,7 @@ class Gateway:
         self.server = server
         self.url = f"http://127.0.0.1:{server.server_port}"
         self.routes = {}
+        self.requests = []
         self.healthy()
 
     def healthy(self, seen_url=None):
@@ -87,6 +88,7 @@ def docker(tmp_path, monkeypatch):
 def gateway():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            gateway.requests.append(self.path)
             route = (self.path, "Authorization" in self.headers)
             status, body = gateway.routes.get(route, (404, b""))
             self.send_response(status)
@@ -99,7 +101,7 @@ def gateway():
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     gateway = Gateway(server)
-    Thread(target=server.serve_forever, daemon=True).start()
+    Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     yield gateway
     server.shutdown()
     server.server_close()

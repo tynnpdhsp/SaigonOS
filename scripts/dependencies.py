@@ -33,14 +33,13 @@ DEV_ONLY_LICENSES = {"CC-BY-SA-4.0", "CC0-1.0", "GPL-3.0-or-later"}
 IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL"}
 VERIFIED_LICENSES = {
     "h11": "MIT",
-    "httpx": "BSD-3-Clause",
     "reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later",
 }
 DESCRIPTIONS = {
     "asyncpg": "Kết nối service `core` với PostgreSQL",
     "click": "Xây dựng giao diện dòng lệnh cho lệnh `saigonos`",
     "fastapi": "Xây dựng REST API của service `core`",
-    "httpx": "Gọi service `core` trong kiểm thử",
+    "httpx2": "Gọi service `core` trong kiểm thử",
     "packaging": "Đọc và so sánh số phiên bản",
     "pip-licenses": "Đọc giấy phép của các thư viện đã cài đặt",
     "pyjwt": "Kiểm tra chữ ký và thời hạn của access token",
