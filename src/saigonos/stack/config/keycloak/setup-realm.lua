@@ -5,6 +5,7 @@ local cjson = require("cjson")
 cjson.decode_array_with_array_mt(true)
 
 local REALM = "saigonos"
+local MASTER = "master"
 local SCOPE = "roles"
 local ATTRIBUTE = {
     name = "unit",
@@ -29,7 +30,7 @@ local MAPPER = {
 }
 
 local keycloak_url = os.getenv("KEYCLOAK_URL")
-local admin_path = "/admin/realms/" .. REALM
+local master_frontend_url = os.getenv("MASTER_FRONTEND_URL")
 local token
 
 local function fail(message)
@@ -54,9 +55,10 @@ local function send(method, path, body, content_type)
 end
 
 local function call(method, path, data)
-    local response = send(method, admin_path .. path, data and cjson.encode(data))
+    local admin_path = "/admin/realms/" .. path
+    local response = send(method, admin_path, data and cjson.encode(data))
     if response.status >= 300 then
-        fail("Keycloak từ chối lời gọi " .. method .. " " .. admin_path .. path .. ": " .. response.body)
+        fail("Keycloak từ chối lời gọi " .. method .. " " .. admin_path .. ": " .. response.body)
     end
     return response.body ~= "" and cjson.decode(response.body) or nil
 end
@@ -88,31 +90,59 @@ local function log_in()
     token = cjson.decode(response.body).access_token
 end
 
+local function secure_master()
+    local master = call("GET", MASTER)
+    local attributes = master.attributes or {}
+    local changes = {}
+    local messages = {}
+    if attributes.frontendUrl ~= master_frontend_url then
+        attributes.frontendUrl = master_frontend_url
+        changes.attributes = attributes
+        table.insert(messages, "Đã đặt Frontend URL của realm " .. MASTER .. " là " .. master_frontend_url)
+    end
+    if not master.bruteForceProtected then
+        changes.bruteForceProtected = true
+        table.insert(messages, "Đã bật chặn đăng nhập sai nhiều lần cho realm " .. MASTER)
+    end
+    if next(changes) == nil then
+        print("Realm " .. MASTER .. " không cần thay đổi")
+        return
+    end
+    call("PUT", MASTER, changes)
+    for _, message in ipairs(messages) do
+        print(message)
+    end
+    if changes.attributes then
+        log_in()
+    end
+end
+
 local function add_attribute()
-    local profile = call("GET", "/users/profile")
+    local profile = call("GET", REALM .. "/users/profile")
     if find(profile.attributes, ATTRIBUTE.name) then
         return false
     end
     table.insert(profile.attributes, ATTRIBUTE)
-    call("PUT", "/users/profile", profile)
+    call("PUT", REALM .. "/users/profile", profile)
     print("Đã thêm thuộc tính " .. ATTRIBUTE.name .. " vào user profile của realm " .. REALM)
     return true
 end
 
 local function add_mapper()
-    local scope = find(call("GET", "/client-scopes"), SCOPE)
+    local scope = find(call("GET", REALM .. "/client-scopes"), SCOPE)
     if not scope then
         fail("Realm " .. REALM .. " không có client scope " .. SCOPE)
     end
     if find(scope.protocolMappers, MAPPER.name) then
         return false
     end
-    call("POST", "/client-scopes/" .. scope.id .. "/protocol-mappers/models", MAPPER)
+    call("POST", REALM .. "/client-scopes/" .. scope.id .. "/protocol-mappers/models", MAPPER)
     print("Đã thêm mapper " .. MAPPER.name .. " vào client scope " .. SCOPE .. " của realm " .. REALM)
     return true
 end
 
 log_in()
+secure_master()
 local attribute_added = add_attribute()
 local mapper_added = add_mapper()
 if not attribute_added and not mapper_added then
