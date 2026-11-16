@@ -18,6 +18,7 @@ DEFAULT_HTTPS_PORT = 443
 APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
 CADDY_PROFILE = "caddy"
 OPTIONAL_SERVICES = (CADDY_PROFILE,)
+BYTECODE_FOLDER = "__pycache__"
 SECRET_KEYS = (
     "POSTGRES_PASSWORD",
     "KEYCLOAK_DB_PASSWORD",
@@ -148,6 +149,8 @@ def check_port(port: str, owner: str, option: str, used: list[tuple[str | None, 
 
 def copy_tree(source: Traversable, target: Path) -> None:
     for entry in source.iterdir():
+        if entry.name == BYTECODE_FOLDER:
+            continue
         path = target / entry.name
         if entry.is_dir():
             path.mkdir(exist_ok=True)

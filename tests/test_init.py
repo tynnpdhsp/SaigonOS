@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from saigonos.cli import main
-from saigonos.home import SECRET_KEYS
+from saigonos.home import BYTECODE_FOLDER, SECRET_KEYS, copy_tree
 
 STACK = files("saigonos").joinpath("stack")
 SETTING_KEYS = [
@@ -51,6 +51,8 @@ def append_env(home, line):
 
 def stack_files(directory=STACK, prefix=""):
     for entry in directory.iterdir():
+        if entry.name == BYTECODE_FOLDER:
+            continue
         if entry.is_dir():
             yield from stack_files(entry, f"{prefix}{entry.name}/")
         else:
@@ -70,6 +72,27 @@ def test_init_copies_stack_files(home):
     assert "config/apisix/routes/api.json" in shipped
     assert {name: (home / name).read_bytes() for name in shipped} == shipped
     assert f"Thư mục làm việc: {home}\n" in result.output
+
+
+def test_init_copies_source_of_core_service(home):
+    init("--home", home)
+
+    shipped = dict(stack_files())
+    assert {"core/requirements.txt", "core/saigonos_core/main.py"} <= shipped.keys()
+    assert (home / "core" / "saigonos_core" / "main.py").is_file()
+
+
+def test_bytecode_folders_are_not_copied(tmp_path):
+    source, target = tmp_path / "source", tmp_path / "target"
+    (source / "core" / BYTECODE_FOLDER).mkdir(parents=True)
+    (source / "core" / BYTECODE_FOLDER / "main.cpython-312.pyc").write_bytes(b"")
+    (source / "core" / "main.py").write_text("", encoding="utf-8")
+    target.mkdir()
+
+    copy_tree(source, target)
+
+    copied = sorted(path.relative_to(target).as_posix() for path in target.rglob("*"))
+    assert copied == ["core", "core/main.py"]
 
 
 def test_init_writes_env_with_defaults_and_random_secrets(home):
