@@ -204,13 +204,15 @@ class Stack:
         reply = self.admin("DELETE", path, roles)
         assert reply.status == 204, reply.body
 
-    def login(self, user):
+    def login(self, user, scope=None):
         form = {
             "grant_type": "password",
             "client_id": CLIENT,
             "username": user.name,
             "password": user.password,
         }
+        if scope:
+            form["scope"] = scope
         return self.call(
             "POST", f"{self.url}/auth/realms/{REALM}/protocol/openid-connect/token", form=form
         )

@@ -613,6 +613,30 @@ def test_token_without_role_authenticated_runs_as_anon(stack, notes):
     assert notes.call(user, "GET")[0] == 401
 
 
+def test_api_accepts_access_token_only(stack, notes):
+    user = stack.new_user()
+    tokens = json.loads(stack.login(user, scope="openid").body)
+    path = f"/rpc/{notes.table}_open"
+
+    def through_gateway(token=None):
+        reply = stack.call("GET", f"{stack.url}/api{path}", token=token)
+        return reply.status, json.loads(reply.body), reply.headers.get("WWW-Authenticate")
+
+    rejected = through_gateway(tokens["id_token"])
+    document = stack.call("GET", f"{stack.url}/api/", token=tokens["id_token"]).status
+
+    assert through_gateway(tokens["access_token"])[:2] == (
+        200,
+        {"role": "authenticated", "uid": user.id},
+    )
+    assert through_gateway()[:2] == (200, {"role": "anon", "uid": None})
+    assert rejected[0] == 401
+    assert (rejected[1]["code"], rejected[1]["message"]) == ("SGN01", "Access token không hợp lệ")
+    assert rejected[2] == 'Bearer error="invalid_token"'
+    assert stack.postgrest_status(path, tokens["id_token"]) == 401
+    assert document == 401
+
+
 def test_forged_token_is_rejected_where_anon_is_allowed(stack, notes):
     forged = stack.forged_tokens(stack.new_user())
     path = f"/rpc/{notes.table}_open"
