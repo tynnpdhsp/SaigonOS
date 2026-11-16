@@ -115,15 +115,13 @@ END $$;
 SET session_replication_role = {role};
 SELECT pg_temp.attempt(statement)
 FROM unnest(ARRAY[
-    $$UPDATE core.audit_log SET actor = 'nguoi-khac'$$,
-    'DELETE FROM core.audit_log',
-    'TRUNCATE core.audit_log'
+    $$UPDATE {table} SET {change}$$,
+    'DELETE FROM {table}',
+    'TRUNCATE {table}'
 ]) WITH ORDINALITY AS attempts (statement, position)
 ORDER BY position;
 """
-AUDIT_OWNER = """
-SELECT relowner = current_user::regrole FROM pg_class WHERE oid = 'core.audit_log'::regclass
-"""
+OWNED = "SELECT relowner = current_user::regrole FROM pg_class WHERE oid = '{table}'::regclass"
 AUDIT_SIZE = """
 SELECT count(*), (SELECT hash FROM core.audit_log ORDER BY id DESC LIMIT 1) FROM core.audit_log
 """
@@ -174,17 +172,47 @@ SELECT owner,
 FROM {schema}.contacts;
 GRANT SELECT ON api.{schema} TO authenticated;
 """
+POLICY = "du-lieu-ca-nhan"
+AGREE = """\
+CREATE FUNCTION api.{name}(version text) RETURNS core.consents
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+BEGIN ATOMIC
+    INSERT INTO core.consents (policy, policy_version) VALUES ('{policy}', version) RETURNING *;
+END;
+GRANT EXECUTE ON FUNCTION api.{name} TO authenticated;
+"""
+INCOMPLETE_CONSENTS = """
+CREATE FUNCTION pg_temp.attempt(statement text) RETURNS text
+LANGUAGE plpgsql
+AS $$ BEGIN
+    EXECUTE statement;
+    RETURN 'đã thêm';
+EXCEPTION WHEN not_null_violation OR check_violation THEN
+    RETURN SQLSTATE;
+END $$;
+SELECT pg_temp.attempt('INSERT INTO core.consents ' || consent)
+FROM unnest(ARRAY[
+    $$(policy, policy_version) VALUES ('p', '1')$$,
+    $$(subject, policy, policy_version) VALUES ('', 'p', '1')$$,
+    $$(subject, policy_version) VALUES ('s', '1')$$,
+    $$(subject, policy, policy_version) VALUES ('s', '', '1')$$,
+    $$(subject, policy) VALUES ('s', 'p')$$,
+    $$(subject, policy, policy_version) VALUES ('s', 'p', '')$$
+]) WITH ORDINALITY AS attempts (consent, position)
+ORDER BY position;
+"""
+CONSENTS_SIZE = "SELECT count(*) FROM core.consents"
 
 
 def unique(prefix):
     return f"{prefix}_{secrets.token_hex(4)}"
 
 
-def served(stack, url):
+def served(stack, path):
     token = stack.token(stack.new_user())
     deadline = time.monotonic() + 10
-    while (reply := stack.call("GET", url, token=token)).status != 200:
-        assert time.monotonic() < deadline, reply.body
+    while path not in documented(stack, token)[0]:
+        assert time.monotonic() < deadline, f"PostgREST chưa phục vụ {path}"
         time.sleep(0.5)
 
 
@@ -291,7 +319,7 @@ def notes(stack):
     stack.add_migration(f"9005_{notes.table}.sql", text)
     started = stack.saigonos("up")
     assert started.returncode == 0, started.stderr
-    served(stack, notes.url)
+    served(stack, f"/{notes.table}")
     return notes
 
 
@@ -301,8 +329,24 @@ def contacts(stack):
     stack.add_migration(f"9006_{schema}.sql", CONTACTS.format(schema=schema, lead=LEAD))
     started = stack.saigonos("up")
     assert started.returncode == 0, started.stderr
-    served(stack, f"{stack.url}/api/{schema}")
+    served(stack, f"/{schema}")
     return schema
+
+
+@pytest.fixture(scope="module")
+def agree(stack):
+    name = unique("agree")
+    stack.add_migration(f"9007_{name}.sql", AGREE.format(name=name, policy=POLICY))
+    started = stack.saigonos("up")
+    assert started.returncode == 0, started.stderr
+    served(stack, f"/rpc/{name}")
+
+    def call(user, version="2026-11"):
+        url = f"{stack.url}/api/rpc/{name}"
+        reply = stack.call("POST", url, token=stack.token(user), body={"version": version})
+        return reply.status, json.loads(reply.body)
+
+    return call
 
 
 def test_migrate_records_each_shipped_file(stack):
@@ -732,10 +776,11 @@ def test_audit_trigger_never_scans_whole_audit_log(stack, notes):
 def test_audit_log_refuses_update_delete_and_truncate_even_from_owner(stack, notes, role):
     written_entries(stack, notes)
     before = stack.sql(AUDIT_SIZE)
+    changes = REFUSED_CHANGES.format(role=role, table="core.audit_log", change="actor = 'khac'")
 
-    refused = stack.sql(REFUSED_CHANGES.format(role=role))[-3:]
+    refused = stack.sql(changes)[-3:]
 
-    assert stack.sql(AUDIT_OWNER) == [["t"]]
+    assert stack.sql(OWNED.format(table="core.audit_log")) == [["t"]]
     assert refused == [
         [f"Bảng core.audit_log chỉ cho phép thêm dòng, không cho phép {operation}"]
         for operation in ("UPDATE", "DELETE", "TRUNCATE")
@@ -831,3 +876,68 @@ def test_view_with_security_invoker_masks_contacts_and_keeps_row_security(stack,
         [{"owner": user, "phone": phone, "email": email} for user, [phone, email] in rows.items()],
     )
     assert read(lead, "contacts", {"Accept-Profile": contacts})[0] == 406
+
+
+def test_consent_records_caller_policy_version_and_server_time(stack, agree):
+    user = stack.new_user()
+    started = stack.sql("SELECT clock_timestamp()")[0][0]
+
+    status, consent = agree(user)
+
+    finished = stack.sql("SELECT clock_timestamp()")[0][0]
+    in_time = f"given_at BETWEEN '{started}' AND '{finished}'"
+    assert status == 200, consent
+    assert (consent["subject"], consent["policy"], consent["policy_version"]) == (
+        user.id,
+        POLICY,
+        "2026-11",
+    )
+    assert stack.sql(f"SELECT {in_time} FROM core.consents WHERE id = {consent['id']}") == [["t"]]
+
+
+def test_consent_is_written_to_audit_log(stack, agree):
+    user = stack.new_user()
+
+    _, consent = agree(user)
+
+    written = f"table_name = 'consents' AND new_row ->> 'id' = '{consent['id']}'"
+    entries = audit_entries(stack, written)
+    sources = [(entry["actor"], entry["db_role"], entry["operation"]) for entry in entries]
+    assert sources == [(user.id, "authenticated", "INSERT")]
+    assert entries[0]["new_row"] == consent
+
+
+def test_consent_needs_subject_policy_and_version(stack):
+    before = stack.sql(CONSENTS_SIZE)
+
+    attempts = stack.sql(INCOMPLETE_CONSENTS)[-6:]
+
+    assert attempts == [[code] for code in ("23502", "23514") * 3]
+    assert stack.sql(CONSENTS_SIZE) == before
+
+
+@pytest.mark.parametrize("role", ["origin", "replica"])
+def test_consents_refuse_update_delete_and_truncate_even_from_owner(stack, role):
+    consent = f"('khach-1', '{POLICY}', '2026-11')"
+    stack.sql(f"INSERT INTO core.consents (subject, policy, policy_version) VALUES {consent}")
+    before = stack.sql(CONSENTS_SIZE)
+    changes = REFUSED_CHANGES.format(role=role, table="core.consents", change="policy = 'khac'")
+
+    refused = stack.sql(changes)[-3:]
+
+    assert stack.sql(OWNED.format(table="core.consents")) == [["t"]]
+    assert refused == [
+        [f"Bảng core.consents chỉ cho phép thêm dòng, không cho phép {operation}"]
+        for operation in ("UPDATE", "DELETE", "TRUNCATE")
+    ]
+    assert stack.sql(CONSENTS_SIZE) == before
+
+
+def test_api_roles_cannot_use_consents_directly(stack):
+    query = """
+        SELECT role,
+            has_table_privilege(role, 'core.consents', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE')
+        FROM unnest(ARRAY['anon', 'authenticated']) AS role
+    """
+
+    assert stack.sql(query) == [["anon", "f"], ["authenticated", "f"]]
