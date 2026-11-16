@@ -15,6 +15,7 @@ from saigonos.home import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_KEYCLOAK_PORT,
+    DEFAULT_SEAWEEDFS_PORT,
     SettingsError,
     disabled_services,
     init_home,
@@ -131,6 +132,14 @@ def main() -> None:
     ),
 )
 @click.option(
+    "--seaweedfs-port",
+    type=PORT,
+    help=(
+        "Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt. "
+        f"Mặc định là {DEFAULT_SEAWEEDFS_PORT}."
+    ),
+)
+@click.option(
     "--caddy/--no-caddy",
     default=None,
     help=(
@@ -147,6 +156,7 @@ def init(
     http_port: int | None,
     admin_port: int | None,
     keycloak_port: int | None,
+    seaweedfs_port: int | None,
     caddy: bool | None,
 ) -> None:
     try:
@@ -157,6 +167,7 @@ def init(
             http_port=http_port,
             admin_port=admin_port,
             keycloak_port=keycloak_port,
+            seaweedfs_port=seaweedfs_port,
             caddy=caddy,
         )
     except SettingsError as error:

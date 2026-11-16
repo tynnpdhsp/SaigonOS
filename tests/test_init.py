@@ -169,37 +169,78 @@ def test_init_adds_setting_missing_from_env_of_older_version(home, line):
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
 
-    result = init("--home", home, *options, "--keycloak-port", 9998)
+    result = init("--home", home, *options, "--keycloak-port", 9998, "--seaweedfs-port", 9997)
 
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
     assert env["SAIGONOS_HTTP_PORT"] == "8000"
     assert env["SAIGONOS_ADMIN_PORT"] == "9999"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9998"
+    assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9997"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
 
 
 @pytest.mark.parametrize(
-    ("options", "message"),
+    ("options", "message", "option"),
     [
-        (["--keycloak-port", 9080], "Cổng 9080 của Keycloak trùng với cổng HTTP của API Gateway."),
-        (["--keycloak-port", 9180], "Cổng 9180 của Keycloak trùng với cổng quản trị của APISIX."),
+        (
+            ["--keycloak-port", 9080],
+            "Cổng 9080 của Keycloak trùng với cổng HTTP của API Gateway.",
+            "--keycloak-port",
+        ),
+        (
+            ["--keycloak-port", 9180],
+            "Cổng 9180 của Keycloak trùng với cổng quản trị của APISIX.",
+            "--keycloak-port",
+        ),
         (
             ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 80],
             "Cổng 80 của Keycloak trùng với cổng HTTP của Caddy.",
+            "--keycloak-port",
         ),
         (
             ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 443],
             "Cổng 443 của Keycloak trùng với cổng HTTPS của Caddy.",
+            "--keycloak-port",
+        ),
+        (
+            ["--seaweedfs-port", 9080],
+            "Cổng 9080 của SeaweedFS trùng với cổng HTTP của API Gateway.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--seaweedfs-port", 9180],
+            "Cổng 9180 của SeaweedFS trùng với cổng quản trị của APISIX.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--seaweedfs-port", 9280],
+            "Cổng 9280 của SeaweedFS trùng với cổng của Keycloak.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--http-port", 9380],
+            "Cổng 9380 của SeaweedFS trùng với cổng HTTP của API Gateway.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--seaweedfs-port", 80],
+            "Cổng 80 của SeaweedFS trùng với cổng HTTP của Caddy.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--seaweedfs-port", 443],
+            "Cổng 443 của SeaweedFS trùng với cổng HTTPS của Caddy.",
+            "--seaweedfs-port",
         ),
     ],
 )
-def test_keycloak_port_used_by_another_service_is_rejected(home, options, message):
+def test_port_used_by_another_service_is_rejected(home, options, message, option):
     result = init("--home", home, *options)
 
     assert result.exit_code == 2
     assert message in result.output
-    assert "Hãy chọn cổng khác bằng tùy chọn --keycloak-port." in result.output
+    assert f"Hãy chọn cổng khác bằng tùy chọn {option}." in result.output
     assert not home.exists()
 
 

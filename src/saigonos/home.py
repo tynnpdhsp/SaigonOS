@@ -137,12 +137,12 @@ def check_caddy(url: str, http_host: str, http_port: str, caddy_http_port: str) 
         )
 
 
-def check_keycloak_port(keycloak_port: str, used: list[tuple[str | None, str]]) -> None:
-    for port, name in used:
-        if keycloak_port == port:
+def check_port(port: str, owner: str, option: str, used: list[tuple[str | None, str]]) -> None:
+    for other, name in used:
+        if port == other:
             raise SettingsError(
-                f"Cổng {keycloak_port} của Keycloak trùng với {name}. "
-                "Hãy chọn cổng khác bằng tùy chọn --keycloak-port."
+                f"Cổng {port} của {owner} trùng với {name}. "
+                f"Hãy chọn cổng khác bằng tùy chọn {option}."
             )
 
 
@@ -173,6 +173,7 @@ def init_home(
     http_port: int | None = None,
     admin_port: int | None = None,
     keycloak_port: int | None = None,
+    seaweedfs_port: int | None = None,
     caddy: bool | None = None,
 ) -> Initialized:
     lines = read_env_lines(home)
@@ -193,7 +194,7 @@ def init_home(
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
         "SAIGONOS_KEYCLOAK_PORT": str(keycloak_port or old_keycloak_port),
-        "SAIGONOS_SEAWEEDFS_PORT": str(old_seaweedfs_port),
+        "SAIGONOS_SEAWEEDFS_PORT": str(seaweedfs_port or old_seaweedfs_port),
     }
     missing = [key for key in SECRET_KEYS if not current.get(key)]
     for key in SECRET_KEYS:
@@ -216,7 +217,9 @@ def init_home(
         check_caddy(url, new_http_host, new_http_port, caddy_http_port)
         used.append((caddy_http_port, "cổng HTTP của Caddy"))
         used.append((https_port(url), "cổng HTTPS của Caddy"))
-    check_keycloak_port(values["SAIGONOS_KEYCLOAK_PORT"], used)
+    check_port(values["SAIGONOS_KEYCLOAK_PORT"], "Keycloak", "--keycloak-port", used)
+    used.append((values["SAIGONOS_KEYCLOAK_PORT"], "cổng của Keycloak"))
+    check_port(values["SAIGONOS_SEAWEEDFS_PORT"], "SeaweedFS", "--seaweedfs-port", used)
 
     home.mkdir(parents=True, exist_ok=True)
     for key, value in values.items():
