@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
+DEFAULT_KEYCLOAK_PORT = 9280
 DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
@@ -132,6 +133,15 @@ def check_caddy(url: str, http_host: str, http_port: str, caddy_http_port: str) 
         )
 
 
+def check_keycloak_port(keycloak_port: str, used: list[tuple[str | None, str]]) -> None:
+    for port, name in used:
+        if keycloak_port == port:
+            raise SettingsError(
+                f"Cổng {keycloak_port} của Keycloak trùng với {name}. "
+                "Hãy chọn cổng khác bằng tùy chọn --keycloak-port."
+            )
+
+
 def copy_tree(source: Traversable, target: Path) -> None:
     for entry in source.iterdir():
         path = target / entry.name
@@ -158,6 +168,7 @@ def init_home(
     http_host: str | None = None,
     http_port: int | None = None,
     admin_port: int | None = None,
+    keycloak_port: int | None = None,
     caddy: bool | None = None,
 ) -> Initialized:
     lines = read_env_lines(home)
@@ -170,11 +181,13 @@ def init_home(
         url = local_url(new_http_port) if old_url == local_url(old_http_port) else old_url
     new_http_host = http_host or current.get("SAIGONOS_HTTP_HOST") or DEFAULT_HTTP_HOST
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
+    old_keycloak_port = current.get("SAIGONOS_KEYCLOAK_PORT") or DEFAULT_KEYCLOAK_PORT
     values = {
         "SAIGONOS_URL": url,
         "SAIGONOS_HTTP_HOST": new_http_host,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
+        "SAIGONOS_KEYCLOAK_PORT": str(keycloak_port or old_keycloak_port),
     }
     missing = [key for key in SECRET_KEYS if not current.get(key)]
     for key in SECRET_KEYS:
@@ -188,9 +201,16 @@ def init_home(
         else:
             profiles.remove(CADDY_PROFILE)
         values["COMPOSE_PROFILES"] = ",".join(profiles)
+    used = [
+        (new_http_port, "cổng HTTP của API Gateway"),
+        (values["SAIGONOS_ADMIN_PORT"], "cổng quản trị của APISIX"),
+    ]
     if CADDY_PROFILE in profiles:
         caddy_http_port = current.get("CADDY_HTTP_PORT") or str(DEFAULT_CADDY_HTTP_PORT)
         check_caddy(url, new_http_host, new_http_port, caddy_http_port)
+        used.append((caddy_http_port, "cổng HTTP của Caddy"))
+        used.append((https_port(url), "cổng HTTPS của Caddy"))
+    check_keycloak_port(values["SAIGONOS_KEYCLOAK_PORT"], used)
 
     home.mkdir(parents=True, exist_ok=True)
     for key, value in values.items():

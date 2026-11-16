@@ -40,6 +40,10 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx512m
+    ports:
+      - host_ip: 127.0.0.1
+        published: ${SAIGONOS_KEYCLOAK_PORT:?}
+        target: 8080
     volumes:
       - ./config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
     healthcheck:
