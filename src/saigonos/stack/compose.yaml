@@ -207,6 +207,41 @@ services:
       start_period: 60s
       start_interval: 2s
 
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.54
+    restart: unless-stopped
+    command:
+      - mini
+      - -ip=seaweedfs
+      - -master.telemetry=false
+      - -filer.disableDirListing
+      - -s3.autoCreateBucket=false
+      - -webdav=false
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+      - -admin.port.legacy=0
+    environment:
+      S3_BUCKET: quarantine,clean
+      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:?}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:?}
+      WEED_ADMIN_PASSWORD: ${SEAWEEDFS_ADMIN_PASSWORD:?}
+    ports:
+      - host_ip: 127.0.0.1
+        published: ${SAIGONOS_SEAWEEDFS_PORT:?}
+        target: 12535
+    networks:
+      - storage
+    volumes:
+      - seaweedfs-data:/data
+      - ./config/seaweedfs:/config:ro
+    healthcheck:
+      test: ["CMD", "sh", "/config/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
   caddy:
     image: caddy:2.11.9-alpine
     profiles: ["caddy"]
@@ -234,3 +269,7 @@ volumes:
   postgres-data:
   etcd-data:
   jwks:
+  seaweedfs-data:
+
+networks:
+  storage:

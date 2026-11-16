@@ -17,6 +17,7 @@ SETTING_KEYS = [
     "SAIGONOS_HTTP_PORT",
     "SAIGONOS_ADMIN_PORT",
     "SAIGONOS_KEYCLOAK_PORT",
+    "SAIGONOS_SEAWEEDFS_PORT",
     *SECRET_KEYS,
 ]
 HTTPS_URL = "https://dx.example.com"
@@ -82,6 +83,7 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     assert env["SAIGONOS_HTTP_PORT"] == "9080"
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9280"
+    assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9380"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
     assert not (home / ".env.tmp").exists()
@@ -144,7 +146,10 @@ def test_init_fills_only_missing_and_empty_values(home):
     assert f"Đã tạo {len(SECRET_KEYS) - 1} mật khẩu ngẫu nhiên" in result.output
 
 
-@pytest.mark.parametrize("line", ["SAIGONOS_HTTP_HOST=127.0.0.1", "SAIGONOS_KEYCLOAK_PORT=9280"])
+@pytest.mark.parametrize(
+    "line",
+    ["SAIGONOS_HTTP_HOST=127.0.0.1", "SAIGONOS_KEYCLOAK_PORT=9280", "SAIGONOS_SEAWEEDFS_PORT=9380"],
+)
 def test_init_adds_setting_missing_from_env_of_older_version(home, line):
     init("--home", home)
     env_file = home / ".env"

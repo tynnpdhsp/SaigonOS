@@ -53,6 +53,11 @@ IMAGES = {
         "Làm reverse proxy HTTPS và tự động lấy chứng chỉ khi được bật",
         "https://github.com/caddyserver/caddy/tree/v2.11.9",
     ),
+    "chrislusf/seaweedfs:4.54": Image(
+        "Apache-2.0",
+        "Lưu file của các ứng dụng theo chuẩn S3",
+        "https://github.com/seaweedfs/seaweedfs/tree/4.54",
+    ),
     "postgres:18.6-alpine": Image(
         "PostgreSQL",
         "Lưu dữ liệu của Keycloak và của các ứng dụng",
