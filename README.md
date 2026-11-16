@@ -16,9 +16,9 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 
 - Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
 - Python 3.11 trở lên và pip.
-- Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
+- Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
-- Kết nối Internet để tải các image Docker và bản cập nhật của cơ sở dữ liệu mã độc.
+- Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
 - Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các service.
 
 ## Cài đặt
@@ -97,6 +97,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
+| http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -156,6 +157,16 @@ PostgREST tự sinh tài liệu OpenAPI 2.0 cho REST API. Tài liệu nằm ở 
 Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Lời gọi không có access token nhận tài liệu theo quyền của role `anon`. Lời gọi có access token trong header `Authorization` nhận tài liệu theo quyền của role `authenticated`. Quyền được kiểm tra ở mỗi lời gọi. Do đó, sau khi một quyền được cấp hoặc thu hồi, tài liệu thay đổi ngay ở lời gọi tiếp theo.
 
 Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Ví dụ, với địa chỉ truy cập `https://dx.example.com`, các lời gọi trong tài liệu bắt đầu bằng `https://dx.example.com/api`.
+
+## API của service core
+
+Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
+
+API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer (`iss`), thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service từ bên trong mạng Docker vẫn bị từ chối khi access token không hợp lệ. Service chỉ chấp nhận access token, không chấp nhận ID token. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
+
+Service kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Do đó, các hàm `core.uid()`, `core.has_role()`, `core.unit()` và chính sách phân quyền từng dòng dùng chung cho cả hai.
+
+Image của service được Docker Compose build trên máy cài đặt từ image `python` chính thức. Các thư viện được cài từ lock file có mã băm. Ở lần khởi động đầu tiên, việc build mất khoảng một phút. Mỗi lần chạy `saigonos up`, Docker Compose build lại image. Khi mã nguồn không đổi, việc build dùng lại kết quả cũ nên chỉ mất vài giây.
 
 ## Cấu hình
 
@@ -360,7 +371,7 @@ Lệnh không phát hiện được hai trường hợp. Trường hợp thứ n
 
 SaigonOS dùng ClamAV để quét mã độc. ClamAV chạy trong hai service:
 
-- Service `clamav` quét nội dung được gửi tới. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. API Gateway và các service khác không kết nối được tới ClamAV.
+- Service `clamav` quét nội dung được gửi tới. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. Chỉ service `core` kết nối được tới ClamAV.
 - Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày. Bản cập nhật được tải từ `database.clamav.net`.
 
 Cơ sở dữ liệu mã độc được lưu trong volume `clamav-data`. Do đó, các bản cập nhật được giữ lại khi khởi động lại hệ thống. Service `clamav` kiểm tra cơ sở dữ liệu 10 phút một lần và tự nạp bản mới. Trong lúc nạp, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM để dùng khoảng 1 GB RAM thay vì 2 GB. Do đó, các yêu cầu quét phải chờ khoảng 15 giây cho tới khi nạp xong.
@@ -401,7 +412,7 @@ saigonos up
 saigonos doctor
 ```
 
-Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh này cũng thêm vào file `.env` các giá trị mà phiên bản mới cần, ví dụ mật khẩu của service mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh này cũng thêm vào file `.env` các giá trị mà phiên bản mới cần, ví dụ mật khẩu của service mới. Lệnh `saigonos up` build lại image của service `core` và tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
 
 ## Tham gia phát triển
 
