@@ -26,6 +26,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `seaweedfs` lưu file của các ứng dụng theo chuẩn S3. Hai bucket `quarantine` và `clean` được tạo sẵn. Lời gọi S3 phải được ký bằng khóa trong file `.env`. Service này nằm trong một mạng Docker riêng. Do đó, API Gateway và các service khác không kết nối được tới SeaweedFS. SeaweedFS không gửi thống kê ra ngoài và không liệt kê nội dung thư mục.
 - Admin UI của SeaweedFS ở địa chỉ http://127.0.0.1:9380/, chỉ truy cập được từ chính máy cài đặt. Tùy chọn `--seaweedfs-port` của lệnh `saigonos init` đổi cổng này.
 - Lệnh `saigonos init` tạo khóa S3 và mật khẩu Admin UI của SeaweedFS trong file `.env`. Khi cập nhật từ phiên bản cũ, lệnh thêm các giá trị này và giữ nguyên các mật khẩu đã có.
+- Service `clamav` quét mã độc bằng ClamAV. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. API Gateway và các service khác không kết nối được tới ClamAV. Khi tiến trình quét dừng bất thường, container tự khởi động lại.
+- Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày và tải bản mới từ `database.clamav.net`. Cơ sở dữ liệu nằm trong volume `clamav-data` nên được giữ lại khi khởi động lại hệ thống. Trong lúc nạp bản mới, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM và dùng khoảng 1 GB RAM.
 
 ### Thay đổi
 
