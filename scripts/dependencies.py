@@ -58,6 +58,11 @@ IMAGES = {
         "Lưu file của các ứng dụng theo chuẩn S3",
         "https://github.com/seaweedfs/seaweedfs/tree/4.54",
     ),
+    "clamav/clamav-debian:1.5.4": Image(
+        "GPL-2.0-only",
+        "Quét mã độc trong file được tải lên",
+        "https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4",
+    ),
     "postgres:18.6-alpine": Image(
         "PostgreSQL",
         "Lưu dữ liệu của Keycloak và của các ứng dụng",

@@ -242,6 +242,39 @@ services:
       start_period: 60s
       start_interval: 2s
 
+  clamav:
+    image: clamav/clamav-debian:1.5.4
+    restart: unless-stopped
+    # clamd là tiến trình chính để container tự chạy lại khi clamd dừng
+    command: ["clamd", "--foreground"]
+    networks:
+      - scan
+    volumes:
+      - clamav-data:/var/lib/clamav
+      - ./config/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+      start_interval: 2s
+
+  freshclam:
+    image: clamav/clamav-debian:1.5.4
+    restart: unless-stopped
+    depends_on:
+      clamav:
+        condition: service_started
+    command: ["freshclam", "--daemon", "--foreground"]
+    networks:
+      - updates
+    volumes:
+      - clamav-data:/var/lib/clamav
+      - ./config/clamav/freshclam.conf:/etc/clamav/freshclam.conf:ro
+    healthcheck:
+      disable: true
+
   caddy:
     image: caddy:2.11.9-alpine
     profiles: ["caddy"]
@@ -270,6 +303,10 @@ volumes:
   etcd-data:
   jwks:
   seaweedfs-data:
+  clamav-data:
 
 networks:
   storage:
+  scan:
+    internal: true
+  updates:
