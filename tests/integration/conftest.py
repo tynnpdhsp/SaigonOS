@@ -74,6 +74,11 @@ def free_port():
         return listener.getsockname()[1]
 
 
+def free_ports():
+    options = ("--http-port", "--admin-port", "--keycloak-port")
+    return [value for option in options for value in (option, str(free_port()))]
+
+
 def send(method, url, token=None, form=None, body=None, headers=None, context=None, address=None):
     parts = urlsplit(url)
     headers = dict(headers or {})
@@ -122,23 +127,29 @@ class Stack:
     def url(self):
         return self.env["SAIGONOS_URL"]
 
+    @property
+    def keycloak(self):
+        return f"http://localhost:{self.env['SAIGONOS_KEYCLOAK_PORT']}/auth"
+
     def call(self, method, url, **options):
         return send(method, url, context=self.context, **options)
 
-    def admin(self, method, path, body=None):
+    def master_login(self, username, password, base=None):
         form = {
             "grant_type": "password",
             "client_id": "admin-cli",
-            "username": "admin",
-            "password": self.env["KEYCLOAK_ADMIN_PASSWORD"],
+            "username": username,
+            "password": password,
         }
-        reply = self.call(
-            "POST", f"{self.url}/auth/realms/master/protocol/openid-connect/token", form=form
-        )
+        url = f"{base or self.keycloak}/realms/master/protocol/openid-connect/token"
+        return self.call("POST", url, form=form)
+
+    def admin(self, method, path, body=None, realm=REALM):
+        reply = self.master_login("admin", self.env["KEYCLOAK_ADMIN_PASSWORD"])
         assert reply.status == 200, reply.body
         token = json.loads(reply.body)["access_token"]
         return self.call(
-            method, f"{self.url}/auth/admin/realms/{REALM}{path}", token=token, body=body
+            method, f"{self.keycloak}/admin/realms/{realm}{path}", token=token, body=body
         )
 
     def create_client(self):
@@ -401,8 +412,7 @@ def run_stack(stack, request):
 @pytest.fixture(scope="module")
 def stack(tmp_path_factory, request):
     stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-it-{secrets.token_hex(4)}")
-    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
-    created = stack.saigonos("init", *ports)
+    created = stack.saigonos("init", *free_ports())
     assert created.returncode == 0, created.stdout + created.stderr
     yield from run_stack(stack, request)
 
@@ -413,7 +423,6 @@ def caddy_stack(tmp_path_factory, request):
     stack.home.mkdir()
     (stack.home / ".env").write_text(f"CADDY_HTTP_PORT={free_port()}\n", encoding="utf-8")
     options = ["--caddy", "--url", f"https://localhost:{free_port()}"]
-    ports = ["--http-port", str(free_port()), "--admin-port", str(free_port())]
-    created = stack.saigonos("init", *options, *ports)
+    created = stack.saigonos("init", *options, *free_ports())
     assert created.returncode == 0, created.stdout + created.stderr
     yield from run_stack(stack, request)
