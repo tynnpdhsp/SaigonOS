@@ -58,6 +58,8 @@ class Gateway:
         self.routes[path, False] = (200, json.dumps(discovery).encode())
         self.routes["/api/", False] = (200, b"{}")
         self.routes["/api/", True] = (401, b"")
+        self.routes["/core/health", False] = (200, b'{"status": "ok"}')
+        self.routes["/core/me", True] = (401, b"")
 
 
 @pytest.fixture(autouse=True)

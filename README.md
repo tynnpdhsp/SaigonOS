@@ -69,6 +69,7 @@ Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 ```text
 BÌNH THƯỜNG    apisix       đang chạy
 BÌNH THƯỜNG    clamav       đang chạy
+BÌNH THƯỜNG    core         đang chạy
 BÌNH THƯỜNG    etcd         đang chạy
 BÌNH THƯỜNG    freshclam    đang chạy
 BÌNH THƯỜNG    jwks         đã chạy xong
@@ -81,6 +82,7 @@ BÌNH THƯỜNG    routes       đã chạy xong
 BÌNH THƯỜNG    seaweedfs    đang chạy
 BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối
 Hệ thống hoạt động bình thường.
 ```
 

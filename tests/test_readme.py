@@ -8,6 +8,7 @@ import click
 import pytest
 
 from saigonos.cli import main
+from saigonos.doctor import PROBES
 from saigonos.home import (
     APISIX_INTERNAL_PORTS,
     DEFAULT_ADMIN_PORT,
@@ -75,8 +76,9 @@ def test_readme_options_exist_in_cli():
 
 
 def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
-    rows = [re.split(r" {2,}", row, maxsplit=2) for row in DOCTOR_SAMPLE.splitlines()]
-    finished = {name: detail == "đã chạy xong" for _, name, detail in rows[:-3]}
+    rows = [re.split(r" {2,}", row, maxsplit=2) for row in DOCTOR_SAMPLE.splitlines()[:-1]]
+    probes = [name for name, _ in PROBES]
+    finished = {name: detail == "đã chạy xong" for _, name, detail in rows if name not in probes}
     docker.services(
         {name: {"restart": "no" if done else "unless-stopped"} for name, done in finished.items()},
         [
@@ -89,6 +91,7 @@ def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
     result = cli("doctor", "--home", tmp_path / "home")
 
     assert finished
+    assert [name for _, name, _ in rows if name in probes] == probes
     assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
 
 
