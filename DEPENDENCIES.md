@@ -52,6 +52,7 @@ Các công cụ này chỉ dùng khi phát triển và khi chạy CI. Chúng kh�
 
 - Mỗi thư viện và phần mềm giữ nguyên giấy phép gốc.
 - Thư viện đi kèm sản phẩm chỉ được dùng các giấy phép Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT và PSF-2.0.
-- Phần mềm chạy trong container chỉ được dùng các giấy phép Apache-2.0, MIT và PostgreSQL. Các giấy phép này đều được OSI công nhận.
+- Phần mềm chạy trong container chỉ được dùng các giấy phép Apache-2.0, GPL-2.0-only, MIT và PostgreSQL. Các giấy phép này đều được OSI công nhận.
+- Phần mềm theo giấy phép GPL-2.0-only chỉ được chạy trong container riêng. SaigonOS chỉ trao đổi với phần mềm này qua kết nối mạng và không phân phối lại image. Do đó, giấy phép này không ảnh hưởng đến giấy phép Apache-2.0 của SaigonOS.
 - Công cụ phát triển được dùng thêm CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later. Các công cụ này không được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
 - Lệnh `make lint` báo lỗi khi gặp giấy phép khác hoặc gặp image chưa được khai báo.

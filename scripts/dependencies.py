@@ -21,7 +21,7 @@ TABLE_FILE = ROOT / "DEPENDENCIES.md"
 
 ALLOWED_LICENSES = {"Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "PSF-2.0"}
 DEV_ONLY_LICENSES = {"CC-BY-SA-4.0", "CC0-1.0", "GPL-3.0-or-later"}
-IMAGE_LICENSES = {"Apache-2.0", "MIT", "PostgreSQL"}
+IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL"}
 VERIFIED_LICENSES = {"reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later"}
 DESCRIPTIONS = {
     "click": "Xây dựng giao diện dòng lệnh cho lệnh `saigonos`",
@@ -154,6 +154,9 @@ Việc cấu hình chỉ thực hiện qua biến môi trường và file cấu 
 - Thư viện đi kèm sản phẩm chỉ được dùng các giấy phép {vietnamese_list(ALLOWED_LICENSES)}.
 - Phần mềm chạy trong container chỉ được dùng các giấy phép {vietnamese_list(IMAGE_LICENSES)}. \
 Các giấy phép này đều được OSI công nhận.
+- Phần mềm theo giấy phép GPL-2.0-only chỉ được chạy trong container riêng. SaigonOS chỉ trao đổi \
+với phần mềm này qua kết nối mạng và không phân phối lại image. Do đó, giấy phép này không ảnh \
+hưởng đến giấy phép Apache-2.0 của SaigonOS.
 - Công cụ phát triển được dùng thêm {vietnamese_list(DEV_ONLY_LICENSES)}. Các công cụ này không \
 được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
 - Lệnh `make lint` báo lỗi khi gặp giấy phép khác hoặc gặp image chưa được khai báo.
