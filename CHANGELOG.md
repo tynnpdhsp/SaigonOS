@@ -19,6 +19,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng `core.audit_log` chỉ cho phép thêm dòng. Các lệnh `UPDATE`, `DELETE` và `TRUNCATE` trên bảng này bị từ chối, kể cả với role sở hữu bảng. Hàm `core.append_only()` cũng dùng được cho các bảng khác chỉ cho phép thêm dòng.
 - Lệnh `saigonos audit verify` tính lại chuỗi mã băm của audit log. Khi một dòng đã bị sửa hoặc bị xóa, lệnh chỉ ra dòng sai đầu tiên và kết thúc với mã thoát 1. Lệnh tự tính mã băm và không dùng hàm lưu trong cơ sở dữ liệu.
 - Tài liệu OpenAPI 2.0 của REST API ở địa chỉ `/api/`. PostgREST tự sinh tài liệu này. Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Các địa chỉ trong tài liệu được lấy từ `SAIGONOS_URL`. Tài liệu cũng ghi cách gửi access token trong header `Authorization`. Ở phiên bản 0.2.0, tài liệu ghi địa chỉ `0.0.0.0:3000` của PostgREST bên trong container.
+- Hàm `core.mask_phone()` và `core.mask_email()` che một phần số điện thoại và email. Ví dụ: `0912345678` thành `091****678`, `nguyenvana@gmail.com` thành `ngu*******@gmail.com`. Role `anon` và `authenticated` gọi được hai hàm này. Khi dùng trong view, hai hàm cho phép chỉ hiện đủ dữ liệu cho người có quyền.
+- Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
 
 ### Thay đổi
 
