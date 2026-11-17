@@ -18,6 +18,7 @@ SETTING_KEYS = [
     "SAIGONOS_ADMIN_PORT",
     "SAIGONOS_KEYCLOAK_PORT",
     "SAIGONOS_SEAWEEDFS_PORT",
+    "SAIGONOS_MAX_FILE_SIZE",
     *SECRET_KEYS,
 ]
 HTTPS_URL = "https://dx.example.com"
@@ -107,6 +108,7 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9280"
     assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9380"
+    assert env["SAIGONOS_MAX_FILE_SIZE"] == "10"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
     assert not (home / ".env.tmp").exists()
@@ -171,7 +173,12 @@ def test_init_fills_only_missing_and_empty_values(home):
 
 @pytest.mark.parametrize(
     "line",
-    ["SAIGONOS_HTTP_HOST=127.0.0.1", "SAIGONOS_KEYCLOAK_PORT=9280", "SAIGONOS_SEAWEEDFS_PORT=9380"],
+    [
+        "SAIGONOS_HTTP_HOST=127.0.0.1",
+        "SAIGONOS_KEYCLOAK_PORT=9280",
+        "SAIGONOS_SEAWEEDFS_PORT=9380",
+        "SAIGONOS_MAX_FILE_SIZE=10",
+    ],
 )
 def test_init_adds_setting_missing_from_env_of_older_version(home, line):
     init("--home", home)
@@ -201,6 +208,27 @@ def test_options_set_url_and_ports(home):
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9998"
     assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9997"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
+
+
+def test_max_file_size_is_kept_until_set_again(home):
+    init("--home", home, "--max-file-size", 25)
+    kept = read_env(home)["SAIGONOS_MAX_FILE_SIZE"]
+
+    init("--home", home)
+    again = read_env(home)["SAIGONOS_MAX_FILE_SIZE"]
+    init("--home", home, "--max-file-size", 100)
+
+    assert (kept, again) == ("25", "25")
+    assert read_env(home)["SAIGONOS_MAX_FILE_SIZE"] == "100"
+
+
+@pytest.mark.parametrize("size", ["0", "101", "-1", "abc", "1.5"])
+def test_max_file_size_outside_range_is_rejected(home, size):
+    result = init("--home", home, "--max-file-size", size)
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--max-file-size'" in result.output
+    assert not home.exists()
 
 
 @pytest.mark.parametrize(

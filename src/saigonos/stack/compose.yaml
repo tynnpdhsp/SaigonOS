@@ -81,6 +81,7 @@ services:
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
       SAIGONOS_HTTP_PORT: ${SAIGONOS_HTTP_PORT:?}
+      SAIGONOS_MAX_FILE_SIZE: ${SAIGONOS_MAX_FILE_SIZE:?}
     ports:
       - host_ip: ${SAIGONOS_HTTP_HOST:?}
         published: ${SAIGONOS_HTTP_PORT:?}

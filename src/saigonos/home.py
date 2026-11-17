@@ -13,6 +13,8 @@ DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 DEFAULT_KEYCLOAK_PORT = 9280
 DEFAULT_SEAWEEDFS_PORT = 9380
+DEFAULT_MAX_FILE_SIZE = 10
+LARGEST_FILE_SIZE = 100
 DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
@@ -178,6 +180,7 @@ def init_home(
     admin_port: int | None = None,
     keycloak_port: int | None = None,
     seaweedfs_port: int | None = None,
+    max_file_size: int | None = None,
     caddy: bool | None = None,
 ) -> Initialized:
     lines = read_env_lines(home)
@@ -192,6 +195,7 @@ def init_home(
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
     old_keycloak_port = current.get("SAIGONOS_KEYCLOAK_PORT") or DEFAULT_KEYCLOAK_PORT
     old_seaweedfs_port = current.get("SAIGONOS_SEAWEEDFS_PORT") or DEFAULT_SEAWEEDFS_PORT
+    old_max_file_size = current.get("SAIGONOS_MAX_FILE_SIZE") or DEFAULT_MAX_FILE_SIZE
     values = {
         "SAIGONOS_URL": url,
         "SAIGONOS_HTTP_HOST": new_http_host,
@@ -199,6 +203,7 @@ def init_home(
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
         "SAIGONOS_KEYCLOAK_PORT": str(keycloak_port or old_keycloak_port),
         "SAIGONOS_SEAWEEDFS_PORT": str(seaweedfs_port or old_seaweedfs_port),
+        "SAIGONOS_MAX_FILE_SIZE": str(max_file_size or old_max_file_size),
     }
     missing = [key for key in SECRET_KEYS if not current.get(key)]
     for key in SECRET_KEYS:
