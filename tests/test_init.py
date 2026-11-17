@@ -75,6 +75,20 @@ def test_init_copies_stack_files(home):
     assert f"Thư mục làm việc: {home}\n" in result.output
 
 
+def test_init_creates_folder_for_bpmn_files_and_keeps_its_files(home):
+    folder = home / "config" / "operaton" / "processes"
+
+    init("--home", home)
+    created = sorted(folder.iterdir())
+    (folder / "nghi-phep.bpmn").write_text("<definitions/>", encoding="utf-8")
+    result = init("--home", home)
+
+    assert result.exit_code == 0
+    assert created == []
+    assert mode(folder) == 0o755
+    assert (folder / "nghi-phep.bpmn").read_text(encoding="utf-8") == "<definitions/>"
+
+
 def test_init_copies_source_of_core_service(home):
     init("--home", home)
 

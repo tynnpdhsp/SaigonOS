@@ -313,6 +313,8 @@ services:
         condition: service_completed_successfully
       seaweedfs:
         condition: service_healthy
+      processes:
+        condition: service_completed_successfully
     environment:
       JWT_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
       JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
@@ -364,6 +366,20 @@ services:
       retries: 3
       start_period: 180s
       start_interval: 3s
+
+  processes:
+    image: apache/apisix:3.19.0-ubuntu
+    restart: "no"
+    depends_on:
+      operaton:
+        condition: service_healthy
+    environment:
+      OPERATON_URL: http://operaton:8080/operaton/engine-rest
+      CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+    volumes:
+      - ./config/operaton:/config:ro
+    entrypoint: ["sh", "-c"]
+    command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/deploy-processes.lua /config/processes/*.bpmn"]
 
   caddy:
     image: caddy:2.11.9-alpine
