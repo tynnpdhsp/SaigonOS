@@ -19,7 +19,8 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
-- Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các service.
+- Khoảng 5 GB dung lượng đĩa cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên.
+- Khoảng 2,5 GB RAM cho các service.
 
 ## Cài đặt
 
