@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
+import time
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import get_args
+from urllib.parse import parse_qs, urlsplit
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
+from saigonos_core.downloads import LIFETIME, attachment
 from saigonos_core.files import (
     CREATE,
     FIND,
@@ -14,14 +19,19 @@ from saigonos_core.files import (
     FINISH_UPLOAD,
     LOCK_PENDING,
     MB,
+    NOT_DOWNLOADABLE,
     SPOOL_SIZE,
+    FileInfo,
 )
 from saigonos_core.kinds import KINDS
 from saigonos_core.main import create_app
-from saigonos_core.storage import QUARANTINE, StorageError
+from saigonos_core.storage import CLEAN, QUARANTINE, StorageError
 
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 PNG_SIZE = len(PNG)
+CALLER = "người gọi"
+SERVICE = "core_service"
+BACKGROUND = "core_service, không có người gọi"
 COLUMNS = [
     "id",
     "name",
@@ -44,7 +54,8 @@ class FakeConnection:
 
     async def fetchrow(self, query, *arguments):
         self.files.queries.append((self.kind, query))
-        return self.files.answer(query, arguments, self.caller.claims.get("sub"))
+        subject = self.caller.claims.get("sub") if self.caller else None
+        return self.files.answer(query, arguments, subject, self.kind)
 
 
 class FakeFiles:
@@ -61,13 +72,17 @@ class FakeFiles:
 
     @asynccontextmanager
     async def session(self, caller):
-        yield FakeConnection(self, caller, "người gọi")
+        yield FakeConnection(self, caller, CALLER)
 
     @asynccontextmanager
     async def service_session(self, caller):
-        yield FakeConnection(self, caller, "core_service")
+        yield FakeConnection(self, caller, SERVICE)
 
-    def answer(self, query, arguments, subject):
+    @asynccontextmanager
+    async def transaction(self):
+        yield FakeConnection(self, None, BACKGROUND)
+
+    def answer(self, query, arguments, subject, kind):
         if query == CREATE:
             name, type, size = arguments
             row = {"id": uuid4(), "owner": subject, "name": name, "type": type, "size": size}
@@ -76,7 +91,8 @@ class FakeFiles:
             self.rows[row["id"]] = row
             return self.visible(row)
         row = self.rows.get(arguments[0])
-        if row is None or (query != FINISH_UPLOAD and row["owner"] != subject):
+        owned_only = kind == CALLER or query in {FIND_OWN, LOCK_PENDING}
+        if row is None or (owned_only and row["owner"] != subject):
             return None
         if query == LOCK_PENDING:
             pending = row["status"] == "pending_upload" and not self.taken_by_other
@@ -95,12 +111,23 @@ class FakeFiles:
 class FakeStorage:
     def __init__(self):
         self.objects = {}
+        self.reads = []
         self.failure = None
 
     def put(self, bucket, key, body, size, sha256, content_type):
         if self.failure:
             raise self.failure
         self.objects[bucket, key] = (body.read(), size, sha256, content_type)
+
+    def get(self, bucket, key, sink):
+        self.reads.append((bucket, key))
+        if self.failure:
+            raise self.failure
+        if (bucket, key) not in self.objects:
+            raise StorageError("Kho file trả về mã 404")
+        content = self.objects[bucket, key][0]
+        sink.write(content)
+        return hashlib.sha256(content).hexdigest()
 
 
 @pytest.fixture
@@ -143,6 +170,38 @@ def upload(client, headers, file, content=PNG):
     return client.put(f"/files/{file['id']}/content", headers=headers, content=content)
 
 
+def scanned(files, storage, file, status, malware=None):
+    files.rows[UUID(file["id"])] |= {
+        "status": status,
+        "malware": malware,
+        "scanned_at": datetime.now(UTC),
+    }
+    if status == "clean":
+        storage.objects[CLEAN, file["id"]] = storage.objects.pop((QUARANTINE, file["id"]))
+
+
+def clean_file(client, files, storage, headers, content=PNG, **fields):
+    file = declared(client, headers, content, **fields)
+    assert upload(client, headers, file, content).status_code == 200
+    scanned(files, storage, file, "clean")
+    return file
+
+
+def link_for(client, headers, file):
+    return client.post(f"/files/{file['id']}/download-url", headers=headers)
+
+
+def parts_of(url):
+    parts = urlsplit(url)
+    query = {name: value for name, [value] in parse_qs(parts.query).items()}
+    return parts.path.removeprefix("/core"), query
+
+
+def download(client, url, **changes):
+    path, query = parts_of(url)
+    return client.get(path, params=query | changes)
+
+
 def test_declared_file_waits_for_upload_and_belongs_to_caller(client, files, owner, settings):
     reply = declare(client, owner)
 
@@ -154,7 +213,7 @@ def test_declared_file_waits_for_upload_and_belongs_to_caller(client, files, own
     assert (body["sha256"], body["uploaded_at"]) == (None, None)
     assert body["upload_url"] == f"{settings.public_url}/files/{row['id']}/content"
     assert row["owner"] == "4f1b0c0e-nguoi-dung"
-    assert files.queries == [("core_service", CREATE)]
+    assert files.queries == [(SERVICE, CREATE)]
 
 
 def test_declared_type_is_stored_in_lower_case(client, files, owner):
@@ -213,12 +272,17 @@ def test_name_that_breaks_a_rule_is_refused(client, files, owner, name, message)
     assert files.rows == {}
 
 
-@pytest.mark.parametrize("method", ["post", "put", "get"])
-def test_file_calls_need_token_of_logged_in_user(client, files, method):
-    path = "/files" if method == "post" else f"/files/{uuid4()}"
-    path += "/content" if method == "put" else ""
-
-    reply = getattr(client, method)(path)
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("POST", "/files"),
+        ("PUT", "/files/{id}/content"),
+        ("GET", "/files/{id}"),
+        ("POST", "/files/{id}/download-url"),
+    ],
+)
+def test_file_calls_need_token_of_logged_in_user(client, files, method, path):
+    reply = client.request(method, path.format(id=uuid4()))
 
     assert reply.status_code == 401
     assert files.queries == []
@@ -236,9 +300,9 @@ def test_upload_puts_content_in_quarantine_and_waits_for_scan(client, files, sto
     assert body["uploaded_at"] is not None
     assert storage.objects == {(QUARANTINE, file["id"]): (PNG, len(PNG), digest, "image/png")}
     assert files.queries[1:] == [
-        ("core_service", FIND_OWN),
-        ("core_service", LOCK_PENDING),
-        ("core_service", FINISH_UPLOAD),
+        (SERVICE, FIND_OWN),
+        (SERVICE, LOCK_PENDING),
+        (SERVICE, FINISH_UPLOAD),
     ]
 
 
@@ -362,7 +426,7 @@ def test_owner_reads_file_as_caller(client, files, owner):
 
     assert reply.status_code == 200
     assert reply.json()["status"] == "pending_scan"
-    assert files.queries[-1] == ("người gọi", FIND)
+    assert files.queries[-1] == (CALLER, FIND)
 
 
 def test_owner_sees_name_of_malware_found_in_file(client, files, owner):
@@ -389,6 +453,201 @@ def test_file_hidden_from_caller_is_not_found(client, owner, stranger):
     assert (reply.status_code, reply.json()) == (404, {"detail": "Không tìm thấy file"})
 
 
+def test_owner_gets_download_link_of_clean_file(client, files, storage, owner, settings):
+    file = clean_file(client, files, storage, owner)
+    before = time.time()
+
+    reply = link_for(client, owner, file)
+
+    body = reply.json()
+    _, query = parts_of(body["download_url"])
+    expires = datetime.fromisoformat(body["expires_at"]).timestamp()
+    assert reply.status_code == 200
+    assert body["download_url"].startswith(f"{settings.public_url}/files/{file['id']}/content?")
+    assert set(query) == {"expires", "signature"}
+    assert int(query["expires"]) == expires
+    assert before + LIFETIME - 1 < expires <= time.time() + LIFETIME
+    assert files.queries[-1] == (CALLER, FIND)
+    assert storage.reads == []
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        ("pending_upload", "File chưa có nội dung nên chưa tải về được"),
+        ("pending_scan", "File đang chờ quét mã độc nên chưa tải về được"),
+        ("infected", "File có mã độc nên không tải về được"),
+    ],
+)
+def test_file_that_is_not_clean_has_no_download_link(
+    client, files, storage, owner, status, message
+):
+    file = declared(client, owner)
+    if status != "pending_upload":
+        upload(client, owner, file)
+    if status == "infected":
+        scanned(files, storage, file, "infected", "Eicar-Test-Signature")
+
+    reply = link_for(client, owner, file)
+
+    assert (reply.status_code, reply.json()) == (409, {"detail": message})
+
+
+def test_every_status_except_clean_has_a_reason_for_no_download():
+    statuses = set(get_args(FileInfo.model_fields["status"].annotation))
+
+    assert set(NOT_DOWNLOADABLE) == statuses - {"clean"}
+
+
+def test_file_hidden_from_caller_has_no_download_link(client, files, storage, owner, stranger):
+    file = clean_file(client, files, storage, owner)
+
+    reply = link_for(client, stranger, file)
+
+    assert (reply.status_code, reply.json()) == (404, {"detail": "Không tìm thấy file"})
+    assert files.queries[-1] == (CALLER, FIND)
+
+
+def test_download_link_sends_file_without_token(client, files, storage, owner):
+    name = "ảnh máy hỏng.png"
+    file = clean_file(client, files, storage, owner, name=name)
+    url = link_for(client, owner, file).json()["download_url"]
+
+    reply = download(client, url)
+
+    assert reply.status_code == 200
+    assert reply.content == PNG
+    assert reply.headers["content-type"] == "image/png"
+    assert reply.headers["content-length"] == str(PNG_SIZE)
+    assert reply.headers["content-disposition"] == attachment(name)
+    assert reply.headers["x-content-type-options"] == "nosniff"
+    assert reply.headers["cache-control"] == "no-store"
+    assert files.queries[-1] == (BACKGROUND, FIND)
+    assert storage.reads == [(CLEAN, file["id"])]
+
+
+def test_text_file_is_sent_with_declared_type_only(client, files, storage, owner):
+    content = "Máy 12 không lên màn hình\n".encode()
+    file = clean_file(client, files, storage, owner, content, name="ghi-chu.txt", type="text/plain")
+    url = link_for(client, owner, file).json()["download_url"]
+
+    reply = download(client, url)
+
+    assert reply.content == content
+    assert reply.headers["content-type"] == "text/plain"
+
+
+def test_download_link_opens_again_until_it_expires(client, files, storage, owner):
+    file = clean_file(client, files, storage, owner)
+    link = link_for(client, owner, file).json()
+    expires = datetime.fromisoformat(link["expires_at"]).timestamp()
+    links = client.app.state.downloads
+
+    first = download(client, link["download_url"])
+    client.app.state.downloads = replace(links, clock=lambda: expires)
+    last_second = download(client, link["download_url"])
+    client.app.state.downloads = replace(links, clock=lambda: expires + 0.001)
+    expired = download(client, link["download_url"])
+
+    assert (first.status_code, last_second.status_code) == (200, 200)
+    assert (expired.status_code, expired.json()) == (403, {"detail": "Đường dẫn tải về đã hết hạn"})
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"expires": "9999999999"},
+        {"signature": "0" * 64},
+        {"signature": ""},
+        {"expires": "", "signature": ""},
+    ],
+    ids=["kéo dài hạn", "sửa chữ ký", "thiếu chữ ký", "thiếu cả hai"],
+)
+def test_changed_download_link_is_refused(client, files, storage, owner, changes):
+    file = clean_file(client, files, storage, owner)
+    url = link_for(client, owner, file).json()["download_url"]
+
+    reply = download(client, url, **changes)
+
+    assert (reply.status_code, reply.json()) == (403, {"detail": "Đường dẫn tải về không hợp lệ"})
+    assert (BACKGROUND, FIND) not in files.queries
+    assert storage.reads == []
+
+
+def test_download_link_of_one_file_does_not_open_another(client, files, storage, owner, stranger):
+    mine = clean_file(client, files, storage, stranger)
+    other = clean_file(client, files, storage, owner)
+    url = link_for(client, stranger, mine).json()["download_url"]
+
+    reply = download(client, url.replace(mine["id"], other["id"]))
+
+    assert (reply.status_code, reply.json()) == (403, {"detail": "Đường dẫn tải về không hợp lệ"})
+    assert storage.reads == []
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        ("pending_scan", "File đang chờ quét mã độc nên chưa tải về được"),
+        ("infected", "File có mã độc nên không tải về được"),
+    ],
+)
+def test_signed_link_of_file_that_is_not_clean_sends_nothing(
+    client, files, storage, owner, status, message
+):
+    file = declared(client, owner)
+    upload(client, owner, file)
+    if status == "infected":
+        scanned(files, storage, file, "infected", "Eicar-Test-Signature")
+    query, _ = client.app.state.downloads.query(UUID(file["id"]))
+
+    reply = client.get(f"/files/{file['id']}/content?{query}")
+
+    assert (reply.status_code, reply.json()) == (409, {"detail": message})
+    assert storage.reads == []
+
+
+def test_download_waits_when_storage_is_down(client, files, storage, owner):
+    file = clean_file(client, files, storage, owner)
+    url = link_for(client, owner, file).json()["download_url"]
+    storage.failure = StorageError("Không kết nối được kho file")
+
+    refused = download(client, url)
+    storage.failure = None
+    accepted = download(client, url)
+
+    assert (refused.status_code, refused.json()) == (
+        503,
+        {"detail": "Chưa tải được file vì kho file chưa sẵn sàng"},
+    )
+    assert accepted.status_code == 200
+
+
+def test_content_that_does_not_match_hash_is_not_sent(client, files, storage, owner, caplog):
+    file = clean_file(client, files, storage, owner)
+    url = link_for(client, owner, file).json()["download_url"]
+    storage.objects[CLEAN, file["id"]] = (PNG[:-1] + b"X", PNG_SIZE, "", "image/png")
+
+    reply = download(client, url)
+
+    assert (reply.status_code, reply.json()) == (
+        500,
+        {"detail": "Nội dung của file không khớp mã băm đã ghi"},
+    )
+    assert f"Nội dung của file {file['id']} trong bucket clean không khớp mã băm" in caplog.text
+
+
+def test_download_larger_than_memory_buffer_is_sent_whole(client, files, storage, owner):
+    content = PNG + b"\x01" * (SPOOL_SIZE * 2)
+    file = clean_file(client, files, storage, owner, content)
+    url = link_for(client, owner, file).json()["download_url"]
+
+    reply = download(client, url)
+
+    assert reply.content == content
+    assert reply.headers["content-length"] == str(len(content))
+
+
 def test_api_document_describes_file_calls(client):
     paths = client.get("/openapi.json").json()["paths"]
 
@@ -399,3 +658,22 @@ def test_api_document_describes_file_calls(client):
         "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
     }
     assert set(paths["/files/{file_id}"]["get"]["responses"]) >= {"200", "401", "404"}
+
+
+def test_api_document_describes_download_calls(client):
+    paths = client.get("/openapi.json").json()["paths"]
+
+    link = paths["/files/{file_id}/download-url"]["post"]
+    sent = paths["/files/{file_id}/content"]["get"]
+    assert set(link["responses"]) >= {"200", "401", "404", "409"}
+    assert "security" in link
+    assert set(sent["responses"]) >= {"200", "403", "404", "409", "500", "503"}
+    assert sent["responses"]["200"]["content"] == {
+        "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+    }
+    assert {parameter["name"] for parameter in sent["parameters"]} == {
+        "file_id",
+        "expires",
+        "signature",
+    }
+    assert "security" not in sent
