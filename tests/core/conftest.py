@@ -11,7 +11,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
+from saigonos_core.main import Settings
+
 JWKS_PATH = "/auth/realms/saigonos/protocol/openid-connect/certs"
+PUBLIC_URL = "https://dx.example.com/core"
 FIRST_KEY = "khoa-1"
 
 
@@ -111,3 +114,9 @@ def private_keys():
 @pytest.fixture
 def realm(gateway, private_keys):
     return Realm(gateway, private_keys)
+
+
+@pytest.fixture
+def settings(realm):
+    storage = ("http://seaweedfs:8333", "khoa-truy-cap", "khoa-bi-mat")
+    return Settings(realm.issuer, realm.url, PUBLIC_URL, *storage, max_file_size=10)

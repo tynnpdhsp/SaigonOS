@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from importlib.metadata import version
 
 import pytest
 from fastapi.testclient import TestClient
 
 import saigonos_core
-from saigonos_core.main import ME, Settings, create_app
+from saigonos_core.main import ME, create_app
+from saigonos_core.storage import Storage
 
-PUBLIC_URL = "https://dx.example.com/core"
 LOGIN_NEEDED = "Lời gọi này cần access token của người dùng đã đăng nhập"
 
 
@@ -50,8 +51,8 @@ def database():
 
 
 @pytest.fixture
-def client(realm, database):
-    app = create_app(Settings(realm.issuer, realm.url, PUBLIC_URL), database)
+def client(settings, database):
+    app = create_app(settings, database)
     with TestClient(app) as client:
         yield client
 
@@ -60,8 +61,8 @@ def bearer(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_database_is_open_only_while_app_runs(realm, database):
-    app = create_app(Settings(realm.issuer, realm.url, PUBLIC_URL), database)
+def test_database_is_open_only_while_app_runs(settings, database):
+    app = create_app(settings, database)
 
     with TestClient(app):
         running = database.state
@@ -157,12 +158,12 @@ def test_me_answers_503_when_keys_cannot_be_fetched(client, database, realm):
     assert database.callers == []
 
 
-def test_openapi_document_describes_api_behind_gateway(client):
+def test_openapi_document_describes_api_behind_gateway(client, settings):
     document = client.get("/openapi.json").json()
 
     assert document["info"]["title"] == "SaigonOS Core API"
     assert document["info"]["version"] == version("saigonos")
-    assert document["servers"] == [{"url": PUBLIC_URL}]
+    assert document["servers"] == [{"url": settings.public_url}]
     assert document["components"]["securitySchemes"] == {
         "HTTPBearer": {
             "type": "http",
@@ -183,13 +184,25 @@ def test_core_version_matches_project_version():
     assert saigonos_core.__version__ == version("saigonos")
 
 
-def test_settings_come_from_environment(monkeypatch, realm):
-    monkeypatch.setenv("JWT_ISSUER", realm.issuer)
-    monkeypatch.setenv("JWKS_URL", realm.url)
-    monkeypatch.setenv("PUBLIC_URL", PUBLIC_URL)
+def test_settings_come_from_environment(monkeypatch, settings):
+    environment = {
+        "JWT_ISSUER": settings.issuer,
+        "JWKS_URL": settings.jwks_url,
+        "PUBLIC_URL": settings.public_url,
+        "S3_URL": settings.storage_url,
+        "S3_ACCESS_KEY": settings.storage_access_key,
+        "S3_SECRET_KEY": settings.storage_secret_key,
+        "MAX_FILE_SIZE": "25",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
 
     app = create_app(database=FakeDatabase())
 
-    assert app.state.tokens.issuer == realm.issuer
-    assert app.state.tokens.keys.uri == realm.url
-    assert app.servers == [{"url": PUBLIC_URL}]
+    assert app.state.settings == replace(settings, max_file_size=25)
+    assert app.state.tokens.issuer == settings.issuer
+    assert app.state.tokens.keys.uri == settings.jwks_url
+    assert app.state.storage == Storage(
+        settings.storage_url, settings.storage_access_key, settings.storage_secret_key
+    )
+    assert app.servers == [{"url": settings.public_url}]

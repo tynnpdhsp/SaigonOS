@@ -286,6 +286,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
     environment:
       JWT_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
       JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
@@ -294,6 +296,10 @@ services:
       PGDATABASE: saigonos
       PGUSER: core_service
       PGPASSWORD: ${CORE_DB_PASSWORD:?}
+      S3_URL: http://seaweedfs:8333
+      S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:?}
+      MAX_FILE_SIZE: ${SAIGONOS_MAX_FILE_SIZE:?}
     networks:
       - default
       - storage

@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from saigonos_core import __version__
+from saigonos_core import __version__, files
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.database import Database
+from saigonos_core.storage import Storage
 from saigonos_core.tokens import TokenVerifier
 
 DESCRIPTION = (
@@ -24,10 +25,22 @@ class Settings:
     issuer: str
     jwks_url: str
     public_url: str
+    storage_url: str
+    storage_access_key: str
+    storage_secret_key: str
+    max_file_size: int
 
     @classmethod
     def from_environment(cls) -> "Settings":
-        return cls(os.environ["JWT_ISSUER"], os.environ["JWKS_URL"], os.environ["PUBLIC_URL"])
+        return cls(
+            os.environ["JWT_ISSUER"],
+            os.environ["JWKS_URL"],
+            os.environ["PUBLIC_URL"],
+            os.environ["S3_URL"],
+            os.environ["S3_ACCESS_KEY"],
+            os.environ["S3_SECRET_KEY"],
+            int(os.environ["MAX_FILE_SIZE"]),
+        )
 
 
 class Health(BaseModel):
@@ -57,9 +70,16 @@ async def me(request: Request, user: User) -> Me:
     return Me(**row)
 
 
-def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    database: Database | None = None,
+    storage: Storage | None = None,
+) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
+    storage = storage or Storage(
+        settings.storage_url, settings.storage_access_key, settings.storage_secret_key
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -76,7 +96,10 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         redoc_url=None,
         lifespan=lifespan,
     )
+    app.state.settings = settings
     app.state.tokens = TokenVerifier(settings.issuer, settings.jwks_url)
     app.state.database = database
+    app.state.storage = storage
     app.include_router(router)
+    app.include_router(files.router)
     return app
