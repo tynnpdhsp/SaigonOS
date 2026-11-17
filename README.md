@@ -80,6 +80,7 @@ BÌNH THƯỜNG    migrate      đã chạy xong
 BÌNH THƯỜNG    operaton     đang chạy
 BÌNH THƯỜNG    postgres     đang chạy
 BÌNH THƯỜNG    postgrest    đang chạy
+BÌNH THƯỜNG    processes    đã chạy xong
 BÌNH THƯỜNG    realm        đã chạy xong
 BÌNH THƯỜNG    routes       đã chạy xong
 BÌNH THƯỜNG    seaweedfs    đang chạy
@@ -521,7 +522,48 @@ Operaton làm mới access token ở mỗi lời gọi của ba trang. Do đó, 
 
 Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operaton` của realm `saigonos` và luồng đăng nhập riêng của client này. Khi luồng đăng nhập bị thay đổi, service tạo lại luồng này. Các thiết lập bảo mật của client cũng được đặt lại, ví dụ địa chỉ chuyển hướng sau khi đăng nhập.
 
-REST API của Operaton không mở qua API Gateway. Chỉ service `core` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
+REST API của Operaton không mở qua API Gateway. Chỉ hai service `core` và `processes` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
+
+### Triển khai quy trình
+
+Mỗi quy trình nằm trong một file BPMN 2.0 ở thư mục `~/saigonos/config/operaton/processes`. Lệnh `saigonos init` tạo sẵn thư mục này. Mỗi khi hệ thống khởi động, service `processes` triển khai các file trong thư mục vào Operaton. Do đó, sau khi thêm hoặc sửa một file, cần chạy lại lệnh sau:
+
+```bash
+saigonos up
+```
+
+Service `processes` tuân theo các quy tắc sau:
+
+- File không thay đổi thì không tạo phiên bản mới của quy trình. File đã sửa tạo một phiên bản mới. Các quy trình đang chạy vẫn dùng phiên bản cũ.
+- Mỗi quy trình phải có thuộc tính `operaton:historyTimeToLive`, tức thời gian giữ lịch sử của quy trình. Ví dụ, giá trị `P30D` là 30 ngày.
+- Tên file chỉ gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và kết thúc bằng `.bpmn`.
+- Mỗi mã quy trình, tức thuộc tính `id` của thẻ `process`, chỉ được khai báo trong một file. Khi một file khai báo lại mã quy trình của file khác, service gỡ bản triển khai vừa tạo và báo lỗi. Nhờ đó, một file không thay được quy trình của file khác.
+- Xóa một file khỏi thư mục không gỡ quy trình khỏi Operaton.
+
+Khi một file bị lỗi, lệnh `saigonos up` kết thúc với mã lỗi. Service `core` chờ service `processes` chạy xong, nên có thể chưa khởi động cho tới khi file được sửa. Để xem kết quả triển khai và lỗi của từng file:
+
+```bash
+cd ~/saigonos
+docker compose logs --tail 20 processes
+```
+
+File BPMN có thể chứa mã chạy bên trong Operaton, ví dụ script task. Do đó, chỉ đặt vào thư mục này các file từ nguồn đáng tin cậy.
+
+Ví dụ sau là một quy trình đơn giản gồm điểm bắt đầu và điểm kết thúc. Nội dung được lưu trong file `thu-nghiem.bpmn`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="thu_nghiem_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="thu_nghiem" name="Quy trình thử nghiệm" isExecutable="true"
+                operaton:historyTimeToLive="P30D">
+    <bpmn:startEvent id="bat_dau" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+</bpmn:definitions>
+```
 
 ## Cập nhật phiên bản
 
