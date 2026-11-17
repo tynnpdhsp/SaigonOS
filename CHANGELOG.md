@@ -32,6 +32,9 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Docker Compose build image của service `core` trên máy cài đặt từ image `python` chính thức. Dòng `FROM` ghi cả digest của image. Các thư viện được cài từ lock file có mã băm. Do đó, file release vẫn chỉ chứa mã nguồn.
 - API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer, thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service với access token giả vẫn bị từ chối. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
 - Service `core` kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Lệnh `saigonos init` thêm mật khẩu của role này vào file `.env`.
+- Bảng `core.files` lưu thông tin của các file được tải lên, gồm chủ file, tên, loại, dung lượng, mã băm SHA-256 và trạng thái. Bảng có audit log. Chính sách phân quyền từng dòng chỉ cho người dùng thấy file của chính mình. Chỉ role `core_service` thêm và sửa được dòng của bảng này.
+- Lời gọi `POST /core/files` của service `core` khai báo một file mới và trả về đường dẫn tải lên. Service kiểm tra loại file, phần mở rộng của tên file và dung lượng. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Nội dung được lưu vào bucket `quarantine` và chờ quét mã độc. Nội dung có dung lượng hoặc phần đầu không khớp với thông tin đã khai báo bị từ chối. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file.
+- Tùy chọn `--max-file-size` của lệnh `saigonos init` đặt dung lượng tối đa của một file tải lên, tính bằng MB. Giá trị mặc định là 10.
 
 ### Thay đổi
 
@@ -42,6 +45,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Hàm mới trong cơ sở dữ liệu `saigonos` chỉ gọi được sau khi được cấp quyền `EXECUTE`. Ở phiên bản 0.2.0, mọi role đều gọi được hàm mới. Các hàm đã có trong schema `api` được cấp cho role `authenticated`. Do đó, người dùng đã đăng nhập vẫn gọi được các hàm này sau khi cập nhật.
 - Lệnh `saigonos doctor` kiểm tra hai lời gọi tới `/api/`. Lời gọi không có access token phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
 - Lệnh `saigonos doctor` kiểm tra service `core` qua API Gateway. Lời gọi `/core/health` phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+- API Gateway từ chối lời gọi có nội dung lớn hơn dung lượng tối đa của một file tải lên, mặc định là 10 MB. Ở phiên bản 0.2.0, API Gateway không giới hạn dung lượng nội dung. Khi hệ thống chạy sau Nginx, giới hạn `client_max_body_size` của Nginx không được nhỏ hơn giới hạn này. Ví dụ cấu hình Nginx trong README đã có dòng này.
 
 ### Bảo mật
 
