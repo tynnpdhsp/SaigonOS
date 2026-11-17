@@ -7,6 +7,15 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Service `operaton` chạy các quy trình BPMN 2.0 bằng Operaton. Operaton lưu dữ liệu trong cơ sở dữ liệu `operaton` riêng. Service `databases` tạo cơ sở dữ liệu này và role `operaton` khi chưa có, kể cả với cơ sở dữ liệu được tạo từ phiên bản cũ.
+- Cockpit, Tasklist và Admin của Operaton ở địa chỉ `/operaton/` của API Gateway. Chỉ tài khoản có realm role `admin` đăng nhập được, bằng mật khẩu và OTP. Khi tài khoản bị khóa trong Keycloak, phiên đăng nhập của Operaton kết thúc ngay ở lời gọi tiếp theo. Địa chỉ `/logout` của API Gateway kết thúc phiên đăng nhập của Operaton.
+- Service `realm` tạo client `operaton` và luồng đăng nhập riêng của client này trong realm `saigonos`. Khi luồng đăng nhập hoặc các thiết lập bảo mật của client bị thay đổi, service đặt lại như cũ.
+- REST API của Operaton chỉ dành cho service `core`. REST API này không mở qua API Gateway và cần đăng nhập bằng tài khoản `core` của Operaton.
+- Lệnh `saigonos init` thêm các giá trị `OPERATON_DB_PASSWORD`, `OPERATON_CLIENT_SECRET` và `CORE_OPERATON_PASSWORD` vào file `.env`.
+- Lệnh `saigonos doctor` kiểm tra Operaton qua API Gateway. Trang đăng nhập phải dùng đúng địa chỉ truy cập của hệ thống và REST API của Operaton phải bị chặn.
+
 ## [0.3.0] - 2026-11-17
 
 ### Thêm
