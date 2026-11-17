@@ -2,7 +2,8 @@
 .PHONY: check lint format test integration lock dependencies dist clean
 
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-UV_COMPILE = uv pip compile --quiet pyproject.toml --python-version 3.11 --custom-compile-command "make lock"
+UV_COMPILE = uv pip compile --quiet --custom-compile-command "make lock"
+CORE_LOCK = src/saigonos/stack/core/requirements.txt
 SPDX_TAG = SPDX-License-Identifier
 
 check: lint test
@@ -24,9 +25,10 @@ integration:
 	pytest -m integration -v
 
 lock:
-	$(UV_COMPILE) -o requirements.txt
-	$(UV_COMPILE) --group dev -c requirements.txt -o requirements-dev.txt
-	sed -i '1i # $(SPDX_TAG): Apache-2.0' requirements.txt requirements-dev.txt
+	$(UV_COMPILE) pyproject.toml --python-version 3.11 -o requirements.txt
+	$(UV_COMPILE) --group core --python-version 3.14 --generate-hashes -o $(CORE_LOCK)
+	$(UV_COMPILE) pyproject.toml --python-version 3.11 --group dev --group core -c requirements.txt -c $(CORE_LOCK) -o requirements-dev.txt
+	sed -i '1i # $(SPDX_TAG): Apache-2.0' requirements.txt $(CORE_LOCK) requirements-dev.txt
 
 dependencies:
 	python scripts/dependencies.py

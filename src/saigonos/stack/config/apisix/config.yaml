@@ -2,7 +2,7 @@
 apisix:
   node_listen:
     - ${{SAIGONOS_HTTP_PORT}}
-  dns_resolver_valid: 30
+  dns_resolver_valid: 1
   trusted_addresses:
     - 127.0.0.0/8
     - 10.0.0.0/8
@@ -15,6 +15,7 @@ apisix:
 nginx_config:
   worker_processes: 4
   http:
+    client_max_body_size: ${{SAIGONOS_MAX_FILE_SIZE}}m
     real_ip_header: X-Forwarded-For
     real_ip_recursive: "on"
     real_ip_from:

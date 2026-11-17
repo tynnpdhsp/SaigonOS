@@ -15,6 +15,9 @@ from saigonos.home import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_KEYCLOAK_PORT,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_SEAWEEDFS_PORT,
+    LARGEST_FILE_SIZE,
     SettingsError,
     disabled_services,
     init_home,
@@ -131,6 +134,23 @@ def main() -> None:
     ),
 )
 @click.option(
+    "--seaweedfs-port",
+    type=PORT,
+    help=(
+        "Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt. "
+        f"Mặc định là {DEFAULT_SEAWEEDFS_PORT}."
+    ),
+)
+@click.option(
+    "--max-file-size",
+    type=click.IntRange(1, LARGEST_FILE_SIZE),
+    help=(
+        f"Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến {LARGEST_FILE_SIZE}. "
+        "API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này. "
+        f"Mặc định là {DEFAULT_MAX_FILE_SIZE}."
+    ),
+)
+@click.option(
     "--caddy/--no-caddy",
     default=None,
     help=(
@@ -147,6 +167,8 @@ def init(
     http_port: int | None,
     admin_port: int | None,
     keycloak_port: int | None,
+    seaweedfs_port: int | None,
+    max_file_size: int | None,
     caddy: bool | None,
 ) -> None:
     try:
@@ -157,6 +179,8 @@ def init(
             http_port=http_port,
             admin_port=admin_port,
             keycloak_port=keycloak_port,
+            seaweedfs_port=seaweedfs_port,
+            max_file_size=max_file_size,
             caddy=caddy,
         )
     except SettingsError as error:

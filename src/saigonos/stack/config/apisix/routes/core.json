@@ -1,0 +1,35 @@
+{
+  "name": "core",
+  "desc": "Service core: API của lõi, kiểm tra access token khi lời gọi có header Authorization và giới hạn tần suất theo địa chỉ IP",
+  "uris": ["/core", "/core/*"],
+  "plugins": {
+    "openid-connect": {
+      "_meta": {
+        "filter": [["http_authorization", "~~", "."]]
+      },
+      "client_id": "apisix",
+      "discovery": "http://keycloak:8080/auth/realms/saigonos/.well-known/openid-configuration",
+      "realm": "saigonos",
+      "bearer_only": true,
+      "use_jwks": true,
+      "iat_slack": 0
+    },
+    "limit-count": {
+      "count": 300,
+      "time_window": 10,
+      "key_type": "var",
+      "key": "remote_addr",
+      "rejected_code": 429,
+      "rejected_msg": "Gọi API quá nhiều lần, vui lòng thử lại sau"
+    },
+    "proxy-rewrite": {
+      "regex_uri": ["^/core/?(.*)$", "/$1"]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "core:8000": 1
+    }
+  }
+}

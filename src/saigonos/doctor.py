@@ -12,6 +12,8 @@ REALM_PATH = "/auth/realms/saigonos"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
 DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
 API_PATH = "/api/"
+CORE_HEALTH_PATH = "/core/health"
+CORE_USER_PATH = "/core/me"
 INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
@@ -120,6 +122,14 @@ def api_state(anonymous: int, invalid: int) -> tuple[bool, str]:
     return True, "PostgREST trả lời, access token không hợp lệ bị từ chối"
 
 
+def core_state(health: int, invalid: int) -> tuple[bool, str]:
+    if health != 200:
+        return False, f"lời gọi {CORE_HEALTH_PATH} nhận mã {health}, đúng ra là 200"
+    if invalid != 401:
+        return False, f"lời gọi có access token không hợp lệ nhận mã {invalid}, đúng ra là 401"
+    return True, "service core trả lời, access token không hợp lệ bị từ chối"
+
+
 def login_check(url: str, certificate: str | None) -> tuple[bool, str]:
     status, body = fetch(f"{url}{DISCOVERY_PATH}", certificate)
     return login_state(url, status, body)
@@ -131,7 +141,13 @@ def api_check(url: str, certificate: str | None) -> tuple[bool, str]:
     return api_state(anonymous, invalid)
 
 
-PROBES = (("Đăng nhập", login_check), ("API", api_check))
+def core_check(url: str, certificate: str | None) -> tuple[bool, str]:
+    health, _ = fetch(f"{url}{CORE_HEALTH_PATH}", certificate)
+    invalid, _ = fetch(f"{url}{CORE_USER_PATH}", certificate, INVALID_AUTHORIZATION)
+    return core_state(health, invalid)
+
+
+PROBES = (("Đăng nhập", login_check), ("API", api_check), ("Core API", core_check))
 
 
 def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:

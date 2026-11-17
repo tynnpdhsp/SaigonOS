@@ -3,17 +3,25 @@ import json
 import re
 import shlex
 from pathlib import Path
+from typing import get_args
 
 import click
 import pytest
 
 from saigonos.cli import main
+from saigonos.doctor import PROBES
 from saigonos.home import (
     APISIX_INTERNAL_PORTS,
     DEFAULT_ADMIN_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_KEYCLOAK_PORT,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_SEAWEEDFS_PORT,
+    LARGEST_FILE_SIZE,
 )
+from saigonos_core.files import FileInfo
+from saigonos_core.kinds import KINDS
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
 BLOCK_LINES = [
@@ -73,8 +81,9 @@ def test_readme_options_exist_in_cli():
 
 
 def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
-    rows = [re.split(r" {2,}", row, maxsplit=2) for row in DOCTOR_SAMPLE.splitlines()]
-    finished = {name: detail == "đã chạy xong" for _, name, detail in rows[:-3]}
+    rows = [re.split(r" {2,}", row, maxsplit=2) for row in DOCTOR_SAMPLE.splitlines()[:-1]]
+    probes = [name for name, _ in PROBES]
+    finished = {name: detail == "đã chạy xong" for _, name, detail in rows if name not in probes}
     docker.services(
         {name: {"restart": "no" if done else "unless-stopped"} for name, done in finished.items()},
         [
@@ -87,6 +96,7 @@ def test_readme_shows_real_output_of_doctor(tmp_path, cli, docker, gateway):
     result = cli("doctor", "--home", tmp_path / "home")
 
     assert finished
+    assert [name for _, name, _ in rows if name in probes] == probes
     assert result.output == DOCTOR_SAMPLE.replace("http://localhost:9080", gateway.url)
 
 
@@ -112,6 +122,33 @@ def test_readme_lists_ports_that_http_port_cannot_use():
     assert f"Cổng HTTP không được trùng các cổng {', '.join(first)} và {last}." in README
 
 
+def test_readme_lists_ports_used_by_default():
+    ports = [DEFAULT_HTTP_PORT, DEFAULT_ADMIN_PORT, DEFAULT_KEYCLOAK_PORT, DEFAULT_SEAWEEDFS_PORT]
+    *first, last = map(str, ports)
+
+    assert f"Hệ thống dùng các cổng {', '.join(first)} và {last}." in README
+
+
+def test_readme_states_file_size_limits():
+    assert f"tính bằng MB, từ 1 đến {LARGEST_FILE_SIZE}." in README
+    assert f"Mỗi file có dung lượng tối đa {DEFAULT_MAX_FILE_SIZE} MB" in README
+    assert f"client_max_body_size {DEFAULT_MAX_FILE_SIZE}m;" in README
+
+
+def test_readme_lists_every_allowed_file_type():
+    rows = re.findall(r"^\| `([a-z]+/[^`]+)` \| ([^|]+) \|", README, re.MULTILINE)
+
+    assert {kind: re.findall(r"`(\.[a-z]+)`", extensions) for kind, extensions in rows} == {
+        kind: list(rule.extensions) for kind, rule in KINDS.items()
+    }
+
+
+def test_readme_lists_every_file_status():
+    rows = re.findall(r"^\| `([a-z_]+)` \|", README, re.MULTILINE)
+
+    assert rows == list(get_args(FileInfo.model_fields["status"].annotation))
+
+
 def test_readme_links_point_to_existing_sections():
     links = re.findall(r"\]\(#([^)]+)\)", PROSE)
 
@@ -123,6 +160,9 @@ def test_readme_states_the_default_values():
     assert f"| `--http-host` | `{DEFAULT_HTTP_HOST}` |" in README
     assert f"| `--http-port` | `{DEFAULT_HTTP_PORT}` |" in README
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
+    assert f"| `--keycloak-port` | `{DEFAULT_KEYCLOAK_PORT}` |" in README
+    assert f"| `--seaweedfs-port` | `{DEFAULT_SEAWEEDFS_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README
+    assert f"| `--max-file-size` | `{DEFAULT_MAX_FILE_SIZE}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
     assert "| `--caddy`, `--no-caddy` | Tắt |" in README

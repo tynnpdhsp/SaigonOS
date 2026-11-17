@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.3.0] - 2026-11-17
+
 ### Thêm
 
 - Service `migrate` chạy các file SQL của cơ sở dữ liệu mỗi khi hệ thống khởi động. Các file chạy theo thứ tự tên. Mỗi file chỉ chạy một lần và chạy trong một transaction. Bảng `core.migrations` ghi lại các file đã chạy. Khi nội dung của một file đã chạy bị thay đổi, service dừng và báo lỗi. PostgREST nhận ngay các bảng và view mới mà không cần khởi động lại.
@@ -23,15 +25,38 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng `core.consents` ghi sự đồng ý với chính sách, gồm người đồng ý, tên chính sách, phiên bản chính sách và thời điểm đồng ý. Thời điểm đồng ý do máy chủ ghi. Bảng chỉ cho phép thêm dòng và có audit log. Role `anon` và `authenticated` không đọc và không ghi trực tiếp được bảng này.
 - Tùy chọn `--keycloak-port` của lệnh `saigonos init` đặt cổng của Keycloak trên máy cài đặt. Cổng này mặc định là 9280 và chỉ lắng nghe trên địa chỉ `127.0.0.1`. Admin Console của realm master dùng cổng này.
 - Hướng dẫn tạo tài khoản quản trị có OTP trong realm `saigonos` trong README.
+- Service `seaweedfs` lưu file của các ứng dụng theo chuẩn S3. Hai bucket `quarantine` và `clean` được tạo sẵn. Lời gọi S3 phải được ký bằng khóa trong file `.env`. Service này nằm trong một mạng Docker riêng. Chỉ service `core` kết nối được tới SeaweedFS. SeaweedFS không gửi thống kê ra ngoài và không liệt kê nội dung thư mục.
+- Admin UI của SeaweedFS ở địa chỉ http://127.0.0.1:9380/, chỉ truy cập được từ chính máy cài đặt. Tùy chọn `--seaweedfs-port` của lệnh `saigonos init` đổi cổng này.
+- Lệnh `saigonos init` tạo khóa S3 và mật khẩu Admin UI của SeaweedFS trong file `.env`. Khi cập nhật từ phiên bản cũ, lệnh thêm các giá trị này và giữ nguyên các mật khẩu đã có.
+- Service `clamav` quét mã độc bằng ClamAV. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. Chỉ service `core` kết nối được tới ClamAV. Khi tiến trình quét dừng bất thường, container tự khởi động lại.
+- Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày và tải bản mới từ `database.clamav.net`. Cơ sở dữ liệu nằm trong volume `clamav-data` nên được giữ lại khi khởi động lại hệ thống. Trong lúc nạp bản mới, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM và dùng khoảng 1 GB RAM.
+- Service `core` cung cấp API của lõi tại địa chỉ `/core/` của API Gateway. Service được viết bằng FastAPI. Tài liệu OpenAPI 3.1 nằm ở `/core/openapi.json`. Lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được.
+- Docker Compose build image của service `core` trên máy cài đặt từ image `python` chính thức. Dòng `FROM` ghi cả digest của image. Các thư viện được cài từ lock file có mã băm. Do đó, file release vẫn chỉ chứa mã nguồn.
+- API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer, thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service với access token giả vẫn bị từ chối. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
+- Service `core` kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Lệnh `saigonos init` thêm mật khẩu của role này vào file `.env`.
+- Bảng `core.files` lưu thông tin của các file được tải lên, gồm chủ file, tên, loại, dung lượng, mã băm SHA-256 và trạng thái. Bảng có audit log. Chính sách phân quyền từng dòng chỉ cho người dùng thấy file của chính mình. Chỉ role `core_service` thêm và sửa được dòng của bảng này.
+- Lời gọi `POST /core/files` của service `core` khai báo một file mới và trả về đường dẫn tải lên. Service kiểm tra loại file, phần mở rộng của tên file và dung lượng. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Nội dung được lưu vào bucket `quarantine` và chờ quét mã độc. Nội dung có dung lượng hoặc phần đầu không khớp với thông tin đã khai báo bị từ chối. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file.
+- Tùy chọn `--max-file-size` của lệnh `saigonos init` đặt dung lượng tối đa của một file tải lên, tính bằng MB. Giá trị mặc định là 10.
+- Service `core` quét mọi file bằng ClamAV ngay sau khi nhận nội dung. File không có mã độc được chuyển sang bucket `clean` và có trạng thái `clean`. File có mã độc được giữ trong bucket `quarantine` và có trạng thái `infected`. Tên mã độc được ghi vào trường `malware` của file và vào audit log. Khi ClamAV chưa sẵn sàng, file chờ ở trạng thái `pending_scan` và được quét lại sau, kể cả khi service `core` khởi động lại.
+- ClamAV coi nội dung không quét hết được là mã độc. Ví dụ: file nén lồng nhau quá 17 lớp hoặc có tổng nội dung sau khi giải nén lớn hơn 400 MB. Khi đó, tên mã độc bắt đầu bằng `Heuristics.Limits.Exceeded`.
+- Lời gọi `POST /core/files/{id}/download-url` của service `core` trả về đường dẫn tải về của một file. Đường dẫn dùng được trong 60 giây và mở được trong trình duyệt mà không cần access token. Chỉ file có trạng thái `clean` mới tải về được. Người dùng chỉ xin được đường dẫn cho file mà chính sách phân quyền từng dòng cho phép đọc. File được gửi kèm header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Trước khi gửi, nội dung được so với mã băm SHA-256 đã ghi.
+- Lệnh `saigonos init` tạo khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Service `core` ký đường dẫn tải về bằng khóa này. Khi cập nhật từ phiên bản cũ, lệnh thêm khóa này và giữ nguyên các mật khẩu đã có.
 
 ### Thay đổi
 
+- Hệ thống cần Docker Buildx để build image của service `core`. Hệ thống cũng cần khoảng 2,5 GB RAM và 5 GB dung lượng đĩa vì có thêm SeaweedFS, ClamAV và service `core`. Ở phiên bản 0.2.0, hệ thống cần khoảng 1 GB RAM và 2 GB dung lượng đĩa.
 - Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật. Service chỉ đăng nhập bằng mật khẩu, nên không bật OTP cho tài khoản này.
 - Admin Console của realm master có địa chỉ mới là http://localhost:9280/auth/admin/master/console/ trên máy cài đặt. Admin Console của realm `saigonos` vẫn mở qua API Gateway tại `/auth/admin/saigonos/console/`.
 - Lời gọi `/api` không có access token chạy với role `anon`. Ở phiên bản 0.2.0, API Gateway trả về mã 401 cho lời gọi này. Khi dùng một bảng hoặc hàm chưa cấp cho `anon`, lời gọi nhận mã 401. Access token giả hoặc hết hạn vẫn nhận mã 401. Giới hạn tần suất gọi áp dụng cho cả lời gọi không có access token.
-- Access token hợp lệ nhưng không có realm role `authenticated` chạy với role `anon`. Ở phiên bản 0.2.0, lời gọi này nhận mã 401.
+- Access token hợp lệ nhưng không có realm role `authenticated` chạy với role `anon`. Ở phiên bản 0.2.0, lời gọi này nhận mã 401. Lời gọi kèm ID token hoặc token khác không phải access token vẫn nhận mã 401.
 - Hàm mới trong cơ sở dữ liệu `saigonos` chỉ gọi được sau khi được cấp quyền `EXECUTE`. Ở phiên bản 0.2.0, mọi role đều gọi được hàm mới. Các hàm đã có trong schema `api` được cấp cho role `authenticated`. Do đó, người dùng đã đăng nhập vẫn gọi được các hàm này sau khi cập nhật.
 - Lệnh `saigonos doctor` kiểm tra hai lời gọi tới `/api/`. Lời gọi không có access token phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+- Lệnh `saigonos doctor` kiểm tra service `core` qua API Gateway. Lời gọi `/core/health` phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
+- API Gateway từ chối lời gọi có nội dung lớn hơn dung lượng tối đa của một file tải lên, mặc định là 10 MB. Ở phiên bản 0.2.0, API Gateway không giới hạn dung lượng nội dung. Khi hệ thống chạy sau Nginx, giới hạn `client_max_body_size` của Nginx không được nhỏ hơn giới hạn này. Ví dụ cấu hình Nginx trong README đã có dòng này.
+
+### Sửa
+
+- API Gateway nhận địa chỉ IP mới của một service trong khoảng 1 giây sau khi service được tạo lại hoặc khởi động lại. Ở phiên bản 0.2.0, API Gateway có thể dùng địa chỉ cũ thêm tới 30 giây. Trong thời gian đó, lời gọi tới service nhận mã 502 hoặc bị treo.
 
 ### Bảo mật
 
@@ -96,7 +121,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.2.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
 [0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
 [0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0

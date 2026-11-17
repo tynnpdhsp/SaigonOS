@@ -12,17 +12,26 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 DEFAULT_KEYCLOAK_PORT = 9280
+DEFAULT_SEAWEEDFS_PORT = 9380
+DEFAULT_MAX_FILE_SIZE = 10
+LARGEST_FILE_SIZE = 100
 DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
 CADDY_PROFILE = "caddy"
 OPTIONAL_SERVICES = (CADDY_PROFILE,)
+BYTECODE_FOLDER = "__pycache__"
 SECRET_KEYS = (
     "POSTGRES_PASSWORD",
     "KEYCLOAK_DB_PASSWORD",
     "KEYCLOAK_ADMIN_PASSWORD",
     "POSTGREST_DB_PASSWORD",
+    "CORE_DB_PASSWORD",
+    "CORE_DOWNLOAD_KEY",
     "APISIX_ADMIN_KEY",
+    "SEAWEEDFS_ACCESS_KEY",
+    "SEAWEEDFS_SECRET_KEY",
+    "SEAWEEDFS_ADMIN_PASSWORD",
 )
 SECRET_ALPHABET = string.ascii_letters + string.digits
 SECRET_LENGTH = 32
@@ -133,17 +142,19 @@ def check_caddy(url: str, http_host: str, http_port: str, caddy_http_port: str) 
         )
 
 
-def check_keycloak_port(keycloak_port: str, used: list[tuple[str | None, str]]) -> None:
-    for port, name in used:
-        if keycloak_port == port:
+def check_port(port: str, owner: str, option: str, used: list[tuple[str | None, str]]) -> None:
+    for other, name in used:
+        if port == other:
             raise SettingsError(
-                f"Cổng {keycloak_port} của Keycloak trùng với {name}. "
-                "Hãy chọn cổng khác bằng tùy chọn --keycloak-port."
+                f"Cổng {port} của {owner} trùng với {name}. "
+                f"Hãy chọn cổng khác bằng tùy chọn {option}."
             )
 
 
 def copy_tree(source: Traversable, target: Path) -> None:
     for entry in source.iterdir():
+        if entry.name == BYTECODE_FOLDER:
+            continue
         path = target / entry.name
         if entry.is_dir():
             path.mkdir(exist_ok=True)
@@ -169,6 +180,8 @@ def init_home(
     http_port: int | None = None,
     admin_port: int | None = None,
     keycloak_port: int | None = None,
+    seaweedfs_port: int | None = None,
+    max_file_size: int | None = None,
     caddy: bool | None = None,
 ) -> Initialized:
     lines = read_env_lines(home)
@@ -182,12 +195,16 @@ def init_home(
     new_http_host = http_host or current.get("SAIGONOS_HTTP_HOST") or DEFAULT_HTTP_HOST
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
     old_keycloak_port = current.get("SAIGONOS_KEYCLOAK_PORT") or DEFAULT_KEYCLOAK_PORT
+    old_seaweedfs_port = current.get("SAIGONOS_SEAWEEDFS_PORT") or DEFAULT_SEAWEEDFS_PORT
+    old_max_file_size = current.get("SAIGONOS_MAX_FILE_SIZE") or DEFAULT_MAX_FILE_SIZE
     values = {
         "SAIGONOS_URL": url,
         "SAIGONOS_HTTP_HOST": new_http_host,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
         "SAIGONOS_KEYCLOAK_PORT": str(keycloak_port or old_keycloak_port),
+        "SAIGONOS_SEAWEEDFS_PORT": str(seaweedfs_port or old_seaweedfs_port),
+        "SAIGONOS_MAX_FILE_SIZE": str(max_file_size or old_max_file_size),
     }
     missing = [key for key in SECRET_KEYS if not current.get(key)]
     for key in SECRET_KEYS:
@@ -210,7 +227,9 @@ def init_home(
         check_caddy(url, new_http_host, new_http_port, caddy_http_port)
         used.append((caddy_http_port, "cổng HTTP của Caddy"))
         used.append((https_port(url), "cổng HTTPS của Caddy"))
-    check_keycloak_port(values["SAIGONOS_KEYCLOAK_PORT"], used)
+    check_port(values["SAIGONOS_KEYCLOAK_PORT"], "Keycloak", "--keycloak-port", used)
+    used.append((values["SAIGONOS_KEYCLOAK_PORT"], "cổng của Keycloak"))
+    check_port(values["SAIGONOS_SEAWEEDFS_PORT"], "SeaweedFS", "--seaweedfs-port", used)
 
     home.mkdir(parents=True, exist_ok=True)
     for key, value in values.items():

@@ -30,29 +30,39 @@ Lệnh này thực hiện các bước sau:
 
 - Kiểm tra thông tin giấy phép của mọi file bằng `reuse lint`.
 - Kiểm tra lỗi và định dạng mã bằng `ruff`.
-- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với lock file và file `compose.yaml`.
+- Đối chiếu [DEPENDENCIES.md](DEPENDENCIES.md) với các lock file, file `compose.yaml` và `Dockerfile` của service `core`.
 - Chạy kiểm thử bằng `pytest` và đo coverage.
 
 Để tự động sửa định dạng mã, chạy `make format`.
 
 ## Kiểm thử tích hợp
 
-Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 2 GB.
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,2 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2 GB RAM.
 
 ```bash
 make integration
 ```
 
-Lệnh này chạy ba nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy sáu nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
 - Chạy các kiểm thử của nhóm.
-- Xóa container và dữ liệu bằng `saigonos down --volumes`.
+- Xóa container và dữ liệu bằng `saigonos down --volumes`, sau đó xóa image của service `core` vừa build.
+
+SeaweedFS không mở cổng S3 ra máy cài đặt và nằm trong mạng Docker `storage` riêng. Do đó, nhóm kiểm thử SeaweedFS gọi S3 từ một container tạm gắn vào mạng này. Tương tự, ClamAV nằm trong mạng Docker `scan` riêng. Kiểm thử gửi file tới ClamAV từ một container tạm gắn vào mạng `scan`. Kiểm thử dùng file EICAR làm mẫu mã độc. Đây là một file thử nghiệm vô hại mà mọi phần mềm diệt virus đều nhận ra.
+
+Kiểm thử `test_only_one_of_concurrent_uploads_is_kept` trong `test_files.py` gửi nội dung của cùng một file bằng nhiều lời gọi cùng lúc. Trong lúc đó, kiểm thử tạm dừng SeaweedFS bằng `docker compose pause`. Lời gọi đầu tiên phải chờ ở bước ghi nội dung, nên các lời gọi còn lại chắc chắn chạy chồng lên nó.
+
+Kiểm thử `test_file_waits_while_clamav_is_down_and_is_scanned_after_restart` trong `test_files.py` dừng ClamAV, gửi nội dung của một file, rồi khởi động lại service `core`. File phải chờ ở trạng thái `pending_scan` và chỉ được quét sau khi ClamAV chạy lại.
+
+Kiểm thử `test_file_not_scanned_yet_cannot_be_downloaded` trong `test_files.py` tạm dừng ClamAV bằng `docker compose pause` để giữ file ở trạng thái `pending_scan`. Một số kiểm thử tải file về tự ký đường dẫn bằng khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Nhờ đó, kiểm thử đường dẫn hết hạn không phải chờ 60 giây.
+
+Sau khi được tạo lại hoặc khởi động lại, một service có thể nhận địa chỉ IP mới. API Gateway cần khoảng 1 giây để nhận địa chỉ này. Do đó, kiểm thử dùng hàm `Stack.up()` thay cho lệnh `saigonos up`. Hàm này chờ tới khi API Gateway trả lời ở `/auth`, `/api/` và `/core/health`. Sau khi kill hoặc khởi động lại một service, kiểm thử gọi `Stack.wait_until_answers()` trước khi gọi API qua API Gateway. Kiểm thử `test_gateway_follows_new_address_of_core_within_seconds` trong `test_core.py` đổi địa chỉ IP của service `core` và kiểm tra API Gateway nhận địa chỉ mới trong vài giây.
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
-Một lượt chạy mất khoảng 7 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Một lượt chạy mất khoảng 11 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
@@ -66,9 +76,9 @@ Một lượt chạy mất khoảng 7 phút. Lệnh `make check` không chạy c
 
 Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công nhận. Không sao chép mã nguồn của dự án khác vào repo.
 
-1. Khai báo thư viện trong `pyproject.toml`.
+1. Khai báo thư viện trong `pyproject.toml`. Thư viện của lệnh `saigonos` nằm trong `dependencies`. Thư viện của service `core` nằm trong nhóm `core` của `[dependency-groups]`.
 2. Thêm một mô tả ngắn cho thư viện vào `DESCRIPTIONS` trong `scripts/dependencies.py`.
-3. Chạy `make lock` để tạo lại lock file.
+3. Chạy `make lock` để tạo lại các lock file.
 4. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
 5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
@@ -78,12 +88,14 @@ Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công n
 
 Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công nhận. Mỗi image phải ghi rõ phiên bản và không dùng tag `latest`.
 
-1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`.
+1. Sửa dòng `image` trong `src/saigonos/stack/compose.yaml`. Với base image của service `core`, sửa dòng `FROM` trong `src/saigonos/stack/core/Dockerfile`, gồm cả tag và digest.
 2. Đọc file giấy phép trong mã nguồn của đúng phiên bản đó.
 3. Khai báo image trong `IMAGES` ở `scripts/dependencies.py`. Mỗi image cần giấy phép, mô tả và địa chỉ mã nguồn của phiên bản đó.
 4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
 Lệnh `make lint` báo lỗi khi một image trong `compose.yaml` chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
+
+Mỗi service chạy lâu dài trong `compose.yaml` cần một healthcheck thật. Không tắt healthcheck bằng `disable: true`. Với service như vậy, lệnh `docker compose up --wait` của Docker Compose 2.x báo lỗi "has no healthcheck configured", dù Docker Compose 5 vẫn chạy được. Kiểm thử trong `tests/test_compose_file.py` kiểm tra quy tắc này.
 
 ## Thay đổi cơ sở dữ liệu
 
@@ -107,6 +119,8 @@ Mỗi lời gọi API chạy với một trong hai role của cơ sở dữ li�
 - Không cấp quyền cho `PUBLIC`.
 
 PostgreSQL không kiểm tra lại quyền `EXECUTE` của hàm khi dùng lại một query plan đã lập cho role khác. Do đó, hàm `core.pre_request()` xóa các query plan đã lưu trước mỗi lời gọi API và PostgREST không dùng prepared statement. Không bỏ hai thiết lập `PGRST_DB_PRE_REQUEST` và `PGRST_DB_PREPARED_STATEMENTS` trong file `compose.yaml`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong `tests/integration/test_database.py` kiểm tra điều này.
+
+Hàm `core.pre_request()` cũng chỉ chấp nhận access token. Lời gọi kèm token có claim `typ` khác `Bearer`, ví dụ ID token, nhận mã 401. Khi cần sửa hàm này, viết lại toàn bộ hàm trong một file SQL mới và giữ cả hai việc trên. Kiểm thử `test_api_accepts_access_token_only` trong cùng file kiểm tra việc này.
 
 Tài liệu OpenAPI ở địa chỉ `/api/` cũng theo các quyền này. Bảng và view được liệt kê khi role có ít nhất một quyền trên bảng hoặc view đó. Hàm được liệt kê khi role có quyền `EXECUTE`. Với mỗi bảng hoặc view được liệt kê, tài liệu ghi mọi cột và mọi thao tác mà bảng hoặc view hỗ trợ, kể cả cột và thao tác chưa được cấp quyền. Do đó, để giấu một cột, hãy tạo một view không có cột đó thay vì chỉ cấp quyền theo cột. Kiểm thử `test_api_document_lists_only_tables_and_functions_granted_to_caller` trong `tests/integration/test_database.py` so sánh tài liệu với quyền của từng role trong cơ sở dữ liệu.
 
@@ -222,11 +236,34 @@ Script cũng cập nhật realm master. Keycloak tự tạo realm này khi khở
 
 API Gateway chặn mọi địa chỉ của realm master. Do đó, kiểm thử tích hợp gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
 
+## Service core
+
+Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
+
+Khi sửa service `core`, cần tuân theo các quy tắc sau:
+
+- Thư viện của service được khai báo trong nhóm `core` của `pyproject.toml`. Lệnh `make lock` tạo lock file `src/saigonos/stack/core/requirements.txt` cho Python 3.14, kèm mã băm của từng file. Không sửa tay lock file này.
+- Mọi truy vấn tới cơ sở dữ liệu chạy trong `Database.session(caller)` hoặc `Database.service_session(caller)`. Hai hàm này mở một transaction và xóa các query plan đã lưu. Hàm `session` đặt thêm role và nội dung access token của người gọi. Việc không có người gọi, ví dụ quét file và gửi file qua đường dẫn tải về, chạy trong `Database.transaction()`. Không truy vấn bằng kết nối lấy thẳng từ pool.
+- API dành cho người đã đăng nhập nhận tham số kiểu `User`. Khi đó, lời gọi không có access token hợp lệ của người dùng có realm role `authenticated` nhận mã 401.
+- Không bật Swagger UI và ReDoc của FastAPI, vì hai trang này tải script từ máy chủ bên ngoài.
+- Đường dẫn của API không có dấu `/` ở cuối. Service không chuyển hướng địa chỉ có dấu `/` ở cuối, vì API Gateway bỏ tiền tố `/core` trước khi chuyển lời gọi tới service. Địa chỉ chuyển hướng khi đó thiếu tiền tố này.
+- Nội dung của file chỉ đi qua service `core`. Không thêm route tới SeaweedFS hoặc ClamAV ở API Gateway.
+- Bảng `core.files` chỉ được ghi trong `Database.service_session(caller)`. Phiên này chạy bằng role `core_service` và mang nội dung access token của người gọi. Nhờ đó, audit log ghi đúng người gọi. Lời gọi đọc thông tin file chạy trong `Database.session(caller)` để chính sách phân quyền từng dòng được áp dụng.
+- Danh sách loại file được phép nằm trong `KINDS` ở `saigonos_core/kinds.py`. Mỗi loại gồm các phần mở rộng và mẫu của phần đầu nội dung. Khi thêm một loại, cần thêm mẫu nội dung vào `tests/core/test_kinds.py` và thêm một dòng vào bảng loại file trong README. Kiểm thử `test_readme_lists_every_allowed_file_type` so sánh bảng này với `KINDS`.
+- Lời gọi S3 được ký bằng SigV4 trong `saigonos_core/storage.py`. Header `x-amz-content-sha256` mang mã băm SHA-256 của nội dung. SeaweedFS từ chối nội dung không khớp mã băm này.
+- Việc quét mã độc nằm trong `saigonos_core/scans.py`. Bảng `core.files` là hàng đợi quét. Mỗi lần quét lấy một file ở trạng thái `pending_scan` bằng `FOR UPDATE SKIP LOCKED`. Không giữ danh sách file chờ quét trong bộ nhớ của service, vì danh sách này mất khi service khởi động lại.
+- Nội dung được ghi vào bucket `clean` là chính nội dung vừa được quét. Trước khi quét, mã băm SHA-256 của nội dung được so với mã băm đã ghi trong bảng `core.files`.
+- Đường dẫn tải về được ký bằng HMAC-SHA256 trong `saigonos_core/downloads.py`. Chữ ký được tính từ mã file và thời điểm hết hạn. Lời gọi tải về không có access token. Do đó, service kiểm tra chữ ký và thời hạn trước khi đọc cơ sở dữ liệu hoặc kho file. Trạng thái `clean` được kiểm tra cả lúc cấp đường dẫn và lúc gửi file.
+- File được gửi về luôn kèm các header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Trước khi gửi, nội dung được so với mã băm SHA-256 đã ghi.
+- Trong `src/saigonos/stack/config/clamav/clamd.conf`, giá trị `MaxFileSize` phải lớn hơn `MaxScanSize`. Nếu không, ClamAV chỉ quét phần đầu của một file lớn bên trong file nén mà không báo. Kiểm thử trong `tests/test_clamd_conf.py` kiểm tra điều kiện này.
+
+Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
+
 ## Phát hành phiên bản mới
 
 Phần này dành cho maintainer của repo.
 
-1. Cập nhật `version` trong `pyproject.toml` thành số phiên bản mới, sau đó chạy lại `pip install --no-deps -e .`.
+1. Cập nhật `version` trong `pyproject.toml` và `__version__` trong `src/saigonos/stack/core/saigonos_core/__init__.py` thành số phiên bản mới, sau đó chạy lại `pip install --no-deps -e .`.
 2. Trong [CHANGELOG.md](CHANGELOG.md), đổi tiêu đề mục "Chưa phát hành" thành `## [X.Y.Z] - YYYY-MM-DD`. Thêm một mục "Chưa phát hành" trống ở phía trên và cập nhật các đường dẫn ở cuối file.
 3. Mở pull request và merge sau khi CI chạy thành công.
 4. Tạo tag trên `main` rồi push tag lên GitHub:

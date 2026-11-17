@@ -5,7 +5,7 @@ import ssl
 
 import pytest
 
-from saigonos.doctor import api_state, gateway_checks, login_state, service_state
+from saigonos.doctor import api_state, core_state, gateway_checks, login_state, service_state
 
 CADDY_SERVICE = {"caddy": {"restart": "unless-stopped"}}
 CADDY_RUNNING = {"Service": "caddy", "State": "running", "Health": "healthy", "ExitCode": 0}
@@ -74,6 +74,7 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
         "BÌNH THƯỜNG    jwks         đã chạy xong",
         f"BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại {gateway.url}/auth",
         "BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối",
+        "BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -119,6 +120,8 @@ def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
     assert result.exit_code == 1
     assert f"LỖI            Đăng nhập    không kết nối được tới {closed_url}: " in result.output
     assert f"LỖI            API          không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            Core API     không kết nối được tới {closed_url}: " in result.output
+    assert result.output.endswith("Có 3 mục lỗi.\n")
 
 
 def test_doctor_stops_when_compose_fails(home, cli, docker):
@@ -232,10 +235,46 @@ def test_api_state_requires_answer_without_token_and_401_for_invalid_token():
     )
 
 
+def test_core_state_requires_health_and_401_for_invalid_token():
+    assert core_state(200, 401) == (
+        True,
+        "service core trả lời, access token không hợp lệ bị từ chối",
+    )
+    assert core_state(502, 401) == (False, "lời gọi /core/health nhận mã 502, đúng ra là 200")
+    assert core_state(200, 200) == (
+        False,
+        "lời gọi có access token không hợp lệ nhận mã 200, đúng ra là 401",
+    )
+
+
+@pytest.mark.parametrize(
+    ("route", "reply", "detail"),
+    [
+        (("/core/health", False), (503, b""), "lời gọi /core/health nhận mã 503, đúng ra là 200"),
+        (
+            ("/core/me", True),
+            (200, b"{}"),
+            "lời gọi có access token không hợp lệ nhận mã 200, đúng ra là 401",
+        ),
+    ],
+)
+def test_doctor_reports_core_service_that_fails_through_gateway(
+    home, cli, docker, gateway, route, reply, detail
+):
+    docker.services(SERVICES, HEALTHY)
+    gateway.routes[route] = reply
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert f"LỖI            Core API     {detail}\n" in result.output
+    assert result.output.endswith("Có 1 mục lỗi.\n")
+
+
 def test_gateway_checks_use_tls_for_https_address(gateway):
     checks = gateway_checks(gateway.url.replace("http://", "https://"))
 
-    assert [check.ok for check in checks] == [False, False]
+    assert [check.ok for check in checks] == [False, False, False]
     assert all("không kết nối được" in check.detail for check in checks)
 
 
@@ -246,7 +285,7 @@ def test_doctor_trusts_root_certificate_of_caddy(caddy_home, cli, docker, truste
 
     assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
     assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
-    assert trusted == ["chứng chỉ gốc\n"] * 2
+    assert trusted == ["chứng chỉ gốc\n"] * 3
 
 
 @pytest.mark.parametrize("reply", [{"output": ""}, {"error": "No such file\n", "code": 1}])

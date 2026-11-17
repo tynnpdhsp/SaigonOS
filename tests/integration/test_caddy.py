@@ -84,7 +84,7 @@ def test_certificate_is_kept_after_down_with_volumes(caddy_stack):
     before = caddy_stack.certificate()
 
     assert caddy_stack.saigonos("down", "--volumes").returncode == 0
-    started = caddy_stack.saigonos("up")
+    started = caddy_stack.up()
     assert started.returncode == 0, started.stderr
     caddy_stack.create_client()
 

@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from saigonos.cli import main
-from saigonos.home import SECRET_KEYS
+from saigonos.home import BYTECODE_FOLDER, SECRET_KEYS, copy_tree
 
 STACK = files("saigonos").joinpath("stack")
 SETTING_KEYS = [
@@ -17,6 +17,8 @@ SETTING_KEYS = [
     "SAIGONOS_HTTP_PORT",
     "SAIGONOS_ADMIN_PORT",
     "SAIGONOS_KEYCLOAK_PORT",
+    "SAIGONOS_SEAWEEDFS_PORT",
+    "SAIGONOS_MAX_FILE_SIZE",
     *SECRET_KEYS,
 ]
 HTTPS_URL = "https://dx.example.com"
@@ -50,6 +52,8 @@ def append_env(home, line):
 
 def stack_files(directory=STACK, prefix=""):
     for entry in directory.iterdir():
+        if entry.name == BYTECODE_FOLDER:
+            continue
         if entry.is_dir():
             yield from stack_files(entry, f"{prefix}{entry.name}/")
         else:
@@ -71,6 +75,27 @@ def test_init_copies_stack_files(home):
     assert f"Thư mục làm việc: {home}\n" in result.output
 
 
+def test_init_copies_source_of_core_service(home):
+    init("--home", home)
+
+    shipped = dict(stack_files())
+    assert {"core/requirements.txt", "core/saigonos_core/main.py"} <= shipped.keys()
+    assert (home / "core" / "saigonos_core" / "main.py").is_file()
+
+
+def test_bytecode_folders_are_not_copied(tmp_path):
+    source, target = tmp_path / "source", tmp_path / "target"
+    (source / "core" / BYTECODE_FOLDER).mkdir(parents=True)
+    (source / "core" / BYTECODE_FOLDER / "main.cpython-312.pyc").write_bytes(b"")
+    (source / "core" / "main.py").write_text("", encoding="utf-8")
+    target.mkdir()
+
+    copy_tree(source, target)
+
+    copied = sorted(path.relative_to(target).as_posix() for path in target.rglob("*"))
+    assert copied == ["core", "core/main.py"]
+
+
 def test_init_writes_env_with_defaults_and_random_secrets(home):
     result = init("--home", home)
 
@@ -82,6 +107,8 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     assert env["SAIGONOS_HTTP_PORT"] == "9080"
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9280"
+    assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9380"
+    assert env["SAIGONOS_MAX_FILE_SIZE"] == "10"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
     assert not (home / ".env.tmp").exists()
@@ -144,7 +171,15 @@ def test_init_fills_only_missing_and_empty_values(home):
     assert f"Đã tạo {len(SECRET_KEYS) - 1} mật khẩu ngẫu nhiên" in result.output
 
 
-@pytest.mark.parametrize("line", ["SAIGONOS_HTTP_HOST=127.0.0.1", "SAIGONOS_KEYCLOAK_PORT=9280"])
+@pytest.mark.parametrize(
+    "line",
+    [
+        "SAIGONOS_HTTP_HOST=127.0.0.1",
+        "SAIGONOS_KEYCLOAK_PORT=9280",
+        "SAIGONOS_SEAWEEDFS_PORT=9380",
+        "SAIGONOS_MAX_FILE_SIZE=10",
+    ],
+)
 def test_init_adds_setting_missing_from_env_of_older_version(home, line):
     init("--home", home)
     env_file = home / ".env"
@@ -164,37 +199,99 @@ def test_init_adds_setting_missing_from_env_of_older_version(home, line):
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
 
-    result = init("--home", home, *options, "--keycloak-port", 9998)
+    result = init("--home", home, *options, "--keycloak-port", 9998, "--seaweedfs-port", 9997)
 
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
     assert env["SAIGONOS_HTTP_PORT"] == "8000"
     assert env["SAIGONOS_ADMIN_PORT"] == "9999"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9998"
+    assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9997"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
 
 
+def test_max_file_size_is_kept_until_set_again(home):
+    init("--home", home, "--max-file-size", 25)
+    kept = read_env(home)["SAIGONOS_MAX_FILE_SIZE"]
+
+    init("--home", home)
+    again = read_env(home)["SAIGONOS_MAX_FILE_SIZE"]
+    init("--home", home, "--max-file-size", 100)
+
+    assert (kept, again) == ("25", "25")
+    assert read_env(home)["SAIGONOS_MAX_FILE_SIZE"] == "100"
+
+
+@pytest.mark.parametrize("size", ["0", "101", "-1", "abc", "1.5"])
+def test_max_file_size_outside_range_is_rejected(home, size):
+    result = init("--home", home, "--max-file-size", size)
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--max-file-size'" in result.output
+    assert not home.exists()
+
+
 @pytest.mark.parametrize(
-    ("options", "message"),
+    ("options", "message", "option"),
     [
-        (["--keycloak-port", 9080], "Cổng 9080 của Keycloak trùng với cổng HTTP của API Gateway."),
-        (["--keycloak-port", 9180], "Cổng 9180 của Keycloak trùng với cổng quản trị của APISIX."),
+        (
+            ["--keycloak-port", 9080],
+            "Cổng 9080 của Keycloak trùng với cổng HTTP của API Gateway.",
+            "--keycloak-port",
+        ),
+        (
+            ["--keycloak-port", 9180],
+            "Cổng 9180 của Keycloak trùng với cổng quản trị của APISIX.",
+            "--keycloak-port",
+        ),
         (
             ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 80],
             "Cổng 80 của Keycloak trùng với cổng HTTP của Caddy.",
+            "--keycloak-port",
         ),
         (
             ["--caddy", "--url", HTTPS_URL, "--keycloak-port", 443],
             "Cổng 443 của Keycloak trùng với cổng HTTPS của Caddy.",
+            "--keycloak-port",
+        ),
+        (
+            ["--seaweedfs-port", 9080],
+            "Cổng 9080 của SeaweedFS trùng với cổng HTTP của API Gateway.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--seaweedfs-port", 9180],
+            "Cổng 9180 của SeaweedFS trùng với cổng quản trị của APISIX.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--seaweedfs-port", 9280],
+            "Cổng 9280 của SeaweedFS trùng với cổng của Keycloak.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--http-port", 9380],
+            "Cổng 9380 của SeaweedFS trùng với cổng HTTP của API Gateway.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--seaweedfs-port", 80],
+            "Cổng 80 của SeaweedFS trùng với cổng HTTP của Caddy.",
+            "--seaweedfs-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--seaweedfs-port", 443],
+            "Cổng 443 của SeaweedFS trùng với cổng HTTPS của Caddy.",
+            "--seaweedfs-port",
         ),
     ],
 )
-def test_keycloak_port_used_by_another_service_is_rejected(home, options, message):
+def test_port_used_by_another_service_is_rejected(home, options, message, option):
     result = init("--home", home, *options)
 
     assert result.exit_code == 2
     assert message in result.output
-    assert "Hãy chọn cổng khác bằng tùy chọn --keycloak-port." in result.output
+    assert f"Hãy chọn cổng khác bằng tùy chọn {option}." in result.output
     assert not home.exists()
 
 

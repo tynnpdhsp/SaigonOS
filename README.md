@@ -10,15 +10,17 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Phần quản lý dữ liệu phi cấu trúc và luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Phần luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Yêu cầu hệ thống
 
 - Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
 - Python 3.11 trở lên và pip.
-- Docker Engine 25.0 trở lên và Docker Compose 2.20.2 trở lên. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
+- Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
-- Khoảng 2 GB dung lượng đĩa cho các image Docker và 1 GB RAM cho các service.
+- Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
+- Khoảng 5 GB dung lượng đĩa cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên.
+- Khoảng 2,5 GB RAM cho các service.
 
 ## Cài đặt
 
@@ -46,7 +48,7 @@ saigonos init
 
 Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
-Hệ thống dùng ba cổng 9080, 9180 và 9280. Nếu một trong ba cổng đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
+Hệ thống dùng các cổng 9080, 9180, 9280 và 9380. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
 ### 3. Khởi động các service
 
@@ -67,7 +69,10 @@ Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
 BÌNH THƯỜNG    apisix       đang chạy
+BÌNH THƯỜNG    clamav       đang chạy
+BÌNH THƯỜNG    core         đang chạy
 BÌNH THƯỜNG    etcd         đang chạy
+BÌNH THƯỜNG    freshclam    đang chạy
 BÌNH THƯỜNG    jwks         đã chạy xong
 BÌNH THƯỜNG    keycloak     đang chạy
 BÌNH THƯỜNG    migrate      đã chạy xong
@@ -75,8 +80,10 @@ BÌNH THƯỜNG    postgres     đang chạy
 BÌNH THƯỜNG    postgrest    đang chạy
 BÌNH THƯỜNG    realm        đã chạy xong
 BÌNH THƯỜNG    routes       đã chạy xong
+BÌNH THƯỜNG    seaweedfs    đang chạy
 BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối
 Hệ thống hoạt động bình thường.
 ```
 
@@ -89,7 +96,9 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP. Cách tạo tài khoản được trình bày ở mục [Tài khoản quản trị](#tài-khoản-quản-trị) |
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
+| http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
+| http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -150,6 +159,114 @@ Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi đư�
 
 Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Ví dụ, với địa chỉ truy cập `https://dx.example.com`, các lời gọi trong tài liệu bắt đầu bằng `https://dx.example.com/api`.
 
+## API của service core
+
+Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
+
+API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer (`iss`), thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service từ bên trong mạng Docker vẫn bị từ chối khi access token không hợp lệ. Service chỉ chấp nhận access token, không chấp nhận ID token. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
+
+Service kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Do đó, các hàm `core.uid()`, `core.has_role()`, `core.unit()` và chính sách phân quyền từng dòng dùng chung cho cả hai.
+
+Image của service được Docker Compose build trên máy cài đặt từ image `python` chính thức. Các thư viện được cài từ lock file có mã băm. Ở lần khởi động đầu tiên, việc build mất khoảng một phút. Mỗi lần chạy `saigonos up`, Docker Compose build lại image. Khi mã nguồn không đổi, việc build dùng lại kết quả cũ nên chỉ mất vài giây. Với Docker Compose 2.x, container của service `core` cũng được tạo lại ở mỗi lần chạy, kể cả khi mã nguồn không đổi.
+
+## Tải file lên
+
+Service `core` nhận file của các ứng dụng và lưu file vào SeaweedFS. Mỗi file được tải lên bằng hai lời gọi. Cả hai lời gọi đều cần access token của người dùng đã đăng nhập.
+
+1. Lời gọi `POST /core/files` khai báo tên, loại và dung lượng của file. Service kiểm tra ba giá trị này trước khi nhận nội dung. Khi hợp lệ, service trả về mã 201 kèm mã file và đường dẫn tải lên trong trường `upload_url`. File ở trạng thái `pending_upload`.
+2. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Service tính dung lượng và mã băm SHA-256 của nội dung, rồi kiểm tra phần đầu của nội dung. Khi hợp lệ, nội dung được lưu vào bucket `quarantine` và file chuyển sang trạng thái `pending_scan`, tức chờ quét mã độc.
+
+Ngay sau khi nhận nội dung, service `core` quét file bằng ClamAV. Việc quét chạy nền nên lời gọi `PUT` không phải chờ. Ứng dụng gọi `GET /core/files/{id}` để biết kết quả quét. Mục [Quét mã độc](#quét-mã-độc) mô tả cách quét. Khi file có trạng thái `clean`, ứng dụng tải file về theo mục [Tải file về](#tải-file-về).
+
+Ba trường của lời gọi khai báo có cùng tên với các thuộc tính của đối tượng `File` trong trình duyệt. Ví dụ, một ứng dụng web tải file mà người dùng đã chọn như sau:
+
+```js
+const headers = { Authorization: `Bearer ${accessToken}` };
+const declared = await fetch("/core/files", {
+  method: "POST",
+  headers: { ...headers, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+});
+const { upload_url } = await declared.json();
+await fetch(upload_url, { method: "PUT", headers, body: file });
+```
+
+Mỗi file chỉ nhận nội dung một lần. Khi lời gọi gửi nội dung bị từ chối, nội dung không được lưu và có thể được gửi lại. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file. Bảng `core.files` có chính sách phân quyền từng dòng. Do đó, mỗi người dùng chỉ thấy file của chính mình.
+
+Các trạng thái của file:
+
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `pending_upload` | Chờ gửi nội dung |
+| `pending_scan` | Nội dung nằm trong bucket `quarantine` và chờ quét mã độc |
+| `clean` | ClamAV không phát hiện mã độc. Nội dung đã được chuyển sang bucket `clean` và tải về được |
+| `infected` | ClamAV phát hiện mã độc. Trường `malware` ghi tên mã độc. Nội dung được giữ trong bucket `quarantine` và không tải về được |
+
+Các loại file được phép:
+
+| Loại file | Phần mở rộng | Phần đầu của nội dung |
+|---|---|---|
+| `application/pdf` | `.pdf` | `%PDF-` |
+| `image/jpeg` | `.jpg`, `.jpeg` | Các byte `FF D8 FF` |
+| `image/png` | `.png` | Các byte `89 50 4E 47 0D 0A 1A 0A` |
+| `image/webp` | `.webp` | `RIFF`, 4 byte bất kỳ, sau đó là `WEBP` |
+| `text/plain` | `.txt` | 8.192 byte đầu không chứa byte 0 |
+| `text/csv` | `.csv` | 8.192 byte đầu không chứa byte 0 |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `.docx` | `PK` và các byte `03 04` của file ZIP |
+| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `.xlsx` | `PK` và các byte `03 04` của file ZIP |
+
+Tên file phải có phần mở rộng ứng với loại file. Tên file dài tối đa 255 ký tự và không chứa ký tự điều khiển, dấu `/` hoặc dấu `\`. Văn bản mã hóa UTF-16 chứa byte 0 nên không được nhận là `text/plain` hoặc `text/csv`.
+
+Mỗi file có dung lượng tối đa 10 MB, với 1 MB là 1.048.576 byte. Tùy chọn `--max-file-size` của lệnh `saigonos init` đổi giới hạn này. API Gateway cũng từ chối mọi lời gọi có nội dung lớn hơn giới hạn này.
+
+Các mã lỗi của hai lời gọi:
+
+| Mã | Lời gọi | Ý nghĩa |
+|---|---|---|
+| 401 | Khai báo và gửi nội dung | Thiếu access token hoặc access token không hợp lệ |
+| 413 | Khai báo | Dung lượng khai báo vượt giới hạn |
+| 413 | Gửi nội dung | Nội dung lớn hơn giới hạn nên API Gateway từ chối |
+| 415 | Khai báo | Loại file không được phép |
+| 422 | Khai báo | Tên file không hợp lệ hoặc phần mở rộng không ứng với loại file |
+| 422 | Gửi nội dung | Dung lượng hoặc phần đầu của nội dung không khớp với thông tin đã khai báo |
+| 404 | Gửi nội dung | Không có file với mã này hoặc file thuộc người dùng khác |
+| 409 | Gửi nội dung | File đã nhận nội dung |
+| 503 | Gửi nội dung | SeaweedFS chưa sẵn sàng. File vẫn ở trạng thái `pending_upload` và có thể gửi lại |
+
+## Tải file về
+
+Mỗi file được tải về bằng một đường dẫn có thời hạn. Ứng dụng xin đường dẫn bằng lời gọi `POST /core/files/{id}/download-url` kèm access token của người dùng đã đăng nhập. Service trả về đường dẫn trong trường `download_url` và thời điểm hết hạn trong trường `expires_at`.
+
+Đường dẫn dùng được trong 60 giây và mở được trong trình duyệt mà không cần access token. Trong 60 giây này, đường dẫn mở được nhiều lần và bất kỳ ai có đường dẫn đều tải được file. Do đó, ứng dụng chỉ xin đường dẫn ngay trước khi tải và không lưu lại đường dẫn. Thời hạn chỉ áp dụng cho lúc mở đường dẫn. Một file lớn có thể tải xong sau thời điểm hết hạn.
+
+Ví dụ, một ứng dụng web tải file về như sau:
+
+```js
+const reply = await fetch(`/core/files/${id}/download-url`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+const { download_url } = await reply.json();
+window.location.assign(download_url);
+```
+
+Chỉ file có trạng thái `clean` mới tải về được. Người dùng chỉ xin được đường dẫn cho file mà chính sách phân quyền từng dòng của bảng `core.files` cho phép đọc. Trước khi gửi file, service đọc lại nội dung từ bucket `clean` và so với mã băm SHA-256 đã ghi.
+
+File được gửi kèm các header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Do đó, trình duyệt luôn lưu file về máy với tên đã khai báo, không tự đoán lại loại file và không giữ file trong bộ nhớ đệm.
+
+Đường dẫn được ký bằng khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Sau khi đổi khóa này và chạy `saigonos up`, các đường dẫn đã cấp không còn dùng được.
+
+Các mã lỗi của hai lời gọi:
+
+| Mã | Lời gọi | Ý nghĩa |
+|---|---|---|
+| 401 | Xin đường dẫn | Thiếu access token hoặc access token không hợp lệ |
+| 404 | Xin đường dẫn | Không có file với mã này hoặc người gọi không được đọc file |
+| 409 | Xin đường dẫn và tải về | File chưa có nội dung, đang chờ quét mã độc hoặc có mã độc |
+| 403 | Tải về | Đường dẫn không hợp lệ hoặc đã hết hạn |
+| 503 | Tải về | SeaweedFS chưa sẵn sàng |
+| 500 | Tải về | Nội dung trong bucket `clean` không khớp mã băm đã ghi. File không được gửi |
+
 ## Cấu hình
 
 Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo được giữ nguyên.
@@ -161,7 +278,9 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--http-port` | `9080` | Cổng HTTP của API Gateway |
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
 | `--keycloak-port` | `9280` | Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. Admin Console của realm master dùng cổng này |
+| `--seaweedfs-port` | `9380` | Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
+| `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
 
 Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.
@@ -296,6 +415,8 @@ server {
     ssl_certificate /etc/letsencrypt/live/dx.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/dx.example.com/privkey.pem;
 
+    client_max_body_size 10m;
+
     location / {
         proxy_pass http://127.0.0.1:9080;
         proxy_set_header Host $host;
@@ -310,6 +431,8 @@ server {
 Reverse proxy phải gửi đủ các header trong ví dụ trên. API Gateway dùng các header này để xác định địa chỉ mà người dùng truy cập và địa chỉ IP của người dùng. API Gateway chỉ tin các header này khi kết nối đến từ một địa chỉ IP trong mạng nội bộ, gồm các dải `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` và `192.168.0.0/16`.
 
 Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người dùng không thể tự khai báo một địa chỉ IP khác.
+
+Dòng `client_max_body_size` cho phép Nginx nhận nội dung lớn tới 10 MB, bằng giới hạn dung lượng file mặc định của SaigonOS. Nginx mặc định chỉ nhận nội dung tới 1 MB. Khi đổi giới hạn bằng tùy chọn `--max-file-size`, cần đổi cả giá trị này.
 
 ### 3. Kiểm tra hệ thống
 
@@ -348,6 +471,40 @@ Tài khoản superuser của PostgreSQL vẫn tắt được trigger chặn sử
 
 Lệnh không phát hiện được hai trường hợp. Trường hợp thứ nhất là các dòng cuối cùng bị xóa. Trường hợp thứ hai là một dòng bị sửa và mã băm của mọi dòng từ đó về sau được tính lại. Trong cả hai trường hợp, các dòng còn lại vẫn nối đúng với nhau. Do đó, nên lưu kết quả của lệnh ở một nơi ngoài máy chủ sau mỗi lần kiểm tra. Số dòng của audit log chỉ tăng. Với cùng một số dòng, mã băm của dòng cuối không đổi.
 
+## Quét mã độc
+
+SaigonOS dùng ClamAV để quét mã độc. ClamAV chạy trong hai service:
+
+- Service `clamav` quét nội dung được gửi tới. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. Chỉ service `core` kết nối được tới ClamAV.
+- Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày. Bản cập nhật được tải từ `database.clamav.net`.
+
+Service `core` quét mọi file ngay sau khi nhận nội dung. Trước khi quét, nội dung được đọc lại từ bucket `quarantine` và được so với mã băm SHA-256 đã ghi. File sạch được chuyển sang bucket `clean`. File có mã độc được giữ trong bucket `quarantine`. Kết quả quét được ghi vào bảng `core.files` và audit log.
+
+Nội dung mà ClamAV không quét hết được cũng bị coi là mã độc. Khi đó, tên mã độc bắt đầu bằng `Heuristics.Limits.Exceeded`. Các trường hợp này gồm:
+
+- Tổng nội dung sau khi giải nén lớn hơn 400 MB.
+- File nén chứa hơn 10.000 file.
+- File nén lồng nhau quá 17 lớp.
+- Việc quét kéo dài quá 2 phút.
+
+Khi ClamAV chưa sẵn sàng, file chờ ở trạng thái `pending_scan`. Service `core` thử quét lại sau mỗi 10 giây. Trạng thái chờ được lưu trong cơ sở dữ liệu. Do đó, file vẫn được quét sau khi service `core` khởi động lại. Khi việc quét một file bị lỗi, file đó được hoãn và các file khác được quét trước. Thời gian hoãn bắt đầu từ 20 giây, tăng gấp đôi sau mỗi lần lỗi và tối đa là 1 giờ.
+
+Cơ sở dữ liệu mã độc được lưu trong volume `clamav-data`. Do đó, các bản cập nhật được giữ lại khi khởi động lại hệ thống. Service `clamav` kiểm tra cơ sở dữ liệu 10 phút một lần và tự nạp bản mới. Trong lúc nạp, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM để dùng khoảng 1 GB RAM thay vì 2 GB. Do đó, các yêu cầu quét phải chờ khoảng 15 giây cho tới khi nạp xong.
+
+Để xem kết quả của các lần cập nhật gần nhất:
+
+```bash
+cd ~/saigonos
+docker compose logs --tail 20 freshclam
+```
+
+Service `core` ghi vào log mỗi khi phát hiện mã độc hoặc chưa quét được một file. Để xem các dòng log gần nhất:
+
+```bash
+cd ~/saigonos
+docker compose logs --tail 20 core
+```
+
 ## Cập nhật phiên bản
 
 Các thay đổi của từng phiên bản được ghi trong [CHANGELOG.md](CHANGELOG.md). Khi cập nhật, dữ liệu, các mật khẩu trong file `.env` và chứng chỉ của Caddy được giữ nguyên.
@@ -377,7 +534,7 @@ saigonos up
 saigonos doctor
 ```
 
-Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh `saigonos up` tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
+Lệnh `saigonos init` cập nhật file `compose.yaml` và thư mục `config` theo phiên bản mới. Lệnh này cũng thêm vào file `.env` các giá trị mà phiên bản mới cần, ví dụ mật khẩu của service mới. Lệnh `saigonos up` build lại image của service `core` và tạo lại các container với cấu hình mới. Service `migrate` chạy các file SQL mới của phiên bản để cập nhật cơ sở dữ liệu. Service `realm` thêm các thiết lập mới của phiên bản vào realm `saigonos` của Keycloak.
 
 ## Tham gia phát triển
 

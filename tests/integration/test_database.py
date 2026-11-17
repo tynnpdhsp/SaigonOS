@@ -317,7 +317,7 @@ def notes(stack):
     notes = Notes(stack, unique("row_security"))
     text = NOTES.format(table=notes.table, lead=LEAD)
     stack.add_migration(f"9005_{notes.table}.sql", text)
-    started = stack.saigonos("up")
+    started = stack.up()
     assert started.returncode == 0, started.stderr
     served(stack, f"/{notes.table}")
     return notes
@@ -327,7 +327,7 @@ def notes(stack):
 def contacts(stack):
     schema = unique("contacts")
     stack.add_migration(f"9006_{schema}.sql", CONTACTS.format(schema=schema, lead=LEAD))
-    started = stack.saigonos("up")
+    started = stack.up()
     assert started.returncode == 0, started.stderr
     served(stack, f"/{schema}")
     return schema
@@ -337,7 +337,7 @@ def contacts(stack):
 def agree(stack):
     name = unique("agree")
     stack.add_migration(f"9007_{name}.sql", AGREE.format(name=name, policy=POLICY))
-    started = stack.saigonos("up")
+    started = stack.up()
     assert started.returncode == 0, started.stderr
     served(stack, f"/rpc/{name}")
 
@@ -380,8 +380,8 @@ def test_new_files_run_once_in_name_order(stack):
     stack.add_migration(f"9001_{table}_b.sql", f"INSERT INTO {table} VALUES ('b');")
     stack.add_migration(f"9001_{table}_a.sql", f"CREATE TABLE {table} (step text);")
 
-    first = stack.saigonos("up")
-    second = stack.saigonos("up")
+    first = stack.up()
+    second = stack.up()
 
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
@@ -391,18 +391,18 @@ def test_new_files_run_once_in_name_order(stack):
 
 def test_changed_file_stops_migrate(stack):
     path = stack.add_migration(f"9002_{unique('migrate_changed')}.sql", "SELECT 1;")
-    assert stack.saigonos("up").returncode == 0
+    assert stack.up().returncode == 0
 
     path.write_text("SELECT 2;", encoding="utf-8")
     try:
-        changed = stack.saigonos("up")
+        changed = stack.up()
         logs = stack.logs("migrate")
     finally:
         path.write_text("SELECT 1;", encoding="utf-8")
 
     assert changed.returncode != 0
     assert f"File {path.name} đã được chạy trước đó nhưng nội dung đã thay đổi." in logs
-    assert stack.saigonos("up").returncode == 0
+    assert stack.up().returncode == 0
 
 
 def test_failed_file_changes_nothing_and_stops_later_files(stack):
@@ -412,7 +412,7 @@ def test_failed_file_changes_nothing_and_stops_later_files(stack):
     )
     later = stack.add_migration(f"9003_{table}_b.sql", f"CREATE TABLE {table}_later (id int);")
     try:
-        failed = stack.saigonos("up")
+        failed = stack.up()
         logs = stack.logs("migrate")
     finally:
         failing.unlink()
@@ -424,7 +424,7 @@ def test_failed_file_changes_nothing_and_stops_later_files(stack):
     assert stack.sql(f"SELECT to_regclass('{table}'), to_regclass('{table}_later')") == [["", ""]]
     records = f"SELECT count(*) FROM core.migrations WHERE starts_with(name, '9003_{table}')"
     assert stack.sql(records) == [["0"]]
-    assert stack.saigonos("up").returncode == 0
+    assert stack.up().returncode == 0
 
 
 def test_postgrest_serves_view_from_new_file_without_restart(stack):
@@ -436,7 +436,7 @@ def test_postgrest_serves_view_from_new_file_without_restart(stack):
         f"CREATE VIEW api.{view} AS SELECT 1 AS one;\nGRANT SELECT ON api.{view} TO authenticated;",
     )
 
-    assert stack.saigonos("up").returncode == 0
+    assert stack.up().returncode == 0
 
     token = stack.token(stack.new_user())
     deadline = time.monotonic() + 10
@@ -611,6 +611,30 @@ def test_token_without_role_authenticated_runs_as_anon(stack, notes):
     assert notes.rpc("open", user) == (200, {"role": "anon", "uid": user.id})
     assert (status, error["code"]) == (401, "42501")
     assert notes.call(user, "GET")[0] == 401
+
+
+def test_api_accepts_access_token_only(stack, notes):
+    user = stack.new_user()
+    tokens = json.loads(stack.login(user, scope="openid").body)
+    path = f"/rpc/{notes.table}_open"
+
+    def through_gateway(token=None):
+        reply = stack.call("GET", f"{stack.url}/api{path}", token=token)
+        return reply.status, json.loads(reply.body), reply.headers.get("WWW-Authenticate")
+
+    rejected = through_gateway(tokens["id_token"])
+    document = stack.call("GET", f"{stack.url}/api/", token=tokens["id_token"]).status
+
+    assert through_gateway(tokens["access_token"])[:2] == (
+        200,
+        {"role": "authenticated", "uid": user.id},
+    )
+    assert through_gateway()[:2] == (200, {"role": "anon", "uid": None})
+    assert rejected[0] == 401
+    assert (rejected[1]["code"], rejected[1]["message"]) == ("SGN01", "Access token không hợp lệ")
+    assert rejected[2] == 'Bearer error="invalid_token"'
+    assert stack.postgrest_status(path, tokens["id_token"]) == 401
+    assert document == 401
 
 
 def test_forged_token_is_rejected_where_anon_is_allowed(stack, notes):

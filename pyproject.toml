@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "saigonos"
-version = "0.2.0"
+version = "0.3.0"
 description = "Hệ điều hành chuyển đổi số (DX-OS) nguồn mở"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,7 +34,14 @@ Issues = "https://github.com/tynnpdhsp/SaigonOS/issues"
 Changelog = "https://github.com/tynnpdhsp/SaigonOS/blob/main/CHANGELOG.md"
 
 [dependency-groups]
+core = [
+    "asyncpg>=0.32",
+    "fastapi>=0.163",
+    "pyjwt[crypto]>=2.15",
+    "uvicorn>=0.54",
+]
 dev = [
+    "httpx2>=2.16",
     "packaging>=24",
     "pip-licenses>=5.5",
     "pytest>=9",
@@ -49,6 +56,7 @@ packages = ["src/saigonos"]
 
 [tool.ruff]
 line-length = 100
+src = [".", "src", "src/saigonos/stack/core"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "S", "SIM", "C4", "PTH", "RUF"]
@@ -61,12 +69,12 @@ select = ["E", "W", "F", "I", "UP", "B", "S", "SIM", "C4", "PTH", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "src/saigonos/stack/core"]
 addopts = ["--strict-markers", "--strict-config", "-m", "not integration"]
 markers = ["integration: kiểm thử tích hợp, cần Docker để chạy cả bộ Docker Compose"]
 
 [tool.coverage.run]
-source_pkgs = ["saigonos"]
+source_pkgs = ["saigonos", "saigonos_core"]
 branch = true
 
 [tool.coverage.report]
