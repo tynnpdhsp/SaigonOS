@@ -175,6 +175,8 @@ Service `core` nhận file của các ứng dụng và lưu file vào SeaweedFS.
 1. Lời gọi `POST /core/files` khai báo tên, loại và dung lượng của file. Service kiểm tra ba giá trị này trước khi nhận nội dung. Khi hợp lệ, service trả về mã 201 kèm mã file và đường dẫn tải lên trong trường `upload_url`. File ở trạng thái `pending_upload`.
 2. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Service tính dung lượng và mã băm SHA-256 của nội dung, rồi kiểm tra phần đầu của nội dung. Khi hợp lệ, nội dung được lưu vào bucket `quarantine` và file chuyển sang trạng thái `pending_scan`, tức chờ quét mã độc.
 
+Ngay sau khi nhận nội dung, service `core` quét file bằng ClamAV. Việc quét chạy nền nên lời gọi `PUT` không phải chờ. Ứng dụng gọi `GET /core/files/{id}` để biết kết quả quét. Mục [Quét mã độc](#quét-mã-độc) mô tả cách quét.
+
 Ba trường của lời gọi khai báo có cùng tên với các thuộc tính của đối tượng `File` trong trình duyệt. Ví dụ, một ứng dụng web tải file mà người dùng đã chọn như sau:
 
 ```js
@@ -189,6 +191,15 @@ await fetch(upload_url, { method: "PUT", headers, body: file });
 ```
 
 Mỗi file chỉ nhận nội dung một lần. Khi lời gọi gửi nội dung bị từ chối, nội dung không được lưu và có thể được gửi lại. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file. Bảng `core.files` có chính sách phân quyền từng dòng. Do đó, mỗi người dùng chỉ thấy file của chính mình.
+
+Các trạng thái của file:
+
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `pending_upload` | Chờ gửi nội dung |
+| `pending_scan` | Nội dung nằm trong bucket `quarantine` và chờ quét mã độc |
+| `clean` | ClamAV không phát hiện mã độc. Nội dung đã được chuyển sang bucket `clean` |
+| `infected` | ClamAV phát hiện mã độc. Trường `malware` ghi tên mã độc. Nội dung được giữ trong bucket `quarantine` |
 
 Các loại file được phép:
 
@@ -432,6 +443,17 @@ SaigonOS dùng ClamAV để quét mã độc. ClamAV chạy trong hai service:
 - Service `clamav` quét nội dung được gửi tới. Service này nằm trong mạng Docker `scan` riêng. Mạng này không có kết nối Internet. Chỉ service `core` kết nối được tới ClamAV.
 - Service `freshclam` kiểm tra bản cập nhật của cơ sở dữ liệu mã độc 12 lần mỗi ngày. Bản cập nhật được tải từ `database.clamav.net`.
 
+Service `core` quét mọi file ngay sau khi nhận nội dung. Trước khi quét, nội dung được đọc lại từ bucket `quarantine` và được so với mã băm SHA-256 đã ghi. File sạch được chuyển sang bucket `clean`. File có mã độc được giữ trong bucket `quarantine`. Kết quả quét được ghi vào bảng `core.files` và audit log.
+
+Nội dung mà ClamAV không quét hết được cũng bị coi là mã độc. Khi đó, tên mã độc bắt đầu bằng `Heuristics.Limits.Exceeded`. Các trường hợp này gồm:
+
+- Tổng nội dung sau khi giải nén lớn hơn 400 MB.
+- File nén chứa hơn 10.000 file.
+- File nén lồng nhau quá 17 lớp.
+- Việc quét kéo dài quá 2 phút.
+
+Khi ClamAV chưa sẵn sàng, file chờ ở trạng thái `pending_scan`. Service `core` thử quét lại sau mỗi 10 giây. Trạng thái chờ được lưu trong cơ sở dữ liệu. Do đó, file vẫn được quét sau khi service `core` khởi động lại. Khi việc quét một file bị lỗi, file đó được hoãn và các file khác được quét trước. Thời gian hoãn bắt đầu từ 20 giây, tăng gấp đôi sau mỗi lần lỗi và tối đa là 1 giờ.
+
 Cơ sở dữ liệu mã độc được lưu trong volume `clamav-data`. Do đó, các bản cập nhật được giữ lại khi khởi động lại hệ thống. Service `clamav` kiểm tra cơ sở dữ liệu 10 phút một lần và tự nạp bản mới. Trong lúc nạp, ClamAV chỉ giữ một bản cơ sở dữ liệu trong RAM để dùng khoảng 1 GB RAM thay vì 2 GB. Do đó, các yêu cầu quét phải chờ khoảng 15 giây cho tới khi nạp xong.
 
 Để xem kết quả của các lần cập nhật gần nhất:
@@ -439,6 +461,13 @@ Cơ sở dữ liệu mã độc được lưu trong volume `clamav-data`. Do đ�
 ```bash
 cd ~/saigonos
 docker compose logs --tail 20 freshclam
+```
+
+Service `core` ghi vào log mỗi khi phát hiện mã độc hoặc chưa quét được một file. Để xem các dòng log gần nhất:
+
+```bash
+cd ~/saigonos
+docker compose logs --tail 20 core
 ```
 
 ## Cập nhật phiên bản

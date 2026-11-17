@@ -3,6 +3,7 @@ import json
 import re
 import shlex
 from pathlib import Path
+from typing import get_args
 
 import click
 import pytest
@@ -19,6 +20,7 @@ from saigonos.home import (
     DEFAULT_SEAWEEDFS_PORT,
     LARGEST_FILE_SIZE,
 )
+from saigonos_core.files import FileInfo
 from saigonos_core.kinds import KINDS
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
@@ -139,6 +141,12 @@ def test_readme_lists_every_allowed_file_type():
     assert {kind: re.findall(r"`(\.[a-z]+)`", extensions) for kind, extensions in rows} == {
         kind: list(rule.extensions) for kind, rule in KINDS.items()
     }
+
+
+def test_readme_lists_every_file_status():
+    rows = re.findall(r"^\| `([a-z_]+)` \|", README, re.MULTILINE)
+
+    assert rows == list(get_args(FileInfo.model_fields["status"].annotation))
 
 
 def test_readme_links_point_to_existing_sections():
