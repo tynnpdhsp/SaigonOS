@@ -6,7 +6,7 @@ import asyncpg
 import pytest
 
 from saigonos_core.callers import caller_of
-from saigonos_core.database import SET_CALLER, Database
+from saigonos_core.database import SET_CALLER, SET_CLAIMS, Database
 
 
 class FakeTransaction:
@@ -98,6 +98,31 @@ def test_session_discards_plans_then_sets_role_and_claims_inside_transaction(poo
         "commit",
         "release",
     ]
+
+
+def test_service_session_keeps_role_of_service_and_sets_claims_of_caller(pool, realm):
+    database, created = opened(pool)
+    caller = caller_of(realm.claims())
+
+    async def query():
+        async with database.service_session(caller) as connection:
+            await connection.execute("UPDATE core.files SET status = 'pending_scan'")
+
+    asyncio.run(query())
+
+    assert created.events == [
+        "acquire",
+        "begin",
+        ("DISCARD PLANS",),
+        (SET_CLAIMS, json.dumps(caller.claims)),
+        ("UPDATE core.files SET status = 'pending_scan'",),
+        "commit",
+        "release",
+    ]
+
+
+def test_set_claims_statement_is_local_to_transaction():
+    assert SET_CLAIMS == "SELECT set_config('request.jwt.claims', $1, true)"
 
 
 def test_session_of_anonymous_caller_uses_role_anon(pool):

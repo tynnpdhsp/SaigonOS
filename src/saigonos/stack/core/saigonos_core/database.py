@@ -8,6 +8,7 @@ import asyncpg
 from saigonos_core.callers import Caller
 
 SET_CALLER = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true)"
+SET_CLAIMS = "SELECT set_config('request.jwt.claims', $1, true)"
 UNAVAILABLE = (OSError, TimeoutError, asyncpg.PostgresError, asyncpg.InterfaceError)
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 30
@@ -40,9 +41,20 @@ class Database:
         return True
 
     @asynccontextmanager
-    async def session(self, caller: Caller) -> AsyncIterator[asyncpg.Connection]:
+    async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
         async with self.pool.acquire() as connection, connection.transaction():
             # PostgreSQL không kiểm tra lại quyền EXECUTE khi dùng lại query plan của role khác
             await connection.execute("DISCARD PLANS")
+            yield connection
+
+    @asynccontextmanager
+    async def session(self, caller: Caller) -> AsyncIterator[asyncpg.Connection]:
+        async with self.transaction() as connection:
             await connection.execute(SET_CALLER, caller.role, json.dumps(caller.claims))
+            yield connection
+
+    @asynccontextmanager
+    async def service_session(self, caller: Caller) -> AsyncIterator[asyncpg.Connection]:
+        async with self.transaction() as connection:
+            await connection.execute(SET_CLAIMS, json.dumps(caller.claims))
             yield connection
