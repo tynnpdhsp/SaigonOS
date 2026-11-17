@@ -167,7 +167,7 @@ API Gateway kiểm tra access token của lời gọi tới `/core` như với `
 
 Service kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Do đó, các hàm `core.uid()`, `core.has_role()`, `core.unit()` và chính sách phân quyền từng dòng dùng chung cho cả hai.
 
-Image của service được Docker Compose build trên máy cài đặt từ image `python` chính thức. Các thư viện được cài từ lock file có mã băm. Ở lần khởi động đầu tiên, việc build mất khoảng một phút. Mỗi lần chạy `saigonos up`, Docker Compose build lại image. Khi mã nguồn không đổi, việc build dùng lại kết quả cũ nên chỉ mất vài giây.
+Image của service được Docker Compose build trên máy cài đặt từ image `python` chính thức. Các thư viện được cài từ lock file có mã băm. Ở lần khởi động đầu tiên, việc build mất khoảng một phút. Mỗi lần chạy `saigonos up`, Docker Compose build lại image. Khi mã nguồn không đổi, việc build dùng lại kết quả cũ nên chỉ mất vài giây. Với Docker Compose 2.x, container của service `core` cũng được tạo lại ở mỗi lần chạy, kể cả khi mã nguồn không đổi.
 
 ## Tải file lên
 
