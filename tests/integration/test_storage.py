@@ -207,7 +207,7 @@ def test_seaweedfs_accepts_only_new_key_after_change_in_env(stack):
     ]
     env_file.write_text("\n".join(changed) + "\n", encoding="utf-8")
 
-    result = stack.saigonos("up")
+    result = stack.up()
 
     assert result.returncode == 0, result.stderr
     assert stack.s3_key != old_key

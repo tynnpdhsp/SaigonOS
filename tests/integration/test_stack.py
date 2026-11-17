@@ -306,9 +306,9 @@ def test_realm_service_adds_unit_to_realm_created_by_older_version(stack):
     assert "unit" not in decode(stack.token(user).split(".")[1])
     before = json.loads(stack.admin("GET", "/users/profile").body)["attributes"]
 
-    first = stack.saigonos("up")
+    first = stack.up()
     added = stack.logs("realm").splitlines()[-2:]
-    second = stack.saigonos("up")
+    second = stack.up()
 
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
@@ -332,9 +332,9 @@ def test_realm_service_restores_settings_of_realm_master(stack):
     discovery = f"{stack.keycloak}{MASTER_DISCOVERY}"
     before = json.loads(stack.call("GET", discovery).body)["issuer"]
 
-    first = stack.saigonos("up")
+    first = stack.up()
     added = stack.logs("realm").splitlines()[-3:-1]
-    second = stack.saigonos("up")
+    second = stack.up()
 
     restored = json.loads(stack.admin("GET", "", realm="master").body)
     assert first.returncode == 0, first.stderr
@@ -364,7 +364,7 @@ def test_new_signing_key_is_accepted_after_reload(stack):
 
     assert decode(token.split(".")[0])["kid"] != old_key
     assert stack.api(token).status == 401
-    assert stack.saigonos("up").returncode == 0
+    assert stack.up().returncode == 0
     assert stack.api(stack.token(user)).status == 200
 
 
@@ -377,6 +377,7 @@ def test_killed_service_restarts_by_itself(stack):
     stack.kill(container)
 
     wait_for(lambda: stack.inspect(container, state) == f"{restarts + 1} healthy")
+    stack.wait_until_answers("/api/")
     assert stack.api(stack.token(user)).status == 200
 
 

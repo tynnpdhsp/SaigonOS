@@ -20,6 +20,9 @@ INVALID = {"detail": "Access token không hợp lệ"}
 REALM_PATH = "/auth/realms/saigonos/protocol/openid-connect"
 KEYS_COOLDOWN = 1
 SHORT_LIFESPAN = 5
+ADDRESS_WARMUP = 40
+ADDRESS_STREAK = 20
+ADDRESS_DEADLINE = 15
 PIN = r"^([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+)"
 ALLOWED = "chỉ dành cho người đã đăng nhập"
 CALL = """
@@ -157,7 +160,7 @@ def forged_tokens(stack, user):
 def nested(stack):
     name = f"plan_{secrets.token_hex(4)}"
     stack.add_migration(f"9008_{name}.sql", NESTED.format(name=name, allowed=ALLOWED))
-    started = stack.saigonos("up")
+    started = stack.up()
     assert started.returncode == 0, started.stderr
     return name
 
@@ -317,6 +320,7 @@ def test_killed_core_restarts_by_itself(stack):
     stack.kill(container)
 
     wait_for(lambda: stack.inspect(container, state) == f"{restarts + 1} healthy", 120)
+    stack.wait_until_answers("/core/health")
     assert core(stack, "/health").status == 200
 
 
@@ -324,8 +328,42 @@ def test_core_reconnects_after_database_restart(stack):
     user = stack.new_user()
 
     result = stack.compose_result("restart", "postgres")
-    wait_for(lambda: core(stack, "/health").status == 200)
+    stack.wait_until_answers("/core/health")
     wait_for(lambda: stack.login(user).status == 200)
 
     assert result.returncode == 0, result.stderr
     assert core(stack, "/me", stack.token(user)).status == 200
+
+
+def address_of(stack, container, network):
+    template = f'{{{{(index .NetworkSettings.Networks "{network}").IPAddress}}}}'
+    return stack.inspect(container, template)
+
+
+def answered_in_a_row(stack, count, deadline):
+    streak = 0
+    while streak < count and time.monotonic() < deadline:
+        streak = streak + 1 if stack.answers("/core/health") else 0
+    return streak
+
+
+def test_gateway_follows_new_address_of_core_within_seconds(stack):
+    network = stack.network("default")
+    container = stack.container("core")
+    image = stack.inspect(stack.container("postgres"), "{{.Config.Image}}")
+    for _ in range(ADDRESS_WARMUP):
+        assert core(stack, "/health").status == 200
+    before = address_of(stack, container, network)
+
+    stack.run_docker("network", "disconnect", network, container)
+    options = ["--detach", "--rm", "--network", network, "--entrypoint", "sleep"]
+    holder = stack.run_docker("run", *options, image, "300").stdout.strip()
+    try:
+        stack.run_docker("network", "connect", "--alias", "core", network, container)
+        after = address_of(stack, container, network)
+        streak = answered_in_a_row(stack, ADDRESS_STREAK, time.monotonic() + ADDRESS_DEADLINE)
+    finally:
+        stack.run_docker("rm", "--force", holder, check=False)
+
+    assert after != before
+    assert streak == ADDRESS_STREAK

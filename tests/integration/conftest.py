@@ -14,7 +14,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from http.client import HTTPConnection, HTTPMessage
+from http.client import HTTPConnection, HTTPException, HTTPMessage
 from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
 
@@ -26,6 +26,8 @@ REALM = "saigonos"
 CLIENT = "kiem-thu"
 OUTSIDE_SUBNETS = [f"198.51.100.{start}/28" for start in range(0, 256, 16)]
 PUBLIC_SUBNETS = {"IPv4": "192.0.2.0/28", "IPv6": "2001:db8:5a1:9::/64"}
+ROUTES = ("/auth/realms/saigonos/.well-known/openid-configuration", "/api/", "/core/health")
+ATTEMPT_TIMEOUT = 5
 
 
 class Reply(NamedTuple):
@@ -90,6 +92,7 @@ def send(
     context=None,
     address=None,
     content=None,
+    timeout=30,
 ):
     parts = urlsplit(url)
     headers = dict(headers or {})
@@ -106,7 +109,7 @@ def send(
         headers.setdefault("Content-Type", "application/octet-stream")
         payload = content
     target = parts.path + (f"?{parts.query}" if parts.query else "")
-    connection = Connection(url, context, address)
+    connection = Connection(url, context, address, timeout)
     try:
         connection.request(method, target or "/", body=payload, headers=headers)
         response = connection.getresponse()
@@ -124,6 +127,28 @@ class Stack:
     def saigonos(self, *args):
         command = [sys.executable, "-m", "saigonos", *args, "--home", str(self.home)]
         return subprocess.run(command, check=False, capture_output=True, text=True, timeout=600)
+
+    def up(self):
+        started = self.saigonos("up")
+        if started.returncode == 0:
+            if "caddy" in self.compose("config", "--services").split():
+                self.trust_caddy()
+            self.wait_until_answers(*ROUTES)
+        return started
+
+    def answers(self, path, token=None):
+        try:
+            reply = self.call("GET", f"{self.url}{path}", token=token, timeout=ATTEMPT_TIMEOUT)
+        except (OSError, HTTPException):
+            return False
+        return reply.status == 200
+
+    def wait_until_answers(self, *paths, token=None, timeout=60):
+        deadline = time.monotonic() + timeout
+        for path in paths:
+            while not self.answers(path, token):
+                assert time.monotonic() < deadline, f"API Gateway chưa trả lời {path}"
+                time.sleep(0.5)
 
     def compose_result(self, *args, timeout=120):
         command = [self.docker, "compose", *args]
@@ -449,11 +474,9 @@ class Stack:
 
 def run_stack(stack, request):
     try:
-        started = stack.saigonos("up")
+        started = stack.up()
         if started.returncode != 0:
             pytest.fail(f"{started.stderr}\n{stack.compose('logs', '--tail', '50')}")
-        if "caddy" in stack.compose("config", "--services").split():
-            stack.trust_caddy()
         stack.create_client()
         yield stack
         if request.session.testsfailed:
