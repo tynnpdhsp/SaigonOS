@@ -271,8 +271,11 @@ Khi sửa cấu hình hoặc route của Operaton, cần tuân theo các quy t�
 - Tomcat của Operaton bỏ phần sau dấu `;` trong mỗi đoạn của đường dẫn, còn APISIX so khớp cả phần này. Ví dụ, APISIX coi `/operaton/app/..;/engine-rest` là một đường dẫn của `/operaton/app/`, còn Tomcat hiểu đó là `/operaton/engine-rest`. Do đó, route từ chối mọi đường dẫn có dấu `;` và chỉ gửi tới Operaton đường dẫn đã được APISIX chuẩn hóa. Không bỏ thiết lập `vars` và `proxy-rewrite` của route.
 - Không bật `normalize_uri_like_servlet` của APISIX. Ở phiên bản 3.19.0, thiết lập này làm mất query string của các route không có `proxy-rewrite`, ví dụ route của Keycloak.
 - Operaton nhận nhóm của người dùng từ claim `groups`. Mapper của client `operaton` đưa các realm role vào claim này. Realm role `admin` có toàn quyền trong Operaton.
+- Service `processes` triển khai mỗi file BPMN thành một bản triển khai riêng. Tên của bản triển khai là tên file, nguồn là `saigonos`. Operaton dựa vào tên và nguồn để bỏ qua file không thay đổi. Do đó, không đổi tên hoặc nguồn của bản triển khai.
+- Service `core` chờ service `processes` với điều kiện `service_completed_successfully`. Không bỏ điều kiện này. Lệnh `docker compose up --wait` báo lỗi khi một service chỉ chạy một lần mà không có service nào chờ nó.
+- Trước khi triển khai, script `deploy-processes.lua` gọi Operaton một lần để kiểm tra tài khoản `core`. Khi mật khẩu sai, script dừng ngay. Nhờ đó, mỗi lần chạy chỉ tốn một lần đăng nhập sai.
 
-Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway.
+Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway. Kiểm thử `test_bpmn_file_cannot_take_process_of_another_file` kiểm tra việc gỡ bản triển khai khai báo lại mã quy trình của file khác.
 
 ## Phát hành phiên bản mới
 
