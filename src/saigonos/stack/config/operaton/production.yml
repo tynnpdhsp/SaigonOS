@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+server:
+  forward-headers-strategy: native
+  servlet:
+    context-path: /operaton
+    session:
+      tracking-modes: cookie
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/operaton
+    username: operaton
+    password: ${OPERATON_DB_PASSWORD}
+  web:
+    resources:
+      static-locations: NULL
+  security:
+    oauth2:
+      client:
+        registration:
+          operaton:
+            provider: keycloak
+            client-id: operaton
+            client-secret: ${OPERATON_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            authorization-uri: ${SAIGONOS_URL}/auth/realms/saigonos/protocol/openid-connect/auth
+            token-uri: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/token
+            jwk-set-uri: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
+            user-info-uri: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/userinfo
+            user-name-attribute: sub
+
+operaton:
+  run:
+    health:
+      rest-endpoint:
+        enabled: true
+  bpm:
+    admin-user:
+      id: core
+      password: ${CORE_OPERATON_PASSWORD}
+    authorization:
+      enabled: true
+    generic-properties:
+      properties:
+        deserialization-type-validation-enabled: true
+    webapp:
+      application-path: /
+      csrf:
+        target-origin: ${SAIGONOS_URL}
+        enable-same-site-cookie: true
+        same-site-cookie-option: STRICT
+    oauth2:
+      identity-provider:
+        group-name-attribute: groups
+      sso-logout:
+        enabled: true
+    run:
+      auth:
+        enabled: true
+      admin-auth:
+        enabled: true
+        administrator-group-name: admin
+      rest:
+        disable-wadl: true
+      deployment:
+        deploy-changed-only: true

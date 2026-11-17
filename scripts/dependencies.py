@@ -81,6 +81,11 @@ IMAGES = {
         "Quét mã độc trong file được tải lên",
         "https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4",
     ),
+    "operaton/operaton:2.2.1": Image(
+        "Apache-2.0",
+        "Chạy các quy trình BPMN, có Cockpit, Tasklist và Admin",
+        "https://github.com/operaton/operaton/tree/v2.2.1",
+    ),
     "postgres:18.6-alpine": Image(
         "PostgreSQL",
         "Lưu dữ liệu của Keycloak và của các ứng dụng",

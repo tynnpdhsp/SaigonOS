@@ -169,6 +169,24 @@ services:
     entrypoint: ["sh", "/config/migrate.sh"]
     command: ["core", "/config/migrations"]
 
+  databases:
+    image: postgres:18.6-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+    volumes:
+      - ./config/postgres:/config:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["psql", "--no-psqlrc", "--quiet", "--set=ON_ERROR_STOP=1", "--file=/config/databases.sql"]
+
   postgrest:
     image: postgrest/postgrest:v16.5
     restart: unless-stopped
@@ -319,6 +337,31 @@ services:
       retries: 3
       start_period: 60s
       start_interval: 2s
+
+  operaton:
+    image: operaton/operaton:2.2.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      databases:
+        condition: service_completed_successfully
+    command: ["./operaton.sh", "--production", "--webapps", "--rest", "--oauth2"]
+    environment:
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+      OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+      OPERATON_CLIENT_SECRET: ${OPERATON_CLIENT_SECRET:?}
+      CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+      JAVA_OPTS: -Xms128m -Xmx512m
+    volumes:
+      - ./config/operaton/production.yml:/operaton/configuration/production.yml:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8080/operaton/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+      start_interval: 3s
 
   caddy:
     image: caddy:2.11.9-alpine
