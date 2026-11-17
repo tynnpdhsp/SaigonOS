@@ -168,6 +168,59 @@ Service kết nối PostgreSQL bằng role `core_service`. Mỗi truy vấn ch�
 
 Image của service được Docker Compose build trên máy cài đặt từ image `python` chính thức. Các thư viện được cài từ lock file có mã băm. Ở lần khởi động đầu tiên, việc build mất khoảng một phút. Mỗi lần chạy `saigonos up`, Docker Compose build lại image. Khi mã nguồn không đổi, việc build dùng lại kết quả cũ nên chỉ mất vài giây.
 
+## Tải file lên
+
+Service `core` nhận file của các ứng dụng và lưu file vào SeaweedFS. Mỗi file được tải lên bằng hai lời gọi. Cả hai lời gọi đều cần access token của người dùng đã đăng nhập.
+
+1. Lời gọi `POST /core/files` khai báo tên, loại và dung lượng của file. Service kiểm tra ba giá trị này trước khi nhận nội dung. Khi hợp lệ, service trả về mã 201 kèm mã file và đường dẫn tải lên trong trường `upload_url`. File ở trạng thái `pending_upload`.
+2. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Service tính dung lượng và mã băm SHA-256 của nội dung, rồi kiểm tra phần đầu của nội dung. Khi hợp lệ, nội dung được lưu vào bucket `quarantine` và file chuyển sang trạng thái `pending_scan`, tức chờ quét mã độc.
+
+Ba trường của lời gọi khai báo có cùng tên với các thuộc tính của đối tượng `File` trong trình duyệt. Ví dụ, một ứng dụng web tải file mà người dùng đã chọn như sau:
+
+```js
+const headers = { Authorization: `Bearer ${accessToken}` };
+const declared = await fetch("/core/files", {
+  method: "POST",
+  headers: { ...headers, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+});
+const { upload_url } = await declared.json();
+await fetch(upload_url, { method: "PUT", headers, body: file });
+```
+
+Mỗi file chỉ nhận nội dung một lần. Khi lời gọi gửi nội dung bị từ chối, nội dung không được lưu và có thể được gửi lại. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file. Bảng `core.files` có chính sách phân quyền từng dòng. Do đó, mỗi người dùng chỉ thấy file của chính mình.
+
+Các loại file được phép:
+
+| Loại file | Phần mở rộng | Phần đầu của nội dung |
+|---|---|---|
+| `application/pdf` | `.pdf` | `%PDF-` |
+| `image/jpeg` | `.jpg`, `.jpeg` | Các byte `FF D8 FF` |
+| `image/png` | `.png` | Các byte `89 50 4E 47 0D 0A 1A 0A` |
+| `image/webp` | `.webp` | `RIFF`, 4 byte bất kỳ, sau đó là `WEBP` |
+| `text/plain` | `.txt` | 8.192 byte đầu không chứa byte 0 |
+| `text/csv` | `.csv` | 8.192 byte đầu không chứa byte 0 |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `.docx` | `PK` và các byte `03 04` của file ZIP |
+| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `.xlsx` | `PK` và các byte `03 04` của file ZIP |
+
+Tên file phải có phần mở rộng ứng với loại file. Tên file dài tối đa 255 ký tự và không chứa ký tự điều khiển, dấu `/` hoặc dấu `\`. Văn bản mã hóa UTF-16 chứa byte 0 nên không được nhận là `text/plain` hoặc `text/csv`.
+
+Mỗi file có dung lượng tối đa 10 MB, với 1 MB là 1.048.576 byte. Tùy chọn `--max-file-size` của lệnh `saigonos init` đổi giới hạn này. API Gateway cũng từ chối mọi lời gọi có nội dung lớn hơn giới hạn này.
+
+Các mã lỗi của hai lời gọi:
+
+| Mã | Lời gọi | Ý nghĩa |
+|---|---|---|
+| 401 | Khai báo và gửi nội dung | Thiếu access token hoặc access token không hợp lệ |
+| 413 | Khai báo | Dung lượng khai báo vượt giới hạn |
+| 413 | Gửi nội dung | Nội dung lớn hơn giới hạn nên API Gateway từ chối |
+| 415 | Khai báo | Loại file không được phép |
+| 422 | Khai báo | Tên file không hợp lệ hoặc phần mở rộng không ứng với loại file |
+| 422 | Gửi nội dung | Dung lượng hoặc phần đầu của nội dung không khớp với thông tin đã khai báo |
+| 404 | Gửi nội dung | Không có file với mã này hoặc file thuộc người dùng khác |
+| 409 | Gửi nội dung | File đã nhận nội dung |
+| 503 | Gửi nội dung | SeaweedFS chưa sẵn sàng. File vẫn ở trạng thái `pending_upload` và có thể gửi lại |
+
 ## Cấu hình
 
 Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo được giữ nguyên.
@@ -181,6 +234,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--keycloak-port` | `9280` | Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. Admin Console của realm master dùng cổng này |
 | `--seaweedfs-port` | `9380` | Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
+| `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
 
 Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.
@@ -315,6 +369,8 @@ server {
     ssl_certificate /etc/letsencrypt/live/dx.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/dx.example.com/privkey.pem;
 
+    client_max_body_size 10m;
+
     location / {
         proxy_pass http://127.0.0.1:9080;
         proxy_set_header Host $host;
@@ -329,6 +385,8 @@ server {
 Reverse proxy phải gửi đủ các header trong ví dụ trên. API Gateway dùng các header này để xác định địa chỉ mà người dùng truy cập và địa chỉ IP của người dùng. API Gateway chỉ tin các header này khi kết nối đến từ một địa chỉ IP trong mạng nội bộ, gồm các dải `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` và `192.168.0.0/16`.
 
 Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người dùng không thể tự khai báo một địa chỉ IP khác.
+
+Dòng `client_max_body_size` cho phép Nginx nhận nội dung lớn tới 10 MB, bằng giới hạn dung lượng file mặc định của SaigonOS. Nginx mặc định chỉ nhận nội dung tới 1 MB. Khi đổi giới hạn bằng tùy chọn `--max-file-size`, cần đổi cả giá trị này.
 
 ### 3. Kiểm tra hệ thống
 
