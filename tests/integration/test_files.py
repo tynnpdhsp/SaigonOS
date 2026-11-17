@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
+import hmac
 import io
 import json
+import re
 import secrets
 import subprocess
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from urllib.parse import unquote
 
 import pytest
 
@@ -16,11 +20,16 @@ MB = 1024 * 1024
 LIMIT = 10 * MB
 STALL = 3
 DOWN = 5
+LIFETIME = 60
+BROWSER = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8", "User-Agent": "Mozilla/5.0"}
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 # ghép từ hai phần để phần mềm diệt virus không xóa file này
 EICAR = b"".join([b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$", b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"])
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 NOT_FOUND = {"detail": "Không tìm thấy file"}
+INVALID_LINK = {"detail": "Đường dẫn tải về không hợp lệ"}
+WAITING = {"detail": "File đang chờ quét mã độc nên chưa tải về được"}
+INFECTED = {"detail": "File có mã độc nên không tải về được"}
 ROW = "SELECT owner, status, size, sha256 FROM core.files WHERE id = '{id}'"
 STATUS = "SELECT status FROM core.files WHERE id = '{id}'"
 CLAIMS = """{{"sub": "{subject}", "role": "authenticated"}}"""
@@ -64,6 +73,37 @@ def declared(stack, token, content, **fields):
 
 def upload(stack, token, file, content):
     return stack.call("PUT", file["upload_url"], token=token, content=content)
+
+
+def uploaded(stack, token, content, **fields):
+    file = declared(stack, token, content, **fields)
+    reply = upload(stack, token, file, content)
+    assert reply.status == 200, reply.body
+    return file
+
+
+def download_link(stack, token, file):
+    return core(stack, "POST", f"/files/{file['id']}/download-url", token)
+
+
+def link_of(stack, token, file):
+    reply = download_link(stack, token, file)
+    assert reply.status == 200, reply.body
+    return json.loads(reply.body)
+
+
+def signed_link(stack, file, expires):
+    key = stack.env["CORE_DOWNLOAD_KEY"].encode()
+    signature = hmac.new(key, f"{file['id']}:{expires}".encode(), hashlib.sha256).hexdigest()
+    return f"{stack.url}/core/files/{file['id']}/content?expires={expires}&signature={signature}"
+
+
+def open_link(stack, url):
+    return stack.call("GET", url, headers=BROWSER)
+
+
+def detail(reply):
+    return reply.status, json.loads(reply.body)
 
 
 def row_of(stack, file):
@@ -377,3 +417,122 @@ def test_upload_waits_while_storage_is_down(stack, user, token):
     assert reply.status == 200
     assert status == "clean"
     assert stored(stack, file, "clean") == content
+
+
+def test_clean_file_downloads_in_browser_without_token(stack, token):
+    name = "ảnh máy hỏng.png"
+    content = png()
+    file = uploaded(stack, token, content, name=name)
+    status = scanned(stack, file)
+    before = time.time()
+
+    link = link_of(stack, token, file)
+    first = open_link(stack, link["download_url"])
+    again = open_link(stack, link["download_url"])
+
+    expires = datetime.fromisoformat(link["expires_at"]).timestamp()
+    disposition = first.headers["Content-Disposition"]
+    assert status == "clean"
+    assert link["download_url"].startswith(f"{stack.url}/core/files/{file['id']}/content?")
+    assert before + LIFETIME - 1 < expires <= time.time() + LIFETIME
+    assert (first.status, first.body) == (200, content)
+    assert first.headers["Content-Type"] == "image/png"
+    assert first.headers["X-Content-Type-Options"] == "nosniff"
+    assert first.headers["Cache-Control"] == "no-store"
+    assert disposition.startswith('attachment; filename="anh may hong.png"; ')
+    assert unquote(disposition.split("filename*=UTF-8''")[1]) == name
+    assert (again.status, again.body) == (200, content)
+
+
+def test_eicar_file_cannot_be_downloaded_and_is_logged(stack, token):
+    file = uploaded(stack, token, EICAR, name="eicar.txt", type="text/plain")
+    status = scanned(stack, file)
+
+    refused = download_link(stack, token, file)
+    forced = open_link(stack, signed_link(stack, file, int(time.time()) + LIFETIME))
+
+    [*_, scan] = audit_of(stack, file)
+    assert status == "infected"
+    assert detail(refused) == (409, INFECTED)
+    assert detail(forced) == (409, INFECTED)
+    assert (scan["new_row"]["status"], scan["new_row"]["malware"]) == (
+        "infected",
+        "Eicar-Test-Signature",
+    )
+    assert stored(stack, file, "clean") is None
+
+
+def test_file_not_scanned_yet_cannot_be_downloaded(stack, token):
+    content = png()
+    file = declared(stack, token, content)
+    before_upload = download_link(stack, token, file)
+
+    paused = stack.compose_result("pause", "clamav")
+    try:
+        upload(stack, token, file, content)
+        waiting = status_of(stack, file)
+        refused = download_link(stack, token, file)
+        forced = open_link(stack, signed_link(stack, file, int(time.time()) + LIFETIME))
+    finally:
+        resumed = stack.compose_result("unpause", "clamav")
+    status = scanned(stack, file)
+    downloaded = open_link(stack, link_of(stack, token, file)["download_url"])
+
+    assert paused.returncode == 0, paused.stderr
+    assert resumed.returncode == 0, resumed.stderr
+    assert detail(before_upload) == (
+        409,
+        {"detail": "File chưa có nội dung nên chưa tải về được"},
+    )
+    assert waiting == "pending_scan"
+    assert detail(refused) == (409, WAITING)
+    assert detail(forced) == (409, WAITING)
+    assert status == "clean"
+    assert (downloaded.status, downloaded.body) == (200, content)
+
+
+def test_user_cannot_get_file_of_another_user(stack, token):
+    other = stack.token(stack.new_user())
+    file = uploaded(stack, token, png())
+    own = uploaded(stack, other, png())
+    scanned(stack, file)
+    scanned(stack, own)
+
+    by_other = download_link(stack, other, file)
+    anonymous = download_link(stack, None, file)
+    forged = download_link(stack, stack.forged_tokens(stack.new_user())["sửa nội dung"], file)
+    own_url = link_of(stack, other, own)["download_url"]
+    swapped = open_link(stack, own_url.replace(own["id"], file["id"]))
+
+    assert detail(by_other) == (404, NOT_FOUND)
+    assert anonymous.status == 401
+    assert forged.status == 401
+    assert detail(swapped) == (403, INVALID_LINK)
+
+
+def test_expired_or_changed_download_link_is_refused(stack, token):
+    file = uploaded(stack, token, png())
+    scanned(stack, file)
+    url = link_of(stack, token, file)["download_url"]
+
+    expired = open_link(stack, signed_link(stack, file, int(time.time()) - 1))
+    extended = open_link(stack, re.sub(r"expires=\d+", "expires=9999999999", url))
+    unsigned = open_link(stack, url.split("&signature=")[0])
+    bare = open_link(stack, url.split("?")[0])
+
+    assert detail(expired) == (403, {"detail": "Đường dẫn tải về đã hết hạn"})
+    assert detail(extended) == (403, INVALID_LINK)
+    assert detail(unsigned) == (403, INVALID_LINK)
+    assert detail(bare) == (403, INVALID_LINK)
+
+
+def test_content_changed_in_clean_bucket_is_not_sent(stack, token):
+    file = uploaded(stack, token, png())
+    scanned(stack, file)
+    replaced, _ = stack.s3("PUT", f"/clean/{file['id']}", stack.s3_key, "noi dung da bi thay")
+
+    reply = open_link(stack, link_of(stack, token, file)["download_url"])
+
+    assert replaced == 200
+    assert detail(reply) == (500, {"detail": "Nội dung của file không khớp mã băm đã ghi"})
+    assert f"Nội dung của file {file['id']} trong bucket clean không khớp" in stack.logs("core")
