@@ -80,7 +80,17 @@ def free_ports():
     return [value for option in options for value in (option, str(free_port()))]
 
 
-def send(method, url, token=None, form=None, body=None, headers=None, context=None, address=None):
+def send(
+    method,
+    url,
+    token=None,
+    form=None,
+    body=None,
+    headers=None,
+    context=None,
+    address=None,
+    content=None,
+):
     parts = urlsplit(url)
     headers = dict(headers or {})
     payload = None
@@ -92,6 +102,9 @@ def send(method, url, token=None, form=None, body=None, headers=None, context=No
     if body is not None:
         headers["Content-Type"] = "application/json"
         payload = json.dumps(body)
+    if content is not None:
+        headers.setdefault("Content-Type", "application/octet-stream")
+        payload = content
     target = parts.path + (f"?{parts.query}" if parts.query else "")
     connection = Connection(url, context, address)
     try:
