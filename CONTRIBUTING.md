@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy sáu nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc và chuyển file sạch sang bucket `clean`. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy sáu nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -55,6 +55,8 @@ SeaweedFS không mở cổng S3 ra máy cài đặt và nằm trong mạng Docke
 Kiểm thử `test_only_one_of_concurrent_uploads_is_kept` trong `test_files.py` gửi nội dung của cùng một file bằng nhiều lời gọi cùng lúc. Trong lúc đó, kiểm thử tạm dừng SeaweedFS bằng `docker compose pause`. Lời gọi đầu tiên phải chờ ở bước ghi nội dung, nên các lời gọi còn lại chắc chắn chạy chồng lên nó.
 
 Kiểm thử `test_file_waits_while_clamav_is_down_and_is_scanned_after_restart` trong `test_files.py` dừng ClamAV, gửi nội dung của một file, rồi khởi động lại service `core`. File phải chờ ở trạng thái `pending_scan` và chỉ được quét sau khi ClamAV chạy lại.
+
+Kiểm thử `test_file_not_scanned_yet_cannot_be_downloaded` trong `test_files.py` tạm dừng ClamAV bằng `docker compose pause` để giữ file ở trạng thái `pending_scan`. Một số kiểm thử tải file về tự ký đường dẫn bằng khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Nhờ đó, kiểm thử đường dẫn hết hạn không phải chờ 60 giây.
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
@@ -237,7 +239,7 @@ Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core
 Khi sửa service `core`, cần tuân theo các quy tắc sau:
 
 - Thư viện của service được khai báo trong nhóm `core` của `pyproject.toml`. Lệnh `make lock` tạo lock file `src/saigonos/stack/core/requirements.txt` cho Python 3.14, kèm mã băm của từng file. Không sửa tay lock file này.
-- Mọi truy vấn tới cơ sở dữ liệu chạy trong `Database.session(caller)` hoặc `Database.service_session(caller)`. Hai hàm này mở một transaction và xóa các query plan đã lưu. Hàm `session` đặt thêm role và nội dung access token của người gọi. Không truy vấn bằng kết nối lấy thẳng từ pool.
+- Mọi truy vấn tới cơ sở dữ liệu chạy trong `Database.session(caller)` hoặc `Database.service_session(caller)`. Hai hàm này mở một transaction và xóa các query plan đã lưu. Hàm `session` đặt thêm role và nội dung access token của người gọi. Việc không có người gọi, ví dụ quét file và gửi file qua đường dẫn tải về, chạy trong `Database.transaction()`. Không truy vấn bằng kết nối lấy thẳng từ pool.
 - API dành cho người đã đăng nhập nhận tham số kiểu `User`. Khi đó, lời gọi không có access token hợp lệ của người dùng có realm role `authenticated` nhận mã 401.
 - Không bật Swagger UI và ReDoc của FastAPI, vì hai trang này tải script từ máy chủ bên ngoài.
 - Đường dẫn của API không có dấu `/` ở cuối. Service không chuyển hướng địa chỉ có dấu `/` ở cuối, vì API Gateway bỏ tiền tố `/core` trước khi chuyển lời gọi tới service. Địa chỉ chuyển hướng khi đó thiếu tiền tố này.
@@ -247,6 +249,8 @@ Khi sửa service `core`, cần tuân theo các quy tắc sau:
 - Lời gọi S3 được ký bằng SigV4 trong `saigonos_core/storage.py`. Header `x-amz-content-sha256` mang mã băm SHA-256 của nội dung. SeaweedFS từ chối nội dung không khớp mã băm này.
 - Việc quét mã độc nằm trong `saigonos_core/scans.py`. Bảng `core.files` là hàng đợi quét. Mỗi lần quét lấy một file ở trạng thái `pending_scan` bằng `FOR UPDATE SKIP LOCKED`. Không giữ danh sách file chờ quét trong bộ nhớ của service, vì danh sách này mất khi service khởi động lại.
 - Nội dung được ghi vào bucket `clean` là chính nội dung vừa được quét. Trước khi quét, mã băm SHA-256 của nội dung được so với mã băm đã ghi trong bảng `core.files`.
+- Đường dẫn tải về được ký bằng HMAC-SHA256 trong `saigonos_core/downloads.py`. Chữ ký được tính từ mã file và thời điểm hết hạn. Lời gọi tải về không có access token. Do đó, service kiểm tra chữ ký và thời hạn trước khi đọc cơ sở dữ liệu hoặc kho file. Trạng thái `clean` được kiểm tra cả lúc cấp đường dẫn và lúc gửi file.
+- File được gửi về luôn kèm các header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Trước khi gửi, nội dung được so với mã băm SHA-256 đã ghi.
 - Trong `src/saigonos/stack/config/clamav/clamd.conf`, giá trị `MaxFileSize` phải lớn hơn `MaxScanSize`. Nếu không, ClamAV chỉ quét phần đầu của một file lớn bên trong file nén mà không báo. Kiểm thử trong `tests/test_clamd_conf.py` kiểm tra điều kiện này.
 
 Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
