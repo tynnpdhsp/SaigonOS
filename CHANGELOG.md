@@ -54,6 +54,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra service `core` qua API Gateway. Lời gọi `/core/health` phải nhận mã 200. Lời gọi có access token không hợp lệ phải nhận mã 401.
 - API Gateway từ chối lời gọi có nội dung lớn hơn dung lượng tối đa của một file tải lên, mặc định là 10 MB. Ở phiên bản 0.2.0, API Gateway không giới hạn dung lượng nội dung. Khi hệ thống chạy sau Nginx, giới hạn `client_max_body_size` của Nginx không được nhỏ hơn giới hạn này. Ví dụ cấu hình Nginx trong README đã có dòng này.
 
+### Sửa
+
+- API Gateway nhận địa chỉ IP mới của một service trong khoảng 1 giây sau khi service được tạo lại hoặc khởi động lại. Ở phiên bản 0.2.0, API Gateway có thể dùng địa chỉ cũ thêm tới 30 giây. Trong thời gian đó, lời gọi tới service nhận mã 502 hoặc bị treo.
+
 ### Bảo mật
 
 - API Gateway trả về mã 404 cho mọi địa chỉ của realm master. Realm master chỉ mở qua cổng của Keycloak trên chính máy cài đặt. Ở phiên bản 0.2.0, trang đăng nhập và Admin Console của realm master mở ra ngoài qua API Gateway và chỉ cần mật khẩu.
