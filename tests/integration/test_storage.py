@@ -277,7 +277,7 @@ def test_clamav_keeps_database_when_containers_are_recreated(stack):
 
 @pytest.mark.parametrize(
     ("service", "process", "health"),
-    [("clamav", "clamd", " healthy"), ("freshclam", "freshclam", "")],
+    [("clamav", "clamd", " healthy"), ("freshclam", "freshclam", " healthy")],
     ids=["clamd", "freshclam"],
 )
 def test_container_restarts_when_clamav_process_dies(stack, service, process, health):
