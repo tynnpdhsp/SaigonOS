@@ -97,6 +97,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | Địa chỉ | Nội dung | Thông tin đăng nhập |
 |---|---|---|
 | http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP. Cách tạo tài khoản được trình bày ở mục [Tài khoản quản trị](#tài-khoản-quản-trị) |
+| http://localhost:9080/operaton/ | Cockpit, Tasklist và Admin của [Operaton](#quy-trình), dùng để theo dõi và quản lý các quy trình | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP |
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
@@ -507,6 +508,20 @@ Service `core` ghi vào log mỗi khi phát hiện mã độc hoặc chưa quét
 cd ~/saigonos
 docker compose logs --tail 20 core
 ```
+
+## Quy trình
+
+SaigonOS dùng Operaton để chạy các quy trình BPMN 2.0. Operaton lưu dữ liệu trong cơ sở dữ liệu `operaton` riêng. Role `operaton` của cơ sở dữ liệu không kết nối được tới các cơ sở dữ liệu khác.
+
+Ba trang Cockpit, Tasklist và Admin của Operaton nằm ở địa chỉ `/operaton/` của API Gateway, ví dụ http://localhost:9080/operaton/. Cockpit dùng để theo dõi các quy trình đang chạy. Tasklist dùng để xem và xử lý các việc. Admin dùng để quản lý quyền trong Operaton.
+
+Chỉ tài khoản có realm role `admin` đăng nhập được vào ba trang này. Cách tạo tài khoản được trình bày ở mục [Tạo tài khoản quản trị của realm saigonos](#tạo-tài-khoản-quản-trị-của-realm-saigonos). Mỗi lần đăng nhập, tài khoản phải nhập mật khẩu và mã OTP, kể cả khi đã đăng nhập vào một trang khác của hệ thống. Tài khoản không có realm role `admin` bị từ chối ngay sau khi nhập mật khẩu.
+
+Operaton làm mới access token ở mỗi lời gọi của ba trang. Do đó, khi một tài khoản bị khóa trong Keycloak, phiên đăng nhập của tài khoản trong Operaton kết thúc ngay ở lời gọi tiếp theo. Nút đăng xuất của Operaton dùng địa chỉ `/logout` của API Gateway.
+
+Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operaton` của realm `saigonos` và luồng đăng nhập riêng của client này. Khi luồng đăng nhập bị thay đổi, service tạo lại luồng này. Các thiết lập bảo mật của client cũng được đặt lại, ví dụ địa chỉ chuyển hướng sau khi đăng nhập.
+
+REST API của Operaton không mở qua API Gateway. Chỉ service `core` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
 
 ## Cập nhật phiên bản
 
