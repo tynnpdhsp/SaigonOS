@@ -22,7 +22,18 @@ from saigonos_core.storage import QUARANTINE, StorageError
 
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 PNG_SIZE = len(PNG)
-COLUMNS = ["id", "name", "type", "size", "sha256", "status", "created_at", "uploaded_at"]
+COLUMNS = [
+    "id",
+    "name",
+    "type",
+    "size",
+    "sha256",
+    "status",
+    "malware",
+    "created_at",
+    "uploaded_at",
+    "scanned_at",
+]
 
 
 class FakeConnection:
@@ -60,8 +71,8 @@ class FakeFiles:
         if query == CREATE:
             name, type, size = arguments
             row = {"id": uuid4(), "owner": subject, "name": name, "type": type, "size": size}
-            row |= {"sha256": None, "status": "pending_upload", "uploaded_at": None}
-            row["created_at"] = datetime.now(UTC)
+            row |= {"sha256": None, "status": "pending_upload", "malware": None}
+            row |= {"created_at": datetime.now(UTC), "uploaded_at": None, "scanned_at": None}
             self.rows[row["id"]] = row
             return self.visible(row)
         row = self.rows.get(arguments[0])
@@ -103,8 +114,8 @@ def storage():
 
 
 @pytest.fixture
-def client(settings, files, storage):
-    with TestClient(create_app(settings, files, storage)) as client:
+def client(settings, files, storage, scans):
+    with TestClient(create_app(settings, files, storage, scans)) as client:
         yield client
 
 
@@ -231,6 +242,17 @@ def test_upload_puts_content_in_quarantine_and_waits_for_scan(client, files, sto
     ]
 
 
+def test_upload_asks_for_scan_once_content_is_stored(client, scans, owner):
+    file = declared(client, owner)
+
+    rejected = upload(client, owner, file, b"\x00" * len(PNG))
+    asked_before = scans.notified
+    accepted = upload(client, owner, file)
+
+    assert (rejected.status_code, accepted.status_code) == (422, 200)
+    assert (asked_before, scans.notified) == (0, 1)
+
+
 def test_upload_larger_than_memory_buffer_is_kept_whole(client, storage, owner):
     content = PNG + b"\x01" * (SPOOL_SIZE * 2)
     file = declared(client, owner, content=content)
@@ -341,6 +363,22 @@ def test_owner_reads_file_as_caller(client, files, owner):
     assert reply.status_code == 200
     assert reply.json()["status"] == "pending_scan"
     assert files.queries[-1] == ("người gọi", FIND)
+
+
+def test_owner_sees_name_of_malware_found_in_file(client, files, owner):
+    file = declared(client, owner)
+    upload(client, owner, file)
+    scanned_at = datetime.now(UTC)
+    files.rows[next(iter(files.rows))] |= {
+        "status": "infected",
+        "malware": "Eicar-Test-Signature",
+        "scanned_at": scanned_at,
+    }
+
+    body = client.get(f"/files/{file['id']}", headers=owner).json()
+
+    assert (body["status"], body["malware"]) == ("infected", "Eicar-Test-Signature")
+    assert datetime.fromisoformat(body["scanned_at"]) == scanned_at
 
 
 def test_file_hidden_from_caller_is_not_found(client, owner, stranger):

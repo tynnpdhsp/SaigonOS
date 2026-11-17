@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -106,6 +107,27 @@ class Realm:
         }
 
 
+class FakeScans:
+    def __init__(self):
+        self.state = "chưa chạy"
+        self.notified = 0
+
+    def notify(self):
+        self.notified += 1
+
+    async def run(self):
+        self.state = "đang chạy"
+        try:
+            await asyncio.Event().wait()
+        finally:
+            self.state = "đã dừng"
+
+
+@pytest.fixture
+def scans():
+    return FakeScans()
+
+
 @pytest.fixture(scope="session")
 def private_keys():
     return [rsa.generate_private_key(public_exponent=65537, key_size=2048) for _ in range(3)]
@@ -119,4 +141,12 @@ def realm(gateway, private_keys):
 @pytest.fixture
 def settings(realm):
     storage = ("http://seaweedfs:8333", "khoa-truy-cap", "khoa-bi-mat")
-    return Settings(realm.issuer, realm.url, PUBLIC_URL, *storage, max_file_size=10)
+    return Settings(
+        realm.issuer,
+        realm.url,
+        PUBLIC_URL,
+        *storage,
+        max_file_size=10,
+        clamav_host="clamav",
+        clamav_port=3310,
+    )

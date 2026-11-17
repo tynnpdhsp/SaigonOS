@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -9,7 +10,9 @@ from pydantic import BaseModel
 
 from saigonos_core import __version__, files
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
+from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
+from saigonos_core.scans import Scans
 from saigonos_core.storage import Storage
 from saigonos_core.tokens import TokenVerifier
 
@@ -29,6 +32,8 @@ class Settings:
     storage_access_key: str
     storage_secret_key: str
     max_file_size: int
+    clamav_host: str
+    clamav_port: int
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -40,6 +45,8 @@ class Settings:
             os.environ["S3_ACCESS_KEY"],
             os.environ["S3_SECRET_KEY"],
             int(os.environ["MAX_FILE_SIZE"]),
+            os.environ["CLAMAV_HOST"],
+            int(os.environ["CLAMAV_PORT"]),
         )
 
 
@@ -74,17 +81,23 @@ def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
     storage: Storage | None = None,
+    scans: Scans | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
     storage = storage or Storage(
         settings.storage_url, settings.storage_access_key, settings.storage_secret_key
     )
+    scans = scans or Scans(database, storage, ClamAV(settings.clamav_host, settings.clamav_port))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.open()
+        worker = asyncio.create_task(scans.run())
         yield
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
         await database.close()
 
     app = FastAPI(
@@ -101,6 +114,7 @@ def create_app(
     app.state.tokens = TokenVerifier(settings.issuer, settings.jwks_url)
     app.state.database = database
     app.state.storage = storage
+    app.state.scans = scans
     app.include_router(router)
     app.include_router(files.router)
     return app

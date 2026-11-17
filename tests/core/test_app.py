@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import saigonos_core
+from saigonos_core.clamav import ClamAV
 from saigonos_core.main import ME, create_app
 from saigonos_core.storage import Storage
 
@@ -51,8 +52,8 @@ def database():
 
 
 @pytest.fixture
-def client(settings, database):
-    app = create_app(settings, database)
+def client(settings, database, scans):
+    app = create_app(settings, database, scans=scans)
     with TestClient(app) as client:
         yield client
 
@@ -61,13 +62,23 @@ def bearer(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_database_is_open_only_while_app_runs(settings, database):
-    app = create_app(settings, database)
+def test_database_is_open_only_while_app_runs(settings, database, scans):
+    app = create_app(settings, database, scans=scans)
 
     with TestClient(app):
         running = database.state
 
     assert (running, database.state) == ("đang mở", "đã đóng")
+
+
+def test_scans_run_only_while_app_runs(settings, database, scans):
+    app = create_app(settings, database, scans=scans)
+
+    with TestClient(app) as client:
+        client.get("/health")
+        running = scans.state
+
+    assert (running, scans.state) == ("đang chạy", "đã dừng")
 
 
 def test_health_follows_database(client, database):
@@ -203,16 +214,22 @@ def test_settings_come_from_environment(monkeypatch, settings):
         "S3_ACCESS_KEY": settings.storage_access_key,
         "S3_SECRET_KEY": settings.storage_secret_key,
         "MAX_FILE_SIZE": "25",
+        "CLAMAV_HOST": settings.clamav_host,
+        "CLAMAV_PORT": "3311",
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
+    database = FakeDatabase()
 
-    app = create_app(database=FakeDatabase())
+    app = create_app(database=database)
 
-    assert app.state.settings == replace(settings, max_file_size=25)
+    assert app.state.settings == replace(settings, max_file_size=25, clamav_port=3311)
     assert app.state.tokens.issuer == settings.issuer
     assert app.state.tokens.keys.uri == settings.jwks_url
     assert app.state.storage == Storage(
         settings.storage_url, settings.storage_access_key, settings.storage_secret_key
     )
+    assert app.state.scans.database is database
+    assert app.state.scans.storage is app.state.storage
+    assert app.state.scans.clamav == ClamAV(settings.clamav_host, 3311)
     assert app.servers == [{"url": settings.public_url}]

@@ -18,14 +18,14 @@ MB = 1024 * 1024
 SPOOL_SIZE = MB
 CREATE = """
 INSERT INTO core.files (name, type, size) VALUES ($1, $2, $3)
-RETURNING id, name, type, size, sha256, status, created_at, uploaded_at
+RETURNING id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
 """
 FIND = """
-SELECT id, name, type, size, sha256, status, created_at, uploaded_at
+SELECT id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
 FROM core.files WHERE id = $1
 """
 FIND_OWN = """
-SELECT id, name, type, size, sha256, status, created_at, uploaded_at
+SELECT id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
 FROM core.files WHERE id = $1 AND owner = core.uid()
 """
 LOCK_PENDING = """
@@ -36,7 +36,7 @@ FOR UPDATE
 FINISH_UPLOAD = """
 UPDATE core.files SET status = 'pending_scan', sha256 = $2, uploaded_at = now()
 WHERE id = $1
-RETURNING id, name, type, size, sha256, status, created_at, uploaded_at
+RETURNING id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
 """
 PENDING_UPLOAD = "pending_upload"
 NOT_FOUND = "Không tìm thấy file"
@@ -66,11 +66,16 @@ class FileInfo(BaseModel):
     type: str
     size: int = Field(description="Dung lượng của file, tính bằng byte")
     sha256: str | None = Field(description="Mã băm SHA-256 của nội dung, có sau khi tải lên")
-    status: Literal["pending_upload", "pending_scan"] = Field(
-        description="pending_upload: chờ tải lên. pending_scan: chờ quét mã độc"
+    status: Literal["pending_upload", "pending_scan", "clean", "infected"] = Field(
+        description=(
+            "pending_upload: chờ tải lên. pending_scan: chờ quét mã độc. "
+            "clean: không phát hiện mã độc. infected: phát hiện mã độc"
+        )
     )
+    malware: str | None = Field(description="Tên mã độc mà ClamAV phát hiện")
     created_at: datetime
     uploaded_at: datetime | None
+    scanned_at: datetime | None = Field(description="Thời điểm quét mã độc xong")
 
 
 class CreatedFile(FileInfo):
@@ -173,6 +178,7 @@ async def upload_file(file_id: UUID, request: Request, user: User) -> FileInfo:
                 logger.warning("Không lưu được file %s vào kho file: %s", file_id, error)
                 raise HTTPException(503, "Chưa lưu được file vì kho file chưa sẵn sàng") from None
             row = await connection.fetchrow(FINISH_UPLOAD, file_id, received.sha256)
+    request.app.state.scans.notify()
     return FileInfo(**row)
 
 
