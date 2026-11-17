@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 import saigonos_core
 from saigonos_core.clamav import ClamAV
+from saigonos_core.downloads import DownloadLinks
 from saigonos_core.main import ME, create_app
 from saigonos_core.storage import Storage
 
@@ -216,6 +217,7 @@ def test_settings_come_from_environment(monkeypatch, settings):
         "MAX_FILE_SIZE": "25",
         "CLAMAV_HOST": settings.clamav_host,
         "CLAMAV_PORT": "3311",
+        "DOWNLOAD_KEY": "khoa-khac",
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
@@ -223,7 +225,10 @@ def test_settings_come_from_environment(monkeypatch, settings):
 
     app = create_app(database=database)
 
-    assert app.state.settings == replace(settings, max_file_size=25, clamav_port=3311)
+    assert app.state.settings == replace(
+        settings, max_file_size=25, clamav_port=3311, download_key="khoa-khac"
+    )
+    assert app.state.downloads == DownloadLinks("khoa-khac")
     assert app.state.tokens.issuer == settings.issuer
     assert app.state.tokens.keys.uri == settings.jwks_url
     assert app.state.storage == Storage(

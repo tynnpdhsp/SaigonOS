@@ -149,4 +149,5 @@ def settings(realm):
         max_file_size=10,
         clamav_host="clamav",
         clamav_port=3310,
+        download_key="khoa-ky-duong-dan-tai-ve",
     )

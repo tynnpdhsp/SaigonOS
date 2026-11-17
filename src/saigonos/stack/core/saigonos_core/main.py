@@ -12,6 +12,7 @@ from saigonos_core import __version__, files
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
+from saigonos_core.downloads import DownloadLinks
 from saigonos_core.scans import Scans
 from saigonos_core.storage import Storage
 from saigonos_core.tokens import TokenVerifier
@@ -34,6 +35,7 @@ class Settings:
     max_file_size: int
     clamav_host: str
     clamav_port: int
+    download_key: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -47,6 +49,7 @@ class Settings:
             int(os.environ["MAX_FILE_SIZE"]),
             os.environ["CLAMAV_HOST"],
             int(os.environ["CLAMAV_PORT"]),
+            os.environ["DOWNLOAD_KEY"],
         )
 
 
@@ -115,6 +118,7 @@ def create_app(
     app.state.database = database
     app.state.storage = storage
     app.state.scans = scans
+    app.state.downloads = DownloadLinks(settings.download_key)
     app.include_router(router)
     app.include_router(files.router)
     return app
