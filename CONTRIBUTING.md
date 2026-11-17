@@ -37,13 +37,13 @@ Lệnh này thực hiện các bước sau:
 
 ## Kiểm thử tích hợp
 
-Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,2 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2 GB RAM.
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,4 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2,5 GB RAM.
 
 ```bash
 make integration
 ```
 
-Lệnh này chạy sáu nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy bảy nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin` và các đường dẫn tới REST API của Operaton. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -62,7 +62,7 @@ Sau khi được tạo lại hoặc khởi động lại, một service có th�
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
-Một lượt chạy mất khoảng 11 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Một lượt chạy mất khoảng 15 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
@@ -236,6 +236,8 @@ Script cũng cập nhật realm master. Keycloak tự tạo realm này khi khở
 
 API Gateway chặn mọi địa chỉ của realm master. Do đó, kiểm thử tích hợp gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
 
+Client `operaton` và luồng đăng nhập riêng của client này cũng là ngoại lệ. Script kiểm tra từng bước của luồng đăng nhập ở mỗi lần chạy. Khi luồng khác với thiết kế, script tắt client, xóa luồng, tạo lại luồng rồi bật lại client. Do đó, không có lúc nào client dùng luồng đăng nhập chung của realm. Các thiết lập bảo mật của client cũng được đặt lại ở mỗi lần chạy.
+
 ## Service core
 
 Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
@@ -258,6 +260,19 @@ Khi sửa service `core`, cần tuân theo các quy tắc sau:
 - Trong `src/saigonos/stack/config/clamav/clamd.conf`, giá trị `MaxFileSize` phải lớn hơn `MaxScanSize`. Nếu không, ClamAV chỉ quét phần đầu của một file lớn bên trong file nén mà không báo. Kiểm thử trong `tests/test_clamd_conf.py` kiểm tra điều kiện này.
 
 Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
+
+## Operaton
+
+Cấu hình của Operaton nằm trong file `src/saigonos/stack/config/operaton/production.yml`. File này được gắn đè lên file cùng tên trong image. Các mật khẩu được lấy từ biến môi trường, không ghi trong file. Thiết lập `server.servlet.context-path` đặt mọi đường dẫn của Operaton dưới `/operaton/`, kể cả đường dẫn đăng nhập OAuth2.
+
+Khi sửa cấu hình hoặc route của Operaton, cần tuân theo các quy tắc sau:
+
+- Route `operaton` của API Gateway chỉ liệt kê các đường dẫn mà Cockpit, Tasklist và Admin cần. Không thêm REST API `/operaton/engine-rest` hoặc đường dẫn `/operaton/health` vào route.
+- Tomcat của Operaton bỏ phần sau dấu `;` trong mỗi đoạn của đường dẫn, còn APISIX so khớp cả phần này. Ví dụ, APISIX coi `/operaton/app/..;/engine-rest` là một đường dẫn của `/operaton/app/`, còn Tomcat hiểu đó là `/operaton/engine-rest`. Do đó, route từ chối mọi đường dẫn có dấu `;` và chỉ gửi tới Operaton đường dẫn đã được APISIX chuẩn hóa. Không bỏ thiết lập `vars` và `proxy-rewrite` của route.
+- Không bật `normalize_uri_like_servlet` của APISIX. Ở phiên bản 3.19.0, thiết lập này làm mất query string của các route không có `proxy-rewrite`, ví dụ route của Keycloak.
+- Operaton nhận nhóm của người dùng từ claim `groups`. Mapper của client `operaton` đưa các realm role vào claim này. Realm role `admin` có toàn quyền trong Operaton.
+
+Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway.
 
 ## Phát hành phiên bản mới
 
