@@ -14,6 +14,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `realm` tạo client `operaton` và luồng đăng nhập riêng của client này trong realm `saigonos`. Khi luồng đăng nhập hoặc các thiết lập bảo mật của client bị thay đổi, service đặt lại như cũ.
 - REST API của Operaton chỉ dành cho service `core`. REST API này không mở qua API Gateway và cần đăng nhập bằng tài khoản `core` của Operaton.
 - Lệnh `saigonos init` thêm các giá trị `OPERATON_DB_PASSWORD`, `OPERATON_CLIENT_SECRET` và `CORE_OPERATON_PASSWORD` vào file `.env`.
+- Service `processes` triển khai các file BPMN trong thư mục `config/operaton/processes` vào Operaton mỗi khi hệ thống khởi động. File không thay đổi thì không tạo phiên bản mới của quy trình. File bị lỗi làm lệnh `saigonos up` kết thúc với mã lỗi. Một file không thay được quy trình đã khai báo trong file khác. Lệnh `saigonos init` tạo sẵn thư mục này.
 - Lệnh `saigonos doctor` kiểm tra Operaton qua API Gateway. Trang đăng nhập phải dùng đúng địa chỉ truy cập của hệ thống và REST API của Operaton phải bị chặn.
 
 ## [0.3.0] - 2026-11-17
