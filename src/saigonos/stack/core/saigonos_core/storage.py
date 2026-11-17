@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
 import hmac
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from http.client import HTTPConnection, HTTPException
+from http.client import HTTPConnection, HTTPException, HTTPResponse
 from typing import BinaryIO
 from urllib.parse import quote, urlsplit
 
@@ -11,7 +13,10 @@ ALGORITHM = "AWS4-HMAC-SHA256"
 REGION = "us-east-1"
 SERVICE = "s3"
 TIMEOUT = 30
+CHUNK_SIZE = 64 * 1024
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 QUARANTINE = "quarantine"
+CLEAN = "clean"
 
 
 class StorageError(Exception):
@@ -69,8 +74,27 @@ class Storage:
         self, bucket: str, key: str, body: BinaryIO, size: int, sha256: str, content_type: str
     ) -> None:
         headers = {"Content-Length": str(size), "Content-Type": content_type}
-        self.send("PUT", f"/{bucket}/{key}", sha256, body, headers)
+        with self.send("PUT", f"/{bucket}/{key}", sha256, body, headers):
+            pass
 
+    def get(self, bucket: str, key: str, sink: BinaryIO) -> str:
+        digest = hashlib.sha256()
+        size = 0
+        with self.send("GET", f"/{bucket}/{key}", EMPTY_SHA256) as response:
+            while chunk := response.read(CHUNK_SIZE):
+                digest.update(chunk)
+                sink.write(chunk)
+                size += len(chunk)
+            expected = response.getheader("Content-Length")
+            if expected is not None and int(expected) != size:
+                raise StorageError(f"Kho file chỉ gửi {size} trong {expected} byte của nội dung")
+        return digest.hexdigest()
+
+    def delete(self, bucket: str, key: str) -> None:
+        with self.send("DELETE", f"/{bucket}/{key}", EMPTY_SHA256):
+            pass
+
+    @contextmanager
     def send(
         self,
         method: str,
@@ -78,7 +102,7 @@ class Storage:
         payload_hash: str,
         body: BinaryIO | None = None,
         headers: dict[str, str] | None = None,
-    ) -> bytes:
+    ) -> Iterator[HTTPResponse]:
         parts = urlsplit(self.url)
         path = quote(path)
         signed = {
@@ -95,11 +119,10 @@ class Storage:
         try:
             connection.request(method, path, body=body, headers=sent)
             response = connection.getresponse()
-            content = response.read()
+            if not 200 <= response.status < 300:
+                raise StorageError(f"Kho file trả về mã {response.status}")
+            yield response
         except (OSError, HTTPException) as error:
             raise StorageError(f"Không kết nối được kho file: {error}") from error
         finally:
             connection.close()
-        if response.status != 200:
-            raise StorageError(f"Kho file trả về mã {response.status}")
-        return content
