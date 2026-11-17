@@ -35,6 +35,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng `core.files` lưu thông tin của các file được tải lên, gồm chủ file, tên, loại, dung lượng, mã băm SHA-256 và trạng thái. Bảng có audit log. Chính sách phân quyền từng dòng chỉ cho người dùng thấy file của chính mình. Chỉ role `core_service` thêm và sửa được dòng của bảng này.
 - Lời gọi `POST /core/files` của service `core` khai báo một file mới và trả về đường dẫn tải lên. Service kiểm tra loại file, phần mở rộng của tên file và dung lượng. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Nội dung được lưu vào bucket `quarantine` và chờ quét mã độc. Nội dung có dung lượng hoặc phần đầu không khớp với thông tin đã khai báo bị từ chối. Lời gọi `GET /core/files/{id}` trả về thông tin và trạng thái của file.
 - Tùy chọn `--max-file-size` của lệnh `saigonos init` đặt dung lượng tối đa của một file tải lên, tính bằng MB. Giá trị mặc định là 10.
+- Service `core` quét mọi file bằng ClamAV ngay sau khi nhận nội dung. File không có mã độc được chuyển sang bucket `clean` và có trạng thái `clean`. File có mã độc được giữ trong bucket `quarantine` và có trạng thái `infected`. Tên mã độc được ghi vào trường `malware` của file và vào audit log. Khi ClamAV chưa sẵn sàng, file chờ ở trạng thái `pending_scan` và được quét lại sau, kể cả khi service `core` khởi động lại.
+- ClamAV coi nội dung không quét hết được là mã độc. Ví dụ: file nén lồng nhau quá 17 lớp hoặc có tổng nội dung sau khi giải nén lớn hơn 400 MB. Khi đó, tên mã độc bắt đầu bằng `Heuristics.Limits.Exceeded`.
 
 ### Thay đổi
 
