@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.3.0] - 2026-11-17
+
 ### Thêm
 
 - Service `migrate` chạy các file SQL của cơ sở dữ liệu mỗi khi hệ thống khởi động. Các file chạy theo thứ tự tên. Mỗi file chỉ chạy một lần và chạy trong một transaction. Bảng `core.migrations` ghi lại các file đã chạy. Khi nội dung của một file đã chạy bị thay đổi, service dừng và báo lỗi. PostgREST nhận ngay các bảng và view mới mà không cần khởi động lại.
@@ -114,7 +116,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.2.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
 [0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
 [0.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.0
