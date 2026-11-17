@@ -37,6 +37,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Tùy chọn `--max-file-size` của lệnh `saigonos init` đặt dung lượng tối đa của một file tải lên, tính bằng MB. Giá trị mặc định là 10.
 - Service `core` quét mọi file bằng ClamAV ngay sau khi nhận nội dung. File không có mã độc được chuyển sang bucket `clean` và có trạng thái `clean`. File có mã độc được giữ trong bucket `quarantine` và có trạng thái `infected`. Tên mã độc được ghi vào trường `malware` của file và vào audit log. Khi ClamAV chưa sẵn sàng, file chờ ở trạng thái `pending_scan` và được quét lại sau, kể cả khi service `core` khởi động lại.
 - ClamAV coi nội dung không quét hết được là mã độc. Ví dụ: file nén lồng nhau quá 17 lớp hoặc có tổng nội dung sau khi giải nén lớn hơn 400 MB. Khi đó, tên mã độc bắt đầu bằng `Heuristics.Limits.Exceeded`.
+- Lời gọi `POST /core/files/{id}/download-url` của service `core` trả về đường dẫn tải về của một file. Đường dẫn dùng được trong 60 giây và mở được trong trình duyệt mà không cần access token. Chỉ file có trạng thái `clean` mới tải về được. Người dùng chỉ xin được đường dẫn cho file mà chính sách phân quyền từng dòng cho phép đọc. File được gửi kèm header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Trước khi gửi, nội dung được so với mã băm SHA-256 đã ghi.
+- Lệnh `saigonos init` tạo khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Service `core` ký đường dẫn tải về bằng khóa này. Khi cập nhật từ phiên bản cũ, lệnh thêm khóa này và giữ nguyên các mật khẩu đã có.
 
 ### Thay đổi
 
