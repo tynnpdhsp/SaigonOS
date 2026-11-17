@@ -5,7 +5,14 @@ import ssl
 
 import pytest
 
-from saigonos.doctor import api_state, core_state, gateway_checks, login_state, service_state
+from saigonos.doctor import (
+    api_state,
+    core_state,
+    gateway_checks,
+    login_state,
+    operaton_state,
+    service_state,
+)
 
 CADDY_SERVICE = {"caddy": {"restart": "unless-stopped"}}
 CADDY_RUNNING = {"Service": "caddy", "State": "running", "Health": "healthy", "ExitCode": 0}
@@ -24,6 +31,9 @@ HEALTHY = [
 URL = "http://dx.example.com"
 REALM_PATH = "/auth/realms/saigonos"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
+LOGIN_PAGE = f"{REALM_PATH}/protocol/openid-connect/auth"
+CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
+OPERATON_OK = "Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn"
 
 
 def discovery(issuer=f"{URL}{REALM_PATH}", token_endpoint=f"{URL}{TOKEN_PATH}"):
@@ -75,6 +85,7 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
         f"BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại {gateway.url}/auth",
         "BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối",
         "BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối",
+        f"BÌNH THƯỜNG    Operaton     {OPERATON_OK}",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -121,7 +132,7 @@ def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
     assert f"LỖI            Đăng nhập    không kết nối được tới {closed_url}: " in result.output
     assert f"LỖI            API          không kết nối được tới {closed_url}: " in result.output
     assert f"LỖI            Core API     không kết nối được tới {closed_url}: " in result.output
-    assert result.output.endswith("Có 3 mục lỗi.\n")
+    assert result.output.endswith("Có 4 mục lỗi.\n")
 
 
 def test_doctor_stops_when_compose_fails(home, cli, docker):
@@ -217,7 +228,10 @@ def test_doctor_reports_reverse_proxy_that_sends_wrong_address(home, cli, docker
         f"LỖI            Đăng nhập    Keycloak nhận lời gọi qua địa chỉ {URL}:9080, "
         in result.output
     )
-    assert result.output.endswith("Có 1 mục lỗi.\n")
+    assert f"LỖI            Operaton     Operaton nhận lời gọi qua địa chỉ {URL}:9080, " in (
+        result.output
+    )
+    assert result.output.endswith("Có 2 mục lỗi.\n")
 
 
 def test_api_state_requires_answer_without_token_and_401_for_invalid_token():
@@ -274,7 +288,7 @@ def test_doctor_reports_core_service_that_fails_through_gateway(
 def test_gateway_checks_use_tls_for_https_address(gateway):
     checks = gateway_checks(gateway.url.replace("http://", "https://"))
 
-    assert [check.ok for check in checks] == [False, False, False]
+    assert [check.ok for check in checks] == [False, False, False, False]
     assert all("không kết nối được" in check.detail for check in checks)
 
 
@@ -285,7 +299,7 @@ def test_doctor_trusts_root_certificate_of_caddy(caddy_home, cli, docker, truste
 
     assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
     assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
-    assert trusted == ["chứng chỉ gốc\n"] * 3
+    assert trusted == ["chứng chỉ gốc\n"] * 4
 
 
 @pytest.mark.parametrize("reply", [{"output": ""}, {"error": "No such file\n", "code": 1}])
@@ -307,3 +321,85 @@ def test_doctor_does_not_ask_for_root_certificate_without_caddy(home, cli, docke
     cli("doctor", "--home", home)
 
     assert not any(" exec " in call for call in docker.calls)
+
+
+def login_redirect(url=URL, callback=f"{URL}{CALLBACK_PATH}"):
+    return f"{url}{LOGIN_PAGE}?client_id=operaton&redirect_uri={callback}&state=x"
+
+
+def test_operaton_state_accepts_login_page_at_url_and_closed_rest():
+    assert operaton_state(URL, 302, login_redirect(), 404) == (True, OPERATON_OK)
+
+
+@pytest.mark.parametrize(
+    ("status", "location", "rest", "detail"),
+    [
+        (
+            502,
+            None,
+            404,
+            "lời gọi /operaton/oauth2/authorization/operaton nhận mã 502, đúng ra là 302",
+        ),
+        (
+            302,
+            login_redirect(url="http://localhost:9080"),
+            404,
+            f"Operaton chuyển người dùng tới http://localhost:9080{LOGIN_PAGE}, "
+            "không phải trang đăng nhập của Keycloak",
+        ),
+        (
+            302,
+            None,
+            404,
+            "Operaton không cho biết địa chỉ của trang đăng nhập",
+        ),
+        (
+            302,
+            login_redirect(),
+            200,
+            "REST của Operaton nhận mã 200 qua API Gateway, đúng ra là 404",
+        ),
+    ],
+)
+def test_operaton_state_rejects_other_answers(status, location, rest, detail):
+    assert operaton_state(URL, status, location, rest) == (False, detail)
+
+
+def test_operaton_state_names_address_seen_by_operaton():
+    callback = f"http://dx.example.com:9080{CALLBACK_PATH}"
+
+    ok, detail = operaton_state(URL, 302, login_redirect(callback=callback), 404)
+
+    assert ok is False
+    assert detail.startswith(
+        "Operaton nhận lời gọi qua địa chỉ http://dx.example.com:9080, "
+        "khác với SAIGONOS_URL trong file .env. "
+    )
+
+
+@pytest.mark.parametrize(
+    ("route", "reply", "detail"),
+    [
+        (
+            ("/operaton/oauth2/authorization/operaton", False),
+            (404, b""),
+            "lời gọi /operaton/oauth2/authorization/operaton nhận mã 404, đúng ra là 302",
+        ),
+        (
+            ("/operaton/engine-rest/version", False),
+            (200, b"{}"),
+            "REST của Operaton nhận mã 200 qua API Gateway, đúng ra là 404",
+        ),
+    ],
+)
+def test_doctor_reports_operaton_that_fails_through_gateway(
+    home, cli, docker, gateway, route, reply, detail
+):
+    docker.services(SERVICES, HEALTHY)
+    gateway.routes[route] = reply
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert f"LỖI            Operaton     {detail}\n" in result.output
+    assert result.output.endswith("Có 1 mục lỗi.\n")

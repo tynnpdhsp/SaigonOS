@@ -3,6 +3,7 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
+from urllib.parse import urlencode
 
 import pytest
 from click.testing import CliRunner
@@ -60,6 +61,14 @@ class Gateway:
         self.routes["/api/", True] = (401, b"")
         self.routes["/core/health", False] = (200, b'{"status": "ok"}')
         self.routes["/core/me", True] = (401, b"")
+        callback = f"{seen_url or self.url}/operaton/login/oauth2/code/operaton"
+        query = urlencode({"client_id": "operaton", "redirect_uri": callback})
+        login = f"{self.url}{realm}/protocol/openid-connect/auth?{query}"
+        self.routes["/operaton/oauth2/authorization/operaton", False] = (
+            302,
+            b"",
+            {"Location": login},
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -92,8 +101,10 @@ def gateway():
         def do_GET(self):
             gateway.requests.append(self.path)
             route = (self.path, "Authorization" in self.headers)
-            status, body = gateway.routes.get(route, (404, b""))
+            status, body, *headers = gateway.routes.get(route, (404, b""))
             self.send_response(status)
+            for name, value in (headers[0] if headers else {}).items():
+                self.send_header(name, value)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
