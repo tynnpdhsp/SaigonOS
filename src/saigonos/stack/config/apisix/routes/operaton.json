@@ -1,0 +1,29 @@
+{
+  "name": "operaton",
+  "desc": "Operaton: Cockpit, Tasklist và Admin, đăng nhập bằng Keycloak. REST của Operaton không mở qua API Gateway. Nút đăng xuất của Operaton trỏ tới /logout",
+  "uris": [
+    "/operaton",
+    "/operaton/",
+    "/operaton/app/*",
+    "/operaton/api/*",
+    "/operaton/assets/*",
+    "/operaton/lib/*",
+    "/operaton/favicon.ico",
+    "/operaton/oauth2/authorization/operaton",
+    "/operaton/login/oauth2/code/operaton",
+    "/operaton/logout",
+    "/logout"
+  ],
+  "vars": [["uri", "!", "~~", ";"]],
+  "plugins": {
+    "proxy-rewrite": {
+      "regex_uri": ["^/logout$", "/operaton/logout", "^(.*)$", "$1"]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "operaton:8080": 1
+    }
+  }
+}
