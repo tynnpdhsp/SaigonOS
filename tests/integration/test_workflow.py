@@ -6,6 +6,7 @@ import json
 import re
 import struct
 import time
+from contextlib import contextmanager
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pytest
@@ -109,6 +110,61 @@ def rest_status(stack, user=None):
 def process_id(stack, container, name):
     rows = stack.run_docker("top", container, "-eo", "pid,comm").stdout.splitlines()[1:]
     return next(pid for pid, command in (row.split() for row in rows) if command == name)
+
+
+def core_account(stack):
+    return f"core:{stack.env['CORE_OPERATON_PASSWORD']}"
+
+
+def wait_until_core_account_works(stack, timeout=30):
+    deadline = time.monotonic() + timeout
+    while rest_status(stack, core_account(stack)) != 200:
+        assert time.monotonic() < deadline, "Tài khoản core bị khóa quá lâu"
+        time.sleep(1)
+
+
+def bpmn(key, name="Quy trình thử", history=True):
+    time_to_live = ' operaton:historyTimeToLive="P30D"' if history else ""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="{key}_dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
+  <bpmn:process id="{key}" name="{name}" isExecutable="true"{time_to_live}>
+    <bpmn:startEvent id="bat_dau" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
+@contextmanager
+def bpmn_files(stack, files):
+    folder = stack.home / "config" / "operaton" / "processes"
+    for name, text in files.items():
+        (folder / name).write_text(text, encoding="utf-8")
+    try:
+        yield folder
+    finally:
+        for name in files:
+            (folder / name).unlink(missing_ok=True)
+
+
+def deploy(stack, *options):
+    result = stack.compose_result("run", "--rm", "--no-deps", *options, "processes")
+    return result.returncode, result.stdout.splitlines(), result.stderr
+
+
+def operaton_get(stack, path):
+    url = f"http://127.0.0.1:8080/operaton/engine-rest{path}"
+    result = stack.exec("operaton", "curl", "--silent", "--user", core_account(stack), url)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def versions(stack, key):
+    definitions = operaton_get(stack, f"/process-definition?key={key}&sortBy=version&sortOrder=asc")
+    return [(item["version"], item["resource"], item["name"]) for item in definitions]
 
 
 def test_operaton_runs_on_own_database(stack):
@@ -219,16 +275,13 @@ def test_gateway_does_not_open_rest_of_operaton(stack, path, status):
 
 
 def test_rest_of_operaton_needs_account_of_core(stack):
-    account = f"core:{stack.env['CORE_OPERATON_PASSWORD']}"
+    account = core_account(stack)
 
     assert rest_status(stack) == 401
     assert rest_status(stack, account) == 200
     assert rest_status(stack, "core:sai-mat-khau") == 401
     assert rest_status(stack, account) == 401
-    deadline = time.monotonic() + 30
-    while rest_status(stack, account) != 200:
-        assert time.monotonic() < deadline, "Tài khoản core bị khóa quá lâu"
-        time.sleep(1)
+    wait_until_core_account_works(stack)
 
 
 def test_operaton_sends_login_to_keycloak_at_saigonos_url(stack):
@@ -299,6 +352,154 @@ def test_realm_service_restores_login_flow_and_client_of_operaton(stack):
     assert (status, DENIED in page) == (401, True)
 
 
+def test_processes_service_reports_empty_folder(stack):
+    folder = stack.home / "config" / "operaton" / "processes"
+
+    code, lines, _ = deploy(stack)
+
+    assert folder.is_dir()
+    assert sorted(folder.iterdir()) == []
+    assert (code, lines) == (0, ["Không có file BPMN nào"])
+    assert "Không có file BPMN nào" in stack.logs("processes").splitlines()
+
+
+def test_bpmn_file_is_deployed_once_and_again_after_change(stack):
+    with bpmn_files(stack, {"thu-nghiem.bpmn": bpmn("thu_nghiem")}) as folder:
+        first = deploy(stack)
+        second = deploy(stack)
+        (folder / "thu-nghiem.bpmn").write_text(
+            bpmn("thu_nghiem", name="Quy trình đã sửa"), encoding="utf-8"
+        )
+        third = deploy(stack)
+
+    deployments = operaton_get(
+        stack, "/deployment?name=thu-nghiem.bpmn&sortBy=deploymentTime&sortOrder=asc"
+    )
+    assert first[:2] == (
+        0,
+        ["Đã triển khai file thu-nghiem.bpmn: quy trình thu_nghiem, phiên bản 1"],
+    )
+    assert second[:2] == (0, ["File thu-nghiem.bpmn không thay đổi"])
+    assert third[:2] == (
+        0,
+        ["Đã triển khai file thu-nghiem.bpmn: quy trình thu_nghiem, phiên bản 2"],
+    )
+    assert versions(stack, "thu_nghiem") == [
+        (1, "thu-nghiem.bpmn", "Quy trình thử"),
+        (2, "thu-nghiem.bpmn", "Quy trình đã sửa"),
+    ]
+    assert [(item["name"], item["source"]) for item in deployments] == [
+        ("thu-nghiem.bpmn", "saigonos"),
+        ("thu-nghiem.bpmn", "saigonos"),
+    ]
+
+
+def test_bpmn_file_without_history_time_to_live_stops_up_until_removed(stack):
+    with bpmn_files(stack, {"thieu-ttl.bpmn": bpmn("thieu_ttl", history=False)}):
+        failed = stack.up()
+        log = stack.logs("processes")
+    recovered = stack.up()
+
+    assert failed.returncode != 0
+    assert 'service "processes" didn\'t complete successfully' in failed.stderr
+    assert "Không triển khai được file thieu-ttl.bpmn: ENGINE-09005" in log
+    assert "History Time To Live (TTL) cannot be null" in log
+    assert recovered.returncode == 0, recovered.stderr
+    assert versions(stack, "thieu_ttl") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "message"),
+    [
+        (
+            "hong.bpmn",
+            bpmn("hong")[:200],
+            "Không triển khai được file hong.bpmn: ENGINE-09003 Could not parse 'hong.bpmn'.",
+        ),
+        (
+            "quy trình.bpmn",
+            bpmn("ten_sai"),
+            "Tên file quy trình.bpmn không hợp lệ.",
+        ),
+        (
+            "khong-phai-xml.bpmn",
+            "Đây không phải là BPMN",
+            "Không triển khai được file khong-phai-xml.bpmn: ENGINE-09003",
+        ),
+    ],
+)
+def test_broken_bpmn_file_is_reported_by_name(stack, name, text, message):
+    with bpmn_files(stack, {name: text}):
+        code, lines, errors = deploy(stack)
+
+    assert code == 1
+    assert lines == []
+    assert message in errors
+
+
+def test_bpmn_file_cannot_take_process_of_another_file(stack):
+    with bpmn_files(stack, {"chu-quy-trinh.bpmn": bpmn("dung_chung")}):
+        owner = deploy(stack)
+        intruder = {"file-moi.bpmn": bpmn("dung_chung", name="Bản chiếm quy trình")}
+        with bpmn_files(stack, intruder):
+            code, lines, errors = deploy(stack)
+
+    assert owner[0] == 0
+    assert code == 1
+    assert lines == [
+        "File chu-quy-trinh.bpmn không thay đổi",
+        "Đã triển khai file file-moi.bpmn: quy trình dung_chung, phiên bản 2",
+        "Đã gỡ bản triển khai mới của file file-moi.bpmn",
+    ]
+    assert (
+        "Quy trình dung_chung được khai báo trong nhiều file: chu-quy-trinh.bpmn, file-moi.bpmn. "
+        "Mỗi quy trình chỉ được khai báo trong một file."
+    ) in errors
+    assert versions(stack, "dung_chung") == [(1, "chu-quy-trinh.bpmn", "Quy trình thử")]
+
+
+def test_two_new_files_with_same_process_deploy_nothing(stack):
+    files = {"ban-a.bpmn": bpmn("hai_ban"), "ban-b.bpmn": bpmn("hai_ban", name="Bản B")}
+    with bpmn_files(stack, files):
+        code, lines, errors = deploy(stack)
+
+    assert code == 1
+    assert lines == [
+        "Đã triển khai file ban-a.bpmn: quy trình hai_ban, phiên bản 1",
+        "Đã triển khai file ban-b.bpmn: quy trình hai_ban, phiên bản 2",
+        "Đã gỡ bản triển khai mới của file ban-a.bpmn",
+        "Đã gỡ bản triển khai mới của file ban-b.bpmn",
+    ]
+    assert "Quy trình hai_ban được khai báo trong nhiều file: ban-a.bpmn, ban-b.bpmn." in errors
+    assert versions(stack, "hai_ban") == []
+
+
+def test_wrong_password_of_core_costs_one_login_attempt(stack):
+    files = {"mat-khau-mot.bpmn": bpmn("mat_khau_mot"), "mat-khau-hai.bpmn": bpmn("mat_khau_hai")}
+    query = "--command=SELECT attempts_ FROM act_id_user WHERE id_ = 'core'"
+    options = ["psql", "--username=postgres", "--dbname=operaton", "--tuples-only", "--no-align"]
+    with bpmn_files(stack, files):
+        code, lines, errors = deploy(stack, "--env", "CORE_OPERATON_PASSWORD=sai-mat-khau")
+        attempts = stack.exec("postgres", *options, query).stdout.strip()
+        wait_until_core_account_works(stack)
+
+    assert code == 1
+    assert lines == []
+    assert "Operaton từ chối tài khoản core." in errors
+    assert attempts == "1"
+    assert versions(stack, "mat_khau_mot") == []
+
+
+def test_removed_bpmn_file_keeps_its_process(stack):
+    with bpmn_files(stack, {"go-bo.bpmn": bpmn("go_bo")}):
+        deployed = deploy(stack)
+    code, lines, _ = deploy(stack)
+
+    assert deployed[0] == 0
+    assert (code, lines) == (0, ["Không có file BPMN nào"])
+    assert versions(stack, "go_bo") == [(1, "go-bo.bpmn", "Quy trình thử")]
+
+
 def test_killed_operaton_restarts_by_itself(stack):
     container = stack.container("operaton")
     restarts = int(stack.inspect(container, "{{.RestartCount}}"))
@@ -310,4 +511,4 @@ def test_killed_operaton_restarts_by_itself(stack):
     while stack.inspect(container, state) != f"{restarts + 1} healthy":
         assert time.monotonic() < deadline, "Operaton chưa khởi động lại"
         time.sleep(1)
-    assert rest_status(stack, f"core:{stack.env['CORE_OPERATON_PASSWORD']}") == 200
+    assert rest_status(stack, core_account(stack)) == 200
