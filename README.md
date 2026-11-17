@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Phần quản lý dữ liệu phi cấu trúc và luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Phần luồng công việc đang được phát triển. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Yêu cầu hệ thống
 
@@ -97,7 +97,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
-| http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp |
+| http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -175,7 +175,7 @@ Service `core` nhận file của các ứng dụng và lưu file vào SeaweedFS.
 1. Lời gọi `POST /core/files` khai báo tên, loại và dung lượng của file. Service kiểm tra ba giá trị này trước khi nhận nội dung. Khi hợp lệ, service trả về mã 201 kèm mã file và đường dẫn tải lên trong trường `upload_url`. File ở trạng thái `pending_upload`.
 2. Lời gọi `PUT` tới đường dẫn tải lên gửi nội dung của file. Service tính dung lượng và mã băm SHA-256 của nội dung, rồi kiểm tra phần đầu của nội dung. Khi hợp lệ, nội dung được lưu vào bucket `quarantine` và file chuyển sang trạng thái `pending_scan`, tức chờ quét mã độc.
 
-Ngay sau khi nhận nội dung, service `core` quét file bằng ClamAV. Việc quét chạy nền nên lời gọi `PUT` không phải chờ. Ứng dụng gọi `GET /core/files/{id}` để biết kết quả quét. Mục [Quét mã độc](#quét-mã-độc) mô tả cách quét.
+Ngay sau khi nhận nội dung, service `core` quét file bằng ClamAV. Việc quét chạy nền nên lời gọi `PUT` không phải chờ. Ứng dụng gọi `GET /core/files/{id}` để biết kết quả quét. Mục [Quét mã độc](#quét-mã-độc) mô tả cách quét. Khi file có trạng thái `clean`, ứng dụng tải file về theo mục [Tải file về](#tải-file-về).
 
 Ba trường của lời gọi khai báo có cùng tên với các thuộc tính của đối tượng `File` trong trình duyệt. Ví dụ, một ứng dụng web tải file mà người dùng đã chọn như sau:
 
@@ -198,8 +198,8 @@ Các trạng thái của file:
 |---|---|
 | `pending_upload` | Chờ gửi nội dung |
 | `pending_scan` | Nội dung nằm trong bucket `quarantine` và chờ quét mã độc |
-| `clean` | ClamAV không phát hiện mã độc. Nội dung đã được chuyển sang bucket `clean` |
-| `infected` | ClamAV phát hiện mã độc. Trường `malware` ghi tên mã độc. Nội dung được giữ trong bucket `quarantine` |
+| `clean` | ClamAV không phát hiện mã độc. Nội dung đã được chuyển sang bucket `clean` và tải về được |
+| `infected` | ClamAV phát hiện mã độc. Trường `malware` ghi tên mã độc. Nội dung được giữ trong bucket `quarantine` và không tải về được |
 
 Các loại file được phép:
 
@@ -231,6 +231,40 @@ Các mã lỗi của hai lời gọi:
 | 404 | Gửi nội dung | Không có file với mã này hoặc file thuộc người dùng khác |
 | 409 | Gửi nội dung | File đã nhận nội dung |
 | 503 | Gửi nội dung | SeaweedFS chưa sẵn sàng. File vẫn ở trạng thái `pending_upload` và có thể gửi lại |
+
+## Tải file về
+
+Mỗi file được tải về bằng một đường dẫn có thời hạn. Ứng dụng xin đường dẫn bằng lời gọi `POST /core/files/{id}/download-url` kèm access token của người dùng đã đăng nhập. Service trả về đường dẫn trong trường `download_url` và thời điểm hết hạn trong trường `expires_at`.
+
+Đường dẫn dùng được trong 60 giây và mở được trong trình duyệt mà không cần access token. Trong 60 giây này, đường dẫn mở được nhiều lần và bất kỳ ai có đường dẫn đều tải được file. Do đó, ứng dụng chỉ xin đường dẫn ngay trước khi tải và không lưu lại đường dẫn. Thời hạn chỉ áp dụng cho lúc mở đường dẫn. Một file lớn có thể tải xong sau thời điểm hết hạn.
+
+Ví dụ, một ứng dụng web tải file về như sau:
+
+```js
+const reply = await fetch(`/core/files/${id}/download-url`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+const { download_url } = await reply.json();
+window.location.assign(download_url);
+```
+
+Chỉ file có trạng thái `clean` mới tải về được. Người dùng chỉ xin được đường dẫn cho file mà chính sách phân quyền từng dòng của bảng `core.files` cho phép đọc. Trước khi gửi file, service đọc lại nội dung từ bucket `clean` và so với mã băm SHA-256 đã ghi.
+
+File được gửi kèm các header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Do đó, trình duyệt luôn lưu file về máy với tên đã khai báo, không tự đoán lại loại file và không giữ file trong bộ nhớ đệm.
+
+Đường dẫn được ký bằng khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Sau khi đổi khóa này và chạy `saigonos up`, các đường dẫn đã cấp không còn dùng được.
+
+Các mã lỗi của hai lời gọi:
+
+| Mã | Lời gọi | Ý nghĩa |
+|---|---|---|
+| 401 | Xin đường dẫn | Thiếu access token hoặc access token không hợp lệ |
+| 404 | Xin đường dẫn | Không có file với mã này hoặc người gọi không được đọc file |
+| 409 | Xin đường dẫn và tải về | File chưa có nội dung, đang chờ quét mã độc hoặc có mã độc |
+| 403 | Tải về | Đường dẫn không hợp lệ hoặc đã hết hạn |
+| 503 | Tải về | SeaweedFS chưa sẵn sàng |
+| 500 | Tải về | Nội dung trong bucket `clean` không khớp mã băm đã ghi. File không được gửi |
 
 ## Cấu hình
 
