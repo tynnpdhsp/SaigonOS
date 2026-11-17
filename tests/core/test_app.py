@@ -180,6 +180,16 @@ def test_app_serves_no_page_that_loads_scripts_from_other_sites(client, path):
     assert client.get(path).status_code == 404
 
 
+@pytest.mark.parametrize(
+    ("method", "path"), [("GET", "/health/"), ("GET", "/me/"), ("POST", "/files/")]
+)
+def test_path_with_trailing_slash_is_not_redirected_outside_gateway_prefix(client, method, path):
+    reply = client.request(method, path, follow_redirects=False)
+
+    assert reply.status_code == 404
+    assert "location" not in reply.headers
+
+
 def test_core_version_matches_project_version():
     assert saigonos_core.__version__ == version("saigonos")
 

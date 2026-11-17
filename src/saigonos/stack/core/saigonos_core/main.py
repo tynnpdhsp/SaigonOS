@@ -94,6 +94,7 @@ def create_app(
         servers=[{"url": settings.public_url}],
         docs_url=None,
         redoc_url=None,
+        redirect_slashes=False,
         lifespan=lifespan,
     )
     app.state.settings = settings
