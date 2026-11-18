@@ -29,6 +29,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
+- [Cập nhật tức thời](#cập-nhật-tức-thời)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -69,7 +70,7 @@ saigonos init
 
 Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
-Hệ thống dùng các cổng 9080, 9180, 9280 và 9380. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
+Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
 ### 3. Khởi động các service
 
@@ -125,8 +126,10 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
+| http://127.0.0.1:9480/ | Admin web của Centrifugo, dùng để xem số kết nối và gọi thử API của server, chỉ truy cập được từ chính máy cài đặt | Mật khẩu là giá trị `CENTRIFUGO_ADMIN_PASSWORD` |
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 | http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
+| ws://localhost:9080/realtime/connection/websocket | Kết nối WebSocket của Centrifugo, dùng để nhận [cập nhật tức thời](#cập-nhật-tức-thời) | Access token do Keycloak cấp, gửi trong lệnh connect |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -307,6 +310,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
 | `--keycloak-port` | `9280` | Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. Admin Console của realm master dùng cổng này |
 | `--seaweedfs-port` | `9380` | Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt |
+| `--centrifugo-port` | `9480` | Cổng API của server và Admin web của Centrifugo, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
@@ -436,6 +440,11 @@ Trong đó `dx.example.com` là tên miền của hệ thống. Cổng HTTP vẫ
 Ví dụ, với Nginx và chứng chỉ do Certbot lấy từ Let's Encrypt:
 
 ```nginx
+map $http_upgrade $saigonos_connection {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 443 ssl;
     server_name dx.example.com;
@@ -447,6 +456,9 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:9080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $saigonos_connection;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -462,13 +474,15 @@ Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người d�
 
 Dòng `client_max_body_size` cho phép Nginx nhận nội dung lớn tới 10 MB, bằng giới hạn dung lượng file mặc định của SaigonOS. Nginx mặc định chỉ nhận nội dung tới 1 MB. Khi đổi giới hạn bằng tùy chọn `--max-file-size`, cần đổi cả giá trị này.
 
+Khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` cho phép Nginx chuyển tiếp kết nối WebSocket tới [Centrifugo](#cập-nhật-tức-thời). Khối `map` đặt ở ngoài khối `server` và dùng tên biến riêng của SaigonOS để không trùng với cấu hình của các site khác. Centrifugo gửi ping 25 giây một lần. Do đó, thời gian chờ mặc định 60 giây của Nginx không đóng các kết nối WebSocket đang mở.
+
 ### 3. Kiểm tra hệ thống
 
 ```bash
 saigonos doctor
 ```
 
-Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được.
+Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được. Nếu reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo lỗi ở mục Centrifugo.
 
 ## Kiểm tra audit log
 
@@ -841,6 +855,55 @@ Job executor của Operaton tìm các hẹn giờ đã tới hạn 2 giây một
 Các hẹn giờ được lưu trong cơ sở dữ liệu `operaton`. Khi Operaton dừng rồi chạy lại, các hẹn giờ vẫn còn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
 
 Operaton chạy theo giờ UTC. Do đó, ngày giờ không ghi múi giờ và biểu thức cron trong file BPMN được tính theo giờ UTC. Ví dụ, `2026-12-01T08:00:00` là 15:00 giờ Việt Nam. Để đặt hẹn giờ theo giờ Việt Nam, ghi ngày giờ kèm múi giờ, ví dụ `2026-12-01T08:00:00+07:00`.
+
+## Cập nhật tức thời
+
+SaigonOS dùng Centrifugo để gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway, ví dụ `ws://localhost:9080/realtime/connection/websocket`. Trên máy chủ có HTTPS, địa chỉ này có dạng `wss://dx.example.com/realtime/connection/websocket`. API Gateway chỉ mở địa chỉ này của Centrifugo.
+
+### Kết nối
+
+Sau khi mở WebSocket, ứng dụng gửi access token do Keycloak cấp trong lệnh connect. Trình duyệt không gửi được header `Authorization` khi mở WebSocket. Do đó, API Gateway không kiểm tra access token ở địa chỉ này. Centrifugo tự kiểm tra chữ ký, issuer (`iss`), thời hạn và audience (`aud`) của access token. Kết nối không có access token hoặc có access token không mang mã người dùng (`sub`) đều bị từ chối. Khi Keycloak đổi khóa ký, Centrifugo tự lấy khóa mới.
+
+Centrifugo chỉ nhận access token có audience `saigonos`. Mỗi khi hệ thống khởi động, service `realm` thêm audience này vào access token của mọi client dùng client scope `roles`. ID token không có audience này nên bị từ chối. Khi mapper `audience saigonos` của client scope `roles` bị sửa hoặc bị xóa, service `realm` đặt lại mapper này.
+
+Khi mở WebSocket, trình duyệt gửi địa chỉ của trang trong header `Origin`. Centrifugo chỉ nhận kết nối từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Do đó, trang của một web khác không mở được kết nối bằng phiên đăng nhập của người dùng.
+
+Ví dụ, với thư viện [centrifuge-js](https://github.com/centrifugal/centrifuge-js) và [keycloak-js](https://www.npmjs.com/package/keycloak-js):
+
+```js
+import { Centrifuge } from "centrifuge";
+
+const centrifuge = new Centrifuge("wss://dx.example.com/realtime/connection/websocket", {
+  getToken: async () => {
+    await keycloak.updateToken(30);
+    return keycloak.token;
+  },
+});
+centrifuge.connect();
+```
+
+Access token chỉ có hiệu lực 60 giây. Trước khi access token hết hạn, thư viện gọi hàm `getToken` để lấy access token mới và gửi cho Centrifugo. Access token mới phải thuộc cùng người dùng. Nếu không nhận được access token mới, Centrifugo đóng kết nối khoảng 25 giây sau khi access token hết hạn.
+
+Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong các mã sau:
+
+| Mã | Ý nghĩa |
+|---|---|
+| `109` | Access token đã hết hạn. Thư viện tự lấy access token mới rồi kết nối lại |
+| `3001` | Centrifugo đang dừng. Thư viện tự kết nối lại |
+| `3005` | Kết nối hết hạn vì không nhận được access token mới. Thư viện tự kết nối lại |
+| `3500` | Access token không hợp lệ, ví dụ sai chữ ký, sai issuer, là ID token hoặc thuộc người dùng khác |
+| `3501` | Lệnh connect không có access token |
+| `3507` | Access token không mang mã người dùng |
+
+### API của server và Admin web
+
+API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở cổng này. Lời gọi API của server cần header `X-API-Key` với giá trị `CENTRIFUGO_API_KEY` trong file `.env`. Ví dụ, lệnh sau xem thông tin các node của Centrifugo:
+
+```bash
+curl -X POST -H "X-API-Key: $(grep CENTRIFUGO_API_KEY ~/saigonos/.env | cut -d= -f2)" -d '{}' http://127.0.0.1:9480/api/info
+```
+
+Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết nối và gọi thử API của server. Mật khẩu đăng nhập là giá trị `CENTRIFUGO_ADMIN_PASSWORD` trong file `.env`.
 
 ## Cập nhật phiên bản
 

@@ -15,6 +15,7 @@ from saigonos.doctor import PROBES
 from saigonos.home import (
     APISIX_INTERNAL_PORTS,
     DEFAULT_ADMIN_PORT,
+    DEFAULT_CENTRIFUGO_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_KEYCLOAK_PORT,
@@ -135,10 +136,17 @@ def test_readme_lists_ports_that_http_port_cannot_use():
 
 
 def test_readme_lists_ports_used_by_default():
-    ports = [DEFAULT_HTTP_PORT, DEFAULT_ADMIN_PORT, DEFAULT_KEYCLOAK_PORT, DEFAULT_SEAWEEDFS_PORT]
+    ports = [
+        DEFAULT_HTTP_PORT,
+        DEFAULT_ADMIN_PORT,
+        DEFAULT_KEYCLOAK_PORT,
+        DEFAULT_SEAWEEDFS_PORT,
+        DEFAULT_CENTRIFUGO_PORT,
+    ]
     *first, last = map(str, ports)
 
     assert f"Hệ thống dùng các cổng {', '.join(first)} và {last}." in README
+    assert f"Centrifugo nằm ở cổng {DEFAULT_CENTRIFUGO_PORT}," in README
 
 
 def test_readme_states_file_size_limits():
@@ -220,6 +228,7 @@ def test_readme_states_the_default_values():
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
     assert f"| `--keycloak-port` | `{DEFAULT_KEYCLOAK_PORT}` |" in README
     assert f"| `--seaweedfs-port` | `{DEFAULT_SEAWEEDFS_PORT}` |" in README
+    assert f"| `--centrifugo-port` | `{DEFAULT_CENTRIFUGO_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README
     assert f"| `--max-file-size` | `{DEFAULT_MAX_FILE_SIZE}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
