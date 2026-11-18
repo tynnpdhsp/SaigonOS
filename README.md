@@ -516,7 +516,7 @@ SaigonOS dùng Operaton để chạy các quy trình BPMN 2.0. Operaton lưu d�
 
 Ba trang Cockpit, Tasklist và Admin của Operaton nằm ở địa chỉ `/operaton/` của API Gateway, ví dụ http://localhost:9080/operaton/. Cockpit dùng để theo dõi các quy trình đang chạy. Tasklist dùng để xem và xử lý các việc. Admin dùng để quản lý quyền trong Operaton.
 
-Chỉ tài khoản có realm role `admin` đăng nhập được vào ba trang này. Cách tạo tài khoản được trình bày ở mục [Tạo tài khoản quản trị của realm saigonos](#tạo-tài-khoản-quản-trị-của-realm-saigonos). Mỗi lần đăng nhập, tài khoản phải nhập mật khẩu và mã OTP, kể cả khi đã đăng nhập vào một trang khác của hệ thống. Tài khoản không có realm role `admin` bị từ chối ngay sau khi nhập mật khẩu.
+Chỉ tài khoản có realm role `admin` đăng nhập được vào ba trang này. Cách tạo tài khoản được trình bày ở mục [Tạo tài khoản quản trị của realm saigonos](#tạo-tài-khoản-quản-trị-của-realm-saigonos). Mỗi lần đăng nhập, tài khoản phải nhập mật khẩu và mã OTP, kể cả khi đã đăng nhập vào một trang khác của hệ thống. Tài khoản không có realm role `admin` bị từ chối ngay sau khi nhập mật khẩu. Khi đó, trang đăng nhập báo rằng chỉ tài khoản quản trị mới vào được trang này. Nội dung thông báo có khóa `saigonos-operaton-admin-only` và sửa được trong Admin Console của realm `saigonos`, ở mục Realm settings, thẻ Localization, phần Realm overrides. Keycloak tính mỗi lần bị từ chối là một lần đăng nhập sai. Do đó, hai lần bị từ chối trong vòng 1 giây làm tài khoản tạm bị khóa 60 giây.
 
 Operaton làm mới access token ở mỗi lời gọi của ba trang. Do đó, khi một tài khoản bị khóa trong Keycloak, phiên đăng nhập của tài khoản trong Operaton kết thúc ngay ở lời gọi tiếp theo. Nút đăng xuất của Operaton dùng địa chỉ `/logout` của API Gateway.
 
