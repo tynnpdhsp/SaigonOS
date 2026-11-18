@@ -16,6 +16,13 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos init` thêm các giá trị `OPERATON_DB_PASSWORD`, `OPERATON_CLIENT_SECRET` và `CORE_OPERATON_PASSWORD` vào file `.env`.
 - Service `processes` triển khai các file BPMN trong thư mục `config/operaton/processes` vào Operaton mỗi khi hệ thống khởi động. File không thay đổi thì không tạo phiên bản mới của quy trình. File bị lỗi làm lệnh `saigonos up` kết thúc với mã lỗi. Một file không thay được quy trình đã khai báo trong file khác. Lệnh `saigonos init` tạo sẵn thư mục này.
 - Lệnh `saigonos doctor` kiểm tra Operaton qua API Gateway. Trang đăng nhập phải dùng đúng địa chỉ truy cập của hệ thống và REST API của Operaton phải bị chặn.
+- Lời gọi `POST /core/processes/{key}/start` bắt đầu phiên bản mới nhất của một quy trình. Người gọi cần một realm role có trong thuộc tính `candidateStarterGroups` của quy trình. Quy trình không khai báo thuộc tính này thì không bắt đầu được qua API. Service `core` ghi mã người gọi vào biến `initiator` và người gọi không gửi được biến này.
+- Lời gọi `GET /core/tasks` trả về các việc mà người gọi đã nhận và các việc chưa ai nhận có nhóm ứng viên là một realm role của người gọi. Việc mà người khác đã nhận không có trong danh sách.
+- Khi Operaton từ chối tài khoản `core`, service `core` ngừng gọi Operaton trong 60 giây. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi khởi động lại. Nhờ đó, Operaton không khóa hẳn tài khoản `core`.
+
+### Sửa
+
+- Lời gọi tới service `core` có giá trị `NaN` hoặc `Infinity` trong nội dung nhận mã 422 thay cho 500. Nội dung lỗi 422 không còn chép lại giá trị mà người gọi đã gửi.
 
 ## [0.3.0] - 2026-11-17
 
