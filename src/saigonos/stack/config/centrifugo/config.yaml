@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+client:
+  token:
+    jwks_public_endpoint: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
+  allow_anonymous_connect_without_token: false
+  disallow_anonymous_connection_tokens: true
+http_server:
+  port: "8000"
+  internal_port: "9000"
+admin:
+  enabled: true
+health:
+  enabled: true
+usage_stats:
+  disabled: true

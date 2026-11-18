@@ -18,6 +18,7 @@ SETTING_KEYS = [
     "SAIGONOS_ADMIN_PORT",
     "SAIGONOS_KEYCLOAK_PORT",
     "SAIGONOS_SEAWEEDFS_PORT",
+    "SAIGONOS_CENTRIFUGO_PORT",
     "SAIGONOS_MAX_FILE_SIZE",
     *SECRET_KEYS,
 ]
@@ -122,6 +123,7 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9280"
     assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9380"
+    assert env["SAIGONOS_CENTRIFUGO_PORT"] == "9480"
     assert env["SAIGONOS_MAX_FILE_SIZE"] == "10"
     assert all(re.fullmatch(r"[A-Za-z0-9]{32}", value) for value in generated)
     assert len(set(generated)) == len(generated)
@@ -191,6 +193,7 @@ def test_init_fills_only_missing_and_empty_values(home):
         "SAIGONOS_HTTP_HOST=127.0.0.1",
         "SAIGONOS_KEYCLOAK_PORT=9280",
         "SAIGONOS_SEAWEEDFS_PORT=9380",
+        "SAIGONOS_CENTRIFUGO_PORT=9480",
         "SAIGONOS_MAX_FILE_SIZE=10",
     ],
 )
@@ -213,7 +216,9 @@ def test_init_adds_setting_missing_from_env_of_older_version(home, line):
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
 
-    result = init("--home", home, *options, "--keycloak-port", 9998, "--seaweedfs-port", 9997)
+    options += ["--keycloak-port", 9998, "--seaweedfs-port", 9997, "--centrifugo-port", 9996]
+
+    result = init("--home", home, *options)
 
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
@@ -221,6 +226,7 @@ def test_options_set_url_and_ports(home):
     assert env["SAIGONOS_ADMIN_PORT"] == "9999"
     assert env["SAIGONOS_KEYCLOAK_PORT"] == "9998"
     assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9997"
+    assert env["SAIGONOS_CENTRIFUGO_PORT"] == "9996"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
 
 
@@ -298,6 +304,46 @@ def test_max_file_size_outside_range_is_rejected(home, size):
             "Cổng 443 của SeaweedFS trùng với cổng HTTPS của Caddy.",
             "--seaweedfs-port",
         ),
+        (
+            ["--centrifugo-port", 9080],
+            "Cổng 9080 của Centrifugo trùng với cổng HTTP của API Gateway.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--centrifugo-port", 9180],
+            "Cổng 9180 của Centrifugo trùng với cổng quản trị của APISIX.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--centrifugo-port", 9280],
+            "Cổng 9280 của Centrifugo trùng với cổng của Keycloak.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--centrifugo-port", 9380],
+            "Cổng 9380 của Centrifugo trùng với cổng của SeaweedFS.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--seaweedfs-port", 9480],
+            "Cổng 9480 của Centrifugo trùng với cổng của SeaweedFS.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--http-port", 9480],
+            "Cổng 9480 của Centrifugo trùng với cổng HTTP của API Gateway.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--centrifugo-port", 80],
+            "Cổng 80 của Centrifugo trùng với cổng HTTP của Caddy.",
+            "--centrifugo-port",
+        ),
+        (
+            ["--caddy", "--url", HTTPS_URL, "--centrifugo-port", 443],
+            "Cổng 443 của Centrifugo trùng với cổng HTTPS của Caddy.",
+            "--centrifugo-port",
+        ),
     ],
     ids=[
         "keycloak-trung-http",
@@ -310,6 +356,14 @@ def test_max_file_size_outside_range_is_rejected(home, size):
         "http-trung-seaweedfs",
         "seaweedfs-trung-caddy-http",
         "seaweedfs-trung-caddy-https",
+        "centrifugo-trung-http",
+        "centrifugo-trung-admin",
+        "centrifugo-trung-keycloak",
+        "centrifugo-trung-seaweedfs",
+        "seaweedfs-trung-centrifugo",
+        "http-trung-centrifugo",
+        "centrifugo-trung-caddy-http",
+        "centrifugo-trung-caddy-https",
     ],
 )
 def test_port_used_by_another_service_is_rejected(home, options, message, option):
@@ -528,7 +582,10 @@ def test_invalid_url_is_rejected(home, url):
     assert not home.exists()
 
 
-@pytest.mark.parametrize("option", ["--http-port", "--admin-port", "--keycloak-port"])
+@pytest.mark.parametrize(
+    "option",
+    ["--http-port", "--admin-port", "--keycloak-port", "--seaweedfs-port", "--centrifugo-port"],
+)
 @pytest.mark.parametrize("port", ["0", "65536", "abc"])
 def test_invalid_port_is_rejected(home, option, port):
     result = init("--home", home, option, port)

@@ -47,6 +47,7 @@ Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấ
 |---|---|---|---|---|
 | apache/apisix | 3.19.0-ubuntu | Apache-2.0 | Làm API Gateway cho mọi lời gọi từ bên ngoài | https://github.com/apache/apisix/tree/3.19.0 |
 | caddy | 2.11.9-alpine | Apache-2.0 | Làm reverse proxy HTTPS và tự động lấy chứng chỉ khi được bật | https://github.com/caddyserver/caddy/tree/v2.11.9 |
+| centrifugo/centrifugo | v6.10.3 | Apache-2.0 | Gửi cập nhật tức thời tới ứng dụng qua WebSocket | https://github.com/centrifugal/centrifugo/tree/v6.10.3 |
 | chrislusf/seaweedfs | 4.54 | Apache-2.0 | Lưu file của các ứng dụng theo chuẩn S3 | https://github.com/seaweedfs/seaweedfs/tree/4.54 |
 | clamav/clamav-debian | 1.5.4 | GPL-2.0-only | Quét mã độc trong file được tải lên | https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4 |
 | operaton/operaton | 2.2.1 | Apache-2.0 | Chạy các quy trình BPMN, có Cockpit, Tasklist và Admin | https://github.com/operaton/operaton/tree/v2.2.1 |
