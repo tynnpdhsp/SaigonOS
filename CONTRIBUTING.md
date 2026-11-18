@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy bảy nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -64,7 +64,7 @@ Sau khi được tạo lại hoặc khởi động lại, một service có th�
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
-Một lượt chạy mất khoảng 18 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Một lượt chạy mất khoảng 20 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
@@ -245,6 +245,8 @@ Client `operaton` và luồng đăng nhập riêng của client này cũng là n
 
 Bước từ chối trong luồng này dùng thông báo có khóa `saigonos-operaton-admin-only`, khai báo trong thiết lập `denyErrorMessage` của bước. Nội dung tiếng Việt và tiếng Anh của thông báo nằm trong Realm overrides của realm `saigonos`. Script chỉ thêm nội dung còn thiếu, nên nội dung mà quản trị viên đã sửa được giữ nguyên.
 
+Mapper `audience saigonos` của client scope `roles` cũng là ngoại lệ. Mapper này thêm audience `saigonos` vào access token, không thêm vào ID token. Centrifugo chỉ nhận access token có audience này. Khi mapper bị sửa hoặc bị xóa, script đặt lại mapper ở lần chạy sau.
+
 ## Service core
 
 Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
@@ -305,6 +307,20 @@ Khi sửa cấu hình hoặc route của Operaton, cần tuân theo các quy t�
 Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway. Kiểm thử `test_bpmn_file_cannot_take_process_of_another_file` kiểm tra việc gỡ bản triển khai khai báo lại mã quy trình của file khác. Quy trình thử của các lời gọi qua service `core` nằm trong thư mục `tests/integration/processes`. Form của quy trình thử có đủ các kiểu trường và các ràng buộc mà service `core` kiểm tra. Các kiểm thử form gửi cả những giá trị mà Operaton tự nhận, ví dụ chuỗi `true` cho trường `boolean` và chuỗi có khoảng trắng ở hai đầu cho ràng buộc `minlength`. Kiểm thử `test_core_stops_calling_operaton_while_it_refuses_account_of_core` tạm khóa tài khoản `core` bằng một lần đăng nhập sai, rồi kiểm tra service `core` chỉ gọi Operaton một lần. Sau đó, kiểm thử khởi động lại service `core`. Các kiểm thử nhận việc hoặc hoàn thành việc cùng lúc tạm dừng container của Operaton bằng `docker compose pause`, gửi các lời gọi, rồi chạy lại container. Nhờ đó, các lời gọi đều qua bước kiểm tra của service `core` và tới Operaton cùng lúc.
 
 Các hàm thử của bước máy làm nằm trong file `tests/integration/processes/yeu-cau-thu.sql`, được chạy như một migration của ứng dụng. Kiểm thử `test_function_runs_once_when_core_dies_before_reporting` giành khóa của việc bằng worker `kiem-thu` trong lúc hàm đang chạy, rồi giết tiến trình của service `core`. Sau đó, kiểm thử chờ hết thời gian long polling rồi mới mở khóa việc. Các kiểm thử làm Operaton tạm khóa tài khoản `core` thì khởi động lại service `core` khi kết thúc. Lý do là vòng lặp bước máy làm gặp lần khóa này và ngừng gọi Operaton trong 60 giây.
+
+## Centrifugo
+
+Cấu hình của Centrifugo nằm trong file `src/saigonos/stack/config/centrifugo/config.yaml`. Các mật khẩu và các giá trị phụ thuộc file `.env` được đặt bằng biến môi trường `CENTRIFUGO_*` trong file `compose.yaml`. Biến môi trường được ưu tiên hơn file cấu hình.
+
+Khi sửa cấu hình hoặc route của Centrifugo, cần tuân theo các quy tắc sau:
+
+- Route `realtime` của API Gateway chỉ khớp đúng đường dẫn `/realtime/connection/websocket` và luôn gửi tới đường dẫn `/connection/websocket` của Centrifugo. Không thêm route tới cổng nội bộ 9000. Cổng này phục vụ API của server, Admin web và `/health`.
+- Giữ thiết lập `client.token.audience`. Nếu bỏ thiết lập này, Centrifugo nhận cả ID token.
+- Giữ thiết lập `client.disallow_anonymous_connection_tokens`. Access token của client không dùng client scope `basic` không có claim `sub`. Nếu bỏ thiết lập này, Centrifugo coi kết nối bằng access token đó là kết nối ẩn danh.
+- Biến `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` phải bằng địa chỉ truy cập của hệ thống. Khi danh sách này rỗng, Centrifugo từ chối mọi kết nối có header `Origin`, kể cả từ chính địa chỉ của hệ thống. Không dùng giá trị `*`.
+- Giữ thiết lập `usage_stats.disabled`. Nếu bỏ thiết lập này, Centrifugo gửi thống kê ẩn danh tới nhà phát triển lần đầu sau 24 đến 48 giờ mà không ghi log.
+
+Kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.py`. Client WebSocket của kiểm thử là lớp `Realtime` trong `tests/integration/conftest.py`, được viết bằng thư viện chuẩn của Python. Kiểm thử `test_expired_access_token_is_refused` dùng một client có thời hạn access token 1 giây, nên không phải chờ 60 giây. Kiểm thử `test_access_token_of_other_issuer_is_refused` tạm đặt Frontend URL của realm `saigonos` để Keycloak cấp access token có issuer khác, rồi xóa thiết lập này. Kiểm thử `test_access_token_without_user_is_refused` dùng một client chỉ có client scope `roles`. Kiểm thử `test_websocket_of_centrifugo_works_through_caddy` trong `test_caddy.py` kết nối qua HTTPS của Caddy.
 
 ## Phát hành phiên bản mới
 
