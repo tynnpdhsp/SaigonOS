@@ -11,7 +11,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from functools import partial
+from importlib.resources import files
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
 
@@ -23,6 +25,10 @@ pytestmark = pytest.mark.integration
 
 COCKPIT = "/operaton/app/cockpit/"
 CURRENT_USER = "/operaton/api/admin/auth/user/default"
+LOGOUT = "/operaton/logout"
+LOGOUT_SCRIPT = (files("saigonos") / "stack" / "config" / "operaton" / "sso-logout.js").read_text(
+    encoding="utf-8"
+)
 APPS = {"cockpit": "Operaton Cockpit", "tasklist": "Operaton Tasklist", "admin": "Operaton Admin"}
 FLOW = "saigonos operaton"
 DENIED = "Chỉ tài khoản quản trị mới vào được trang này."
@@ -43,6 +49,7 @@ CLOSED_PATHS = {
     "/operaton/app/%2e%2e/engine-rest/version": 404,
     "//operaton//app/../engine-rest/version": 404,
     "/operaton/api/../engine-rest/version": 404,
+    "/logout": 404,
 }
 REDIRECTS = {301, 302, 303, 307}
 TEST_PROCESS = Path(__file__).parent / "processes" / "yeu-cau-thu.bpmn"
@@ -102,24 +109,60 @@ def form_action(page):
     return html.unescape(re.search(r'action="([^"]+)"', page)[1])
 
 
+def on_path(path, where):
+    return path == where or (
+        path.startswith(where) and (where.endswith("/") or path[len(where)] == "/")
+    )
+
+
+def default_path(path):
+    return path[: path.rindex("/")] if path.count("/") > 1 else "/"
+
+
+def expired(options, value):
+    if "max-age" in options:
+        return int(options["max-age"]) <= 0
+    if "expires" in options:
+        return parsedate_to_datetime(options["expires"]) <= datetime.now(UTC)
+    return not value
+
+
 class Browser:
     def __init__(self, stack):
         self.stack = stack
         self.cookies = {}
         self.trail = []
 
+    def keep(self, path, header):
+        pair, *attributes = (part.strip() for part in header.split(";"))
+        name, value = pair.split("=", 1)
+        options = {}
+        for attribute in attributes:
+            key, _, setting = attribute.partition("=")
+            options[key.lower()] = setting
+        where = options.get("path") or default_path(path)
+        if expired(options, value):
+            self.cookies.pop((where, name), None)
+        else:
+            self.cookies[where, name] = value
+
+    def cookie_names(self):
+        return {name for _, name in self.cookies}
+
     def open(self, method, url, form=None):
         if url.startswith("/"):
             url = f"{self.stack.url}{url}"
         for _ in range(15):
-            cookies = "; ".join(f"{name}={value}" for name, value in self.cookies.items())
-            reply = self.stack.call(method, url, form=form, headers={"Cookie": cookies})
-            for cookie in reply.headers.get_all("Set-Cookie", []):
-                name, value = cookie.split(";", 1)[0].split("=", 1)
-                if value:
-                    self.cookies[name] = value
-                else:
-                    self.cookies.pop(name, None)
+            path = urlsplit(url).path or "/"
+            cookies = "; ".join(
+                f"{name}={value}"
+                for (where, name), value in self.cookies.items()
+                if on_path(path, where)
+            )
+            headers = {"Cookie": cookies} if cookies else {}
+            reply = self.stack.call(method, url, form=form, headers=headers)
+            for header in reply.headers.get_all("Set-Cookie", []):
+                self.keep(path, header)
             self.trail.append((reply.status, url))
             if reply.status not in REDIRECTS:
                 return reply.status, url, reply.body.decode(errors="replace")
@@ -551,26 +594,35 @@ def test_user_without_admin_role_gets_no_session_of_operaton(stack):
     assert browser.current_user() is None
 
 
-def test_logout_ends_session_of_operaton(stack):
+def test_logout_button_ends_session_of_operaton(stack):
     browser = Browser(stack)
     browser.log_in(stack.new_user(role="admin"))
+    root = re.search(r'app-root="([^"]*)"', browser.open("GET", COCKPIT)[2])[1].rstrip("/")
+    plugin = "/plugin/sso-logout-plugin/static/app/plugin.js"
+    scripts = [browser.open("GET", f"/operaton/api/{app}{plugin}")[::2] for app in APPS]
+    menus = [
+        browser.open("GET", f"/operaton/app/{app}/operaton-{app}-bootstrap.js")[2] for app in APPS
+    ]
     start = len(browser.trail)
 
-    _, url, _ = browser.open("GET", "/logout")
+    _, url, page = browser.open("GET", f"{root}/logout")
 
-    assert browser.trail[start] == (302, f"{stack.url}/logout")
+    assert scripts == [(200, LOGOUT_SCRIPT)] * len(APPS)
+    assert all('<a href class="dropdown-item logout"' in menu for menu in menus)
+    assert browser.trail[start] == (302, f"{stack.url}{LOGOUT}")
     assert url.startswith(f"{stack.url}/auth/realms/saigonos/protocol/openid-connect/auth?")
+    assert 'name="password"' in page
     assert browser.current_user() is None
 
 
 def test_login_of_operaton_asks_password_despite_session_of_keycloak(stack):
     browser = Browser(stack)
     browser.log_in(stack.new_user(role="admin"))
-    browser.open("GET", "/logout")
+    browser.open("GET", LOGOUT)
 
     _, _, page = browser.open("GET", COCKPIT)
 
-    assert "KEYCLOAK_IDENTITY" in browser.cookies
+    assert "KEYCLOAK_IDENTITY" in browser.cookie_names()
     assert 'name="password"' in page
     assert browser.current_user() is None
 
