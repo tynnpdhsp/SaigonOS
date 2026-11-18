@@ -126,7 +126,9 @@ class FakeScans:
 class FakeOperaton:
     def __init__(self):
         self.definitions = {}
+        self.by_id = {}
         self.documents = {}
+        self.looked_up = []
         self.read = []
         self.started = []
         self.queries = []
@@ -134,6 +136,7 @@ class FakeOperaton:
         self.items = {}
         self.groups = {}
         self.claims = []
+        self.submitted = []
         self.race = None
         self.failure = None
 
@@ -141,6 +144,7 @@ class FakeOperaton:
         definition = {"id": f"{key}:{version}:{version:04d}", "key": key, "version": version}
         definition["suspended"] = suspended
         self.definitions[key] = definition
+        self.by_id[definition["id"]] = definition
         self.documents[definition["id"]] = xml
         return definition
 
@@ -151,6 +155,11 @@ class FakeOperaton:
     def latest_definition(self, key):
         self.check()
         return self.definitions.get(key)
+
+    def definition(self, definition_id):
+        self.check()
+        self.looked_up.append(definition_id)
+        return self.by_id[definition_id]
 
     def definition_xml(self, definition_id):
         self.check()
@@ -192,6 +201,13 @@ class FakeOperaton:
         if self.race:
             self.race(task_id)
         self.items[task_id]["assignee"] = user
+
+    def submit_task_form(self, task_id, variables):
+        self.check()
+        self.submitted.append((task_id, variables))
+        if self.race:
+            self.race(task_id)
+        del self.items[task_id]
 
 
 @pytest.fixture

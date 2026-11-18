@@ -99,6 +99,16 @@ def rules_of(xml: str, key: str) -> Rules:
     return Rules(frozenset(), frozenset({INITIATOR}))
 
 
+def check_variables(rules: Rules, variables: dict[str, Any]) -> None:
+    reserved = sorted(rules.initiators & variables.keys())
+    if reserved:
+        raise HTTPException(
+            422,
+            f"Biến {', '.join(reserved)} do service core ghi bằng mã người gọi. "
+            "Người gọi không gửi được biến này",
+        )
+
+
 def typed(value: Any) -> dict[str, Any]:
     if value is None:
         kind = "Null"
@@ -118,15 +128,20 @@ class Processes:
         self.operaton = operaton
         self.known: dict[str, Rules] = {}
 
+    def rules(self, definition_id: str, key: str | None = None) -> Rules:
+        rules = self.known.get(definition_id)
+        if rules is None:
+            if key is None:
+                key = self.operaton.definition(definition_id)["key"]
+            rules = rules_of(self.operaton.definition_xml(definition_id), key)
+            self.known[definition_id] = rules
+        return rules
+
     def latest(self, key: str) -> tuple[dict[str, Any], Rules] | None:
         definition = self.operaton.latest_definition(key)
         if definition is None:
             return None
-        rules = self.known.get(definition["id"])
-        if rules is None:
-            rules = rules_of(self.operaton.definition_xml(definition["id"]), key)
-            self.known[definition["id"]] = rules
-        return definition, rules
+        return definition, self.rules(definition["id"], key)
 
 
 router = APIRouter(prefix="/processes")
@@ -162,13 +177,7 @@ async def start_process(
             raise HTTPException(403, FORBIDDEN)
         if definition["suspended"]:
             raise HTTPException(409, SUSPENDED)
-        reserved = sorted(rules.initiators & variables.keys())
-        if reserved:
-            raise HTTPException(
-                422,
-                f"Biến {', '.join(reserved)} do service core ghi bằng mã người gọi. "
-                "Người gọi không gửi được biến này",
-            )
+        check_variables(rules, variables)
         sent = {name: typed(value) for name, value in variables.items()}
         sent |= {name: typed(user.claims["sub"]) for name in rules.initiators}
         instance = await run_in_threadpool(

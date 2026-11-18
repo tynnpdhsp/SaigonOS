@@ -2,8 +2,8 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Body, HTTPException, Path, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from saigonos_core.api import (
@@ -16,6 +16,7 @@ from saigonos_core.api import (
 )
 from saigonos_core.callers import Caller
 from saigonos_core.operaton import Operaton, OperatonError
+from saigonos_core.processes import Name, Processes, Value, check_variables, typed
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -26,9 +27,23 @@ SORTING = [{"sortBy": "created", "sortOrder": "asc"}, {"sortBy": "id", "sortOrde
 NOT_FOUND = "Không tìm thấy việc"
 NOT_CANDIDATE = "Người gọi không có realm role nằm trong nhóm ứng viên của việc này"
 TAKEN = "Việc đã có người khác nhận"
+NOT_ASSIGNEE = "Chỉ người nhận việc mới hoàn thành được việc này"
 SUSPENDED = "Việc đang tạm ngưng"
 
 TaskId = Annotated[str, Path(pattern=TASK_ID, max_length=MAX_ID, description="Mã của việc")]
+
+
+class CompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variables: dict[Name, Value] = Field(
+        default_factory=dict,
+        description=(
+            "Biến ghi vào quy trình khi hoàn thành việc. Giá trị là chuỗi tối đa 4.000 ký tự, "
+            "số nguyên, số thực, true, false hoặc null"
+        ),
+        examples=[{"ket_qua": "Đã thay cáp màn hình"}],
+    )
 
 
 class Task(BaseModel):
@@ -109,6 +124,35 @@ def claim_task(operaton: Operaton, task_id: str, caller: Caller) -> None:
             raise
 
 
+def check_assignee(task: dict[str, Any], user: str) -> None:
+    if task["assignee"] != user:
+        raise HTTPException(403, NOT_ASSIGNEE)
+    if task["suspended"]:
+        raise HTTPException(409, SUSPENDED)
+
+
+def complete_task(
+    processes: Processes, task_id: str, caller: Caller, variables: dict[str, Any]
+) -> None:
+    operaton = processes.operaton
+    user = caller.claims["sub"]
+    task = operaton.task(task_id)
+    if task is None:
+        raise HTTPException(404, NOT_FOUND)
+    check_assignee(task, user)
+    check_variables(processes.rules(task["processDefinitionId"]), variables)
+    try:
+        operaton.submit_task_form(
+            task_id, {name: typed(value) for name, value in variables.items()}
+        )
+    except OperatonError:
+        task = operaton.task(task_id)
+        if task is None:
+            raise HTTPException(404, NOT_FOUND) from None
+        check_assignee(task, user)
+        raise
+
+
 router = APIRouter(prefix="/tasks")
 
 
@@ -157,3 +201,33 @@ async def list_tasks(
 async def claim(task_id: TaskId, request: Request, user: User) -> None:
     with operaton_errors("Chưa nhận được việc", "nhận việc"):
         await run_in_threadpool(claim_task, request.app.state.operaton, task_id, user)
+
+
+@router.post(
+    "/{task_id}/complete",
+    status_code=204,
+    summary="Hoàn thành việc",
+    description=(
+        "Hoàn thành một việc mà người gọi đã nhận. Các biến trong nội dung được gửi qua form "
+        "của việc trong Operaton rồi ghi vào quy trình. Sau đó, quy trình đi tiếp"
+    ),
+    responses=UNAUTHORIZED
+    | {
+        403: {"model": Message, "description": NOT_ASSIGNEE},
+        404: {"model": Message, "description": NOT_FOUND},
+        409: {"model": Message, "description": SUSPENDED},
+    }
+    | BAD_GATEWAY
+    | UNAVAILABLE,
+)
+async def complete(
+    task_id: TaskId,
+    request: Request,
+    user: User,
+    completion: Annotated[CompleteRequest | None, Body()] = None,
+) -> None:
+    variables = completion.variables if completion else {}
+    with operaton_errors("Chưa hoàn thành được việc", "hoàn thành việc"):
+        await run_in_threadpool(
+            complete_task, request.app.state.processes, task_id, user, variables
+        )
