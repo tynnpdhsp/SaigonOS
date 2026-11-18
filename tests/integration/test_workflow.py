@@ -1464,12 +1464,11 @@ def test_process_with_deadline_cannot_start_without_deadline(stack, deadline_pro
 def test_overdue_task_moves_to_managers_within_seconds(stack, deadline_process):
     worker = stack.new_user(role=WORKER)
     manager = stack.new_user(role=MANAGER)
-    began = time.monotonic()
+    began = datetime.now(UTC)
     instance, due = start_with_deadline(stack, 10)
     [task] = operaton_get(stack, f"/task?processInstanceId={instance}")
 
     moved = escalated(stack, instance)
-    elapsed = time.monotonic() - began
 
     path = f"/history/task?processInstanceId={instance}&taskDefinitionKey=xu_ly"
     seen = {
@@ -1481,8 +1480,7 @@ def test_overdue_task_moves_to_managers_within_seconds(stack, deadline_process):
         for name, user in {"worker": worker, "manager": manager}.items()
     }
     assert (task["taskDefinitionKey"], instant(task["due"])) == ("xu_ly", due)
-    assert elapsed < 15
-    assert instant(moved["created"]) >= due
+    assert due <= instant(moved["created"]) < began + timedelta(seconds=15)
     assert [(item["id"], item["deleteReason"]) for item in operaton_get(stack, path)] == [
         (task["id"], "deleted")
     ]
@@ -1495,9 +1493,12 @@ def test_assignee_loses_overdue_task_and_manager_finishes_process(stack, deadlin
     stack.sql(f"INSERT INTO thu_nghiem.yeu_cau (ma) VALUES ('{code}')")
     worker = stack.new_user(role=WORKER)
     manager = stack.new_user(role=MANAGER)
-    instance, _ = start_with_deadline(stack, 5, code)
-    task = task_of(stack, instance)
     token = stack.token(worker)
+    instance, _ = start_with_deadline(stack, 8, code)
+    listed = stack.call("GET", f"{stack.url}/core/tasks?limit=200", token=token)
+    [task] = [
+        item["id"] for item in json.loads(listed.body) if item["process_instance_id"] == instance
+    ]
     claimed = act(stack, token, task, "claim")
 
     moved = escalated(stack, instance)["id"]
