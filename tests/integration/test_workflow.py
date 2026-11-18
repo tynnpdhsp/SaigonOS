@@ -10,11 +10,14 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pytest
+
+from saigonos_core.steps import POLL
 
 pytestmark = pytest.mark.integration
 
@@ -43,6 +46,23 @@ CLOSED_PATHS = {
 }
 REDIRECTS = {301, 302, 303, 307}
 TEST_PROCESS = Path(__file__).parent / "processes" / "yeu-cau-thu.bpmn"
+TEST_FUNCTIONS = TEST_PROCESS.with_suffix(".sql")
+TOPIC = "saigonos-function"
+STEPS = {
+    "nguoi_chay_thu": "thu_nghiem.nguoi_chay",
+    "chua_khai_thu": "thu_nghiem.chua_khai",
+    "cong_khai_thu": "thu_nghiem.cong_khai",
+    "khong_co_ham_thu": "thu_nghiem.khong_co",
+    "sai_tham_so_thu": "thu_nghiem.nhan_chuoi",
+    "sai_kieu_tra_ve_thu": "thu_nghiem.tra_chuoi",
+    "ten_sai_thu": "Thu_Nghiem.Ghi",
+    "thieu_ham_thu": None,
+    "ghi_initiator_thu": "thu_nghiem.ghi_initiator",
+    "loi_lan_dau_thu": "thu_nghiem.loi_lan_dau",
+    "luon_loi_thu": "thu_nghiem.luon_loi",
+    "doi_role_thu": "thu_nghiem.doi_role",
+    "cham_thu": "thu_nghiem.cham",
+}
 STARTER = "nguoi-gui"
 WORKER = "nhan-vien"
 FORBIDDEN = {"detail": "Người gọi không có realm role được bắt đầu quy trình này"}
@@ -193,11 +213,15 @@ def deploy(stack, *options):
     return result.returncode, result.stdout.splitlines(), result.stderr
 
 
-def operaton_get(stack, path):
+def operaton_text(stack, path):
     url = f"http://127.0.0.1:8080/operaton/engine-rest{path}"
     result = stack.exec("operaton", "curl", "--silent", "--user", core_account(stack), url)
     assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
+    return result.stdout
+
+
+def operaton_get(stack, path):
+    return json.loads(operaton_text(stack, path))
 
 
 def versions(stack, key):
@@ -297,12 +321,105 @@ def refused_by_operaton(stack, task):
     return any("ENGINE-REST-HTTP500" in line and task in line for line in lines)
 
 
+def restore_core(stack):
+    wait_until_core_account_works(stack)
+    stack.compose("restart", "core")
+    stack.wait_until_answers("/core/health")
+
+
+def wait_for(found, message, timeout=30):
+    deadline = time.monotonic() + timeout
+    while not (value := found()):
+        assert time.monotonic() < deadline, message
+        time.sleep(0.5)
+    return value
+
+
+def finished(stack, instance):
+    def state():
+        found = operaton_get(stack, f"/history/process-instance/{instance}")["state"]
+        return None if found == "ACTIVE" else found
+
+    return wait_for(state, f"Quy trình {instance} chưa kết thúc")
+
+
+def incident_of(stack, instance):
+    path = f"/incident?processInstanceId={instance}"
+    [incident] = wait_for(
+        lambda: operaton_get(stack, path), f"Quy trình {instance} chưa có incident"
+    )
+    return incident
+
+
+def step_of(stack, instance):
+    [step] = operaton_get(stack, f"/external-task?processInstanceId={instance}")
+    return step
+
+
+def failed_step(stack, instance):
+    def step():
+        found = step_of(stack, instance)
+        return found if found["errorMessage"] else None
+
+    return wait_for(step, f"Bước máy của quy trình {instance} chưa báo lỗi")
+
+
+def written(stack, instance):
+    found = operaton_get(stack, f"/history/variable-instance?processInstanceId={instance}")
+    return {item["name"]: item["value"] for item in found}
+
+
+def cancel(stack, instance):
+    assert operaton_send(stack, "DELETE", f"/process-instance/{instance}", {}) == 204
+
+
+def instant(value):
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f%z")
+
+
+def step_bpmn(key, function):
+    properties = ""
+    if function:
+        properties = f"""
+      <bpmn:extensionElements>
+        <operaton:properties>
+          <operaton:property name="function" value="{function}" />
+        </operaton:properties>
+      </bpmn:extensionElements>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="{key}_dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
+  <bpmn:process id="{key}" isExecutable="true" operaton:historyTimeToLive="P30D"
+                operaton:candidateStarterGroups="{STARTER}">
+    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="buoc_may" />
+    <bpmn:serviceTask id="buoc_may" operaton:type="external" operaton:topic="{TOPIC}">{properties}
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="luong_2" sourceRef="buoc_may" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
 @pytest.fixture(scope="module")
 def requests_process(stack):
+    stack.add_migration("9101_yeu_cau_thu.sql", TEST_FUNCTIONS.read_text(encoding="utf-8"))
+    migrated = stack.compose_result("run", "--rm", "--no-deps", "migrate")
+    assert migrated.returncode == 0, migrated.stderr
     with bpmn_files(stack, {TEST_PROCESS.name: TEST_PROCESS.read_text(encoding="utf-8")}):
         code, _, errors = deploy(stack)
     assert code == 0, errors
     return "yeu_cau_thu"
+
+
+@pytest.fixture(scope="module")
+def machine_steps(stack, requests_process):
+    files = {f"{key.replace('_', '-')}.bpmn": step_bpmn(key, name) for key, name in STEPS.items()}
+    with bpmn_files(stack, files):
+        code, _, errors = deploy(stack)
+    assert code == 0, errors
 
 
 def test_operaton_runs_on_own_database(stack):
@@ -419,7 +536,7 @@ def test_rest_of_operaton_needs_account_of_core(stack):
     assert rest_status(stack, account) == 200
     assert rest_status(stack, "core:sai-mat-khau") == 401
     assert rest_status(stack, account) == 401
-    wait_until_core_account_works(stack)
+    restore_core(stack)
 
 
 def test_operaton_sends_login_to_keycloak_at_saigonos_url(stack):
@@ -654,7 +771,7 @@ def test_wrong_password_of_core_costs_one_login_attempt(stack):
     with bpmn_files(stack, files):
         code, lines, errors = deploy(stack, "--env", "CORE_OPERATON_PASSWORD=sai-mat-khau")
         attempts = stack.exec("postgres", *options, query).stdout.strip()
-        wait_until_core_account_works(stack)
+        restore_core(stack)
 
     assert code == 1
     assert lines == []
@@ -792,19 +909,18 @@ def test_worker_claims_and_completes_task_until_process_ends(stack, requests_pro
 
     assert status == 201
     assert (claimed, again, listed, done) == ((204, None), (204, None), [worker.id], (204, None))
-    instance = operaton_get(stack, f"/history/process-instance/{started['id']}")
+    assert finished(stack, started["id"]) == "COMPLETED"
     history = operaton_get(stack, f"/history/task?processInstanceId={started['id']}")
-    written = operaton_get(stack, f"/history/variable-instance?processInstanceId={started['id']}")
-    assert instance["state"] == "COMPLETED"
     assert [(item["assignee"], item["deleteReason"]) for item in history] == [
         (worker.id, "completed")
     ]
-    assert {item["name"]: item["value"] for item in written} == {
+    assert written(stack, started["id"]) == {
         "noi_dung": "Máy 12 không lên màn hình",
         "initiator": starter.id,
         "nguoi_tao": starter.id,
         "ket_qua": "Đã thay cáp màn hình",
         "so_gio": 2,
+        "da_cap_nhat": False,
     }
     assert act(stack, token, task, "complete") == (404, TASK_NOT_FOUND)
     assert act(stack, token, task, "claim") == (404, TASK_NOT_FOUND)
@@ -940,6 +1056,162 @@ def test_claim_and_complete_of_unknown_task_are_not_found(stack):
     assert act(stack, token, task, "complete") == (404, TASK_NOT_FOUND)
 
 
+def test_process_runs_to_end_with_machine_step_updating_row(stack, requests_process):
+    code = f"YC-{uuid.uuid4().hex[:8]}"
+    stack.sql(f"INSERT INTO thu_nghiem.yeu_cau (ma) VALUES ('{code}')")
+    worker = stack.new_user(role=WORKER)
+    status, started = start(stack, stack.new_user(role=STARTER), variables={"ma_yeu_cau": code})
+    instance = started["id"]
+    task = task_of(stack, instance)
+    token = stack.token(worker)
+
+    claimed = act(stack, token, task, "claim")
+    done = act(stack, token, task, "complete", {"ket_qua": "Đã thay cáp màn hình"})
+    state = finished(stack, instance)
+
+    assert (status, claimed, done, state) == (201, (204, None), (204, None), "COMPLETED")
+    assert stack.sql(f"SELECT trang_thai, ket_qua FROM thu_nghiem.yeu_cau WHERE ma = '{code}'") == [
+        ["da_xu_ly", "Đã thay cáp màn hình"]
+    ]
+    assert stack.sql(
+        "SELECT operation, db_role, actor FROM core.audit_log WHERE table_schema = 'thu_nghiem' "
+        f"AND coalesce(new_row, old_row) ->> 'ma' = '{code}' ORDER BY id"
+    ) == [["INSERT", "postgres", ""], ["UPDATE", "workflow", ""]]
+    assert written(stack, instance)["da_cap_nhat"] is True
+    assert stack.sql(
+        f"SELECT activity_id, function FROM core.step_runs WHERE process_instance_id = '{instance}'"
+    ) == [["ghi_ket_qua", "thu_nghiem.ghi_ket_qua"]]
+
+
+def test_function_gets_variables_and_runs_as_workflow(stack, machine_steps):
+    starter = stack.new_user(role=STARTER)
+    variables = {"noi_dung": "Máy 12", "so_luong": 2, "ty_le": 0.5, "khan": True, "ghi_chu": None}
+
+    _, started = start(stack, starter, "nguoi_chay_thu", variables)
+    state = finished(stack, started["id"])
+
+    found = written(stack, started["id"])
+    assert state == "COMPLETED"
+    assert (found["vai_tro"], found["role"]) == ("workflow", "workflow")
+    assert json.loads(found["bien"]) == variables | dict.fromkeys(INITIATORS, starter.id)
+
+
+@pytest.mark.parametrize(
+    ("key", "message"),
+    [
+        ("chua_khai_thu", "Hàm thu_nghiem.chua_khai(jsonb) chưa được khai báo cho quy trình."),
+        ("cong_khai_thu", "Hàm thu_nghiem.cong_khai(jsonb) chưa được khai báo cho quy trình."),
+        ("khong_co_ham_thu", "Không có hàm thu_nghiem.khong_co"),
+        ("sai_tham_so_thu", "Hàm thu_nghiem.nhan_chuoi phải nhận đúng một tham số kiểu jsonb"),
+        ("sai_kieu_tra_ve_thu", "Hàm thu_nghiem.tra_chuoi(jsonb) phải trả về một giá trị kiểu"),
+        ("ten_sai_thu", "Tên hàm Thu_Nghiem.Ghi không hợp lệ."),
+        ("thieu_ham_thu", "Bước máy thiếu thuộc tính function"),
+        ("ghi_initiator_thu", "Hàm thu_nghiem.ghi_initiator không được ghi biến initiator."),
+    ],
+)
+def test_step_that_cannot_run_becomes_incident(stack, machine_steps, key, message):
+    code = uuid.uuid4().hex
+
+    _, started = start(stack, stack.new_user(role=STARTER), key, {"ma": code})
+    incident = incident_of(stack, started["id"])
+
+    assert incident["incidentType"] == "failedExternalTask"
+    assert message in incident["incidentMessage"]
+    assert stack.sql(f"SELECT count(*) FROM thu_nghiem.lan_chay WHERE ma = '{code}'") == [["0"]]
+    cancel(stack, started["id"])
+
+
+def test_failing_function_is_tried_again_after_delay(stack, machine_steps):
+    _, started = start(stack, stack.new_user(role=STARTER), "loi_lan_dau_thu")
+    instance = started["id"]
+
+    state = finished(stack, instance)
+
+    log = operaton_get(
+        stack,
+        f"/history/external-task-log?processInstanceId={instance}&sortBy=timestamp&sortOrder=asc",
+    )
+    failure = next(item for item in log if item["failureLog"])
+    success = next(item for item in log if item["successLog"])
+    assert state == "COMPLETED"
+    assert written(stack, instance)["lan_goi"] == 2
+    assert failure["errorMessage"] == "Hàm thu_nghiem.loi_lan_dau báo lỗi: Lỗi thử ở lần gọi đầu"
+    assert instant(success["timestamp"]) - instant(failure["timestamp"]) >= timedelta(seconds=5)
+
+
+def test_function_failing_every_time_becomes_incident(stack, machine_steps):
+    _, started = start(stack, stack.new_user(role=STARTER), "luon_loi_thu")
+    instance = started["id"]
+    step = failed_step(stack, instance)
+
+    assert (
+        operaton_send(stack, "PUT", f"/external-task/{step['id']}/retries", {"retries": 1}) == 204
+    )
+    incident = incident_of(stack, instance)
+    details = operaton_text(stack, f"/external-task/{step['id']}/errorDetails")
+
+    assert step["retries"] == 3
+    assert step["errorMessage"] == "Hàm thu_nghiem.luon_loi báo lỗi: Không đủ dữ liệu để xử lý"
+    assert incident["incidentMessage"] == step["errorMessage"]
+    assert details.splitlines()[:3] == [
+        "SQLSTATE P0001: Không đủ dữ liệu để xử lý",
+        "Kiểm tra biến ma_yeu_cau",
+        "PL/pgSQL function thu_nghiem.luon_loi(jsonb) line 3 at RAISE",
+    ]
+    cancel(stack, instance)
+
+
+def test_function_cannot_change_role_of_session(stack, machine_steps):
+    _, started = start(stack, stack.new_user(role=STARTER), "doi_role_thu")
+
+    step = failed_step(stack, started["id"])
+
+    assert step["errorMessage"] == (
+        'Hàm thu_nghiem.doi_role báo lỗi: cannot set parameter "role" '
+        "within security-definer function"
+    )
+    cancel(stack, started["id"])
+
+
+def test_function_runs_once_when_core_dies_before_reporting(stack, machine_steps):
+    code = uuid.uuid4().hex
+    _, started = start(stack, stack.new_user(role=STARTER), "cham_thu", {"ma": code, "cho": 5})
+    instance = started["id"]
+    sleeping = (
+        "SELECT count(*) FROM pg_stat_activity "
+        "WHERE usename = 'core_service' AND wait_event = 'PgSleep'"
+    )
+    wait_for(lambda: stack.sql(sleeping) != [["0"]], "Hàm của bước máy chưa chạy")
+    step = step_of(stack, instance)
+    lock = {"topicName": TOPIC, "lockDuration": 600000, "processInstanceId": instance}
+    taken = {"workerId": "kiem-thu", "maxTasks": 1, "topics": [lock]}
+
+    assert operaton_send(stack, "POST", f"/external-task/{step['id']}/unlock", {}) == 204
+    assert operaton_send(stack, "POST", "/external-task/fetchAndLock", taken) == 200
+    assert step_of(stack, instance)["workerId"] == "kiem-thu"
+    refused = f"Chưa báo được Operaton là bước máy {step['id']} đã xong"
+    wait_for(lambda: refused in stack.logs("core"), "Service core chưa báo Operaton")
+    container = stack.container("core")
+    restarts = int(stack.inspect(container, "{{.RestartCount}}"))
+    stack.kill_process(process_id(stack, container, "uvicorn"))
+    killed = time.monotonic()
+    restarted = str(restarts + 1)
+    wait_for(
+        lambda: stack.inspect(container, "{{.RestartCount}}") == restarted,
+        "Service core chưa khởi động lại",
+    )
+    stack.wait_until_answers("/core/health")
+    # Lời gọi long polling của tiến trình đã chết vẫn chờ trong Operaton tới hết thời gian chờ
+    time.sleep(max(killed + POLL + 1 - time.monotonic(), 0))
+    assert operaton_send(stack, "POST", f"/external-task/{step['id']}/unlock", {}) == 204
+
+    state = finished(stack, instance)
+
+    assert state == "COMPLETED"
+    assert stack.sql(f"SELECT count(*) FROM thu_nghiem.lan_chay WHERE ma = '{code}'") == [["1"]]
+    assert written(stack, instance)["so_lan"] == 1
+
+
 def test_core_answers_503_while_operaton_is_unreachable(stack):
     user = stack.new_user(role=WORKER)
     network = stack.network("default")
@@ -958,10 +1230,12 @@ def test_core_answers_503_while_operaton_is_unreachable(stack):
 def test_core_stops_calling_operaton_while_it_refuses_account_of_core(stack):
     token = stack.token(stack.new_user(role=WORKER))
     url = f"{stack.url}/core/tasks"
+    refusal = "Service core ngừng gọi Operaton trong 60 giây"
+    before = stack.logs("core").count(refusal)
 
     assert rest_status(stack, "core:sai-mat-khau") == 401
     replies = [stack.call("GET", url, token=token) for _ in range(3)]
-    refusals = stack.logs("core").count("Service core ngừng gọi Operaton trong 60 giây")
+    refusals = stack.logs("core").count(refusal) - before
     wait_until_core_account_works(stack)
     paused = stack.call("GET", url, token=token)
     stack.compose("restart", "core")

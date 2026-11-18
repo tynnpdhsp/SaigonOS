@@ -8,7 +8,16 @@
     <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
     <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="xu_ly" />
     <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien" />
-    <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ket_thuc" />
+    <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ghi_ket_qua" />
+    <bpmn:serviceTask id="ghi_ket_qua" name="Ghi kết quả" operaton:type="external"
+                      operaton:topic="saigonos-function">
+      <bpmn:extensionElements>
+        <operaton:properties>
+          <operaton:property name="function" value="thu_nghiem.ghi_ket_qua" />
+        </operaton:properties>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="luong_3" sourceRef="ghi_ket_qua" targetRef="ket_thuc" />
     <bpmn:endEvent id="ket_thuc" />
   </bpmn:process>
 </bpmn:definitions>
