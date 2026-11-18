@@ -89,26 +89,28 @@ saigonos doctor
 Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
-BÌNH THƯỜNG    apisix       đang chạy
-BÌNH THƯỜNG    clamav       đang chạy
-BÌNH THƯỜNG    core         đang chạy
-BÌNH THƯỜNG    databases    đã chạy xong
-BÌNH THƯỜNG    etcd         đang chạy
-BÌNH THƯỜNG    freshclam    đang chạy
-BÌNH THƯỜNG    jwks         đã chạy xong
-BÌNH THƯỜNG    keycloak     đang chạy
-BÌNH THƯỜNG    migrate      đã chạy xong
-BÌNH THƯỜNG    operaton     đang chạy
-BÌNH THƯỜNG    postgres     đang chạy
-BÌNH THƯỜNG    postgrest    đang chạy
-BÌNH THƯỜNG    processes    đã chạy xong
-BÌNH THƯỜNG    realm        đã chạy xong
-BÌNH THƯỜNG    routes       đã chạy xong
-BÌNH THƯỜNG    seaweedfs    đang chạy
-BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
-BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
-BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối
-BÌNH THƯỜNG    Operaton     Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
+BÌNH THƯỜNG    apisix        đang chạy
+BÌNH THƯỜNG    centrifugo    đang chạy
+BÌNH THƯỜNG    clamav        đang chạy
+BÌNH THƯỜNG    core          đang chạy
+BÌNH THƯỜNG    databases     đã chạy xong
+BÌNH THƯỜNG    etcd          đang chạy
+BÌNH THƯỜNG    freshclam     đang chạy
+BÌNH THƯỜNG    jwks          đã chạy xong
+BÌNH THƯỜNG    keycloak      đang chạy
+BÌNH THƯỜNG    migrate       đã chạy xong
+BÌNH THƯỜNG    operaton      đang chạy
+BÌNH THƯỜNG    postgres      đang chạy
+BÌNH THƯỜNG    postgrest     đang chạy
+BÌNH THƯỜNG    processes     đã chạy xong
+BÌNH THƯỜNG    realm         đã chạy xong
+BÌNH THƯỜNG    routes        đã chạy xong
+BÌNH THƯỜNG    seaweedfs     đang chạy
+BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại http://localhost:9080/auth
+BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Operaton      Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
+BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn
 Hệ thống hoạt động bình thường.
 ```
 
