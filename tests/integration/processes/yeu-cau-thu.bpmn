@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="yeu_cau_thu_dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
+  <bpmn:process id="yeu_cau_thu" name="Yêu cầu thử" isExecutable="true"
+                operaton:historyTimeToLive="P30D" operaton:candidateStarterGroups="nguoi-gui">
+    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="xu_ly" />
+    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien" />
+    <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+</bpmn:definitions>

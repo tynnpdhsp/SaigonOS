@@ -7,6 +7,7 @@ import re
 import struct
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pytest
@@ -35,6 +36,11 @@ CLOSED_PATHS = {
     "/operaton/api/../engine-rest/version": 404,
 }
 REDIRECTS = {301, 302, 303, 307}
+TEST_PROCESS = Path(__file__).parent / "processes" / "yeu-cau-thu.bpmn"
+STARTER = "nguoi-gui"
+WORKER = "nhan-vien"
+FORBIDDEN = {"detail": "Người gọi không có realm role được bắt đầu quy trình này"}
+NO_TASKS = {"detail": "Chưa lấy được danh sách việc vì Operaton chưa sẵn sàng"}
 
 
 def totp(secret, step=0):
@@ -123,8 +129,10 @@ def wait_until_core_account_works(stack, timeout=30):
         time.sleep(1)
 
 
-def bpmn(key, name="Quy trình thử", history=True):
+def bpmn(key, name="Quy trình thử", history=True, starters=None):
     time_to_live = ' operaton:historyTimeToLive="P30D"' if history else ""
+    if starters is not None:
+        time_to_live += f' operaton:candidateStarterGroups="{starters}"'
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
@@ -165,6 +173,45 @@ def operaton_get(stack, path):
 def versions(stack, key):
     definitions = operaton_get(stack, f"/process-definition?key={key}&sortBy=version&sortOrder=asc")
     return [(item["version"], item["resource"], item["name"]) for item in definitions]
+
+
+def operaton_post(stack, path, body):
+    url = f"http://127.0.0.1:8080/operaton/engine-rest{path}"
+    options = ["--silent", "--output", "/dev/null", "--write-out", "%{http_code}"]
+    options += ["--user", core_account(stack), "--header", "Content-Type: application/json"]
+    result = stack.exec("operaton", "curl", *options, "--data", json.dumps(body), url)
+    return int(result.stdout)
+
+
+def started_count(stack, key):
+    return operaton_get(stack, f"/history/process-instance/count?processDefinitionKey={key}")[
+        "count"
+    ]
+
+
+def variables_of(stack, instance):
+    found = operaton_get(stack, f"/process-instance/{instance}/variables")
+    return {name: item["value"] for name, item in found.items()}
+
+
+def start(stack, user, key="yeu_cau_thu", variables=None):
+    url = f"{stack.url}/core/processes/{key}/start"
+    body = {} if variables is None else {"variables": variables}
+    reply = stack.call("POST", url, token=stack.token(user), body=body)
+    return reply.status, json.loads(reply.body)
+
+
+def tasks_of(stack, user, query=""):
+    reply = stack.call("GET", f"{stack.url}/core/tasks{query}", token=stack.token(user))
+    return reply.status, json.loads(reply.body)
+
+
+@pytest.fixture(scope="module")
+def requests_process(stack):
+    with bpmn_files(stack, {TEST_PROCESS.name: TEST_PROCESS.read_text(encoding="utf-8")}):
+        code, _, errors = deploy(stack)
+    assert code == 0, errors
+    return "yeu_cau_thu"
 
 
 def test_operaton_runs_on_own_database(stack):
@@ -498,6 +545,145 @@ def test_removed_bpmn_file_keeps_its_process(stack):
     assert deployed[0] == 0
     assert (code, lines) == (0, ["Không có file BPMN nào"])
     assert versions(stack, "go_bo") == [(1, "go-bo.bpmn", "Quy trình thử")]
+
+
+def test_user_with_starter_role_starts_process_with_initiator_from_token(stack, requests_process):
+    user = stack.new_user(role=STARTER)
+    variables = {"noi_dung": "Máy 12 không lên màn hình", "so_luong": 2, "khan": True}
+
+    status, started = start(stack, user, variables=variables)
+
+    assert status == 201, started
+    assert (started["process_key"], started["version"]) == (requests_process, 1)
+    assert variables_of(stack, started["id"]) == variables | {
+        "initiator": user.id,
+        "nguoi_tao": user.id,
+    }
+
+
+@pytest.mark.parametrize("name", ["initiator", "nguoi_tao"])
+def test_caller_cannot_send_variable_of_initiator(stack, requests_process, name):
+    user = stack.new_user(role=STARTER)
+    before = started_count(stack, requests_process)
+
+    status, reply = start(stack, user, variables={name: "nguoi-khac"})
+
+    assert status == 422
+    assert reply["detail"].startswith(f"Biến {name} do service core ghi bằng mã người gọi.")
+    assert started_count(stack, requests_process) == before
+
+
+def test_user_without_starter_role_cannot_start_process(stack, requests_process):
+    user = stack.new_user(role=WORKER)
+    before = started_count(stack, requests_process)
+
+    assert start(stack, user) == (403, FORBIDDEN)
+    assert started_count(stack, requests_process) == before
+
+
+def test_process_without_candidate_starter_groups_cannot_be_started(stack):
+    user = stack.new_user(role=STARTER)
+    stack.grant_role(user, WORKER)
+    with bpmn_files(stack, {"khong-ai-bat-dau.bpmn": bpmn("khong_ai_bat_dau")}):
+        assert deploy(stack)[0] == 0
+
+    assert start(stack, user, key="khong_ai_bat_dau") == (403, FORBIDDEN)
+    assert started_count(stack, "khong_ai_bat_dau") == 0
+
+
+def test_start_follows_latest_version_of_process(stack):
+    with bpmn_files(stack, {"phien-ban.bpmn": bpmn("phien_ban", starters="nhom-cu")}) as folder:
+        first = deploy(stack)
+        newer = bpmn("phien_ban", name="Bản mới", starters="nhom-moi, nhom-khac")
+        (folder / "phien-ban.bpmn").write_text(newer, encoding="utf-8")
+        second = deploy(stack)
+
+    refused = start(stack, stack.new_user(role="nhom-cu"), key="phien_ban")
+    status, started = start(stack, stack.new_user(role="nhom-moi"), key="phien_ban")
+
+    assert (first[0], second[0]) == (0, 0)
+    assert refused == (403, FORBIDDEN)
+    assert (status, started["version"]) == (201, 2)
+
+
+def test_unknown_process_is_not_found(stack):
+    assert start(stack, stack.new_user(role=STARTER), key="khong_co") == (
+        404,
+        {"detail": "Không tìm thấy quy trình khong_co"},
+    )
+
+
+def test_task_list_shows_own_tasks_and_claimable_tasks_of_caller_only(stack, requests_process):
+    starter = stack.new_user(role=STARTER)
+    worker = stack.new_user(role=WORKER)
+    taker = stack.new_user()
+    instances = [start(stack, starter)[1]["id"] for _ in range(3)]
+    found = operaton_get(stack, f"/task?processDefinitionKey={requests_process}")
+    first, second, third = (
+        next(task["id"] for task in found if task["processInstanceId"] == instance)
+        for instance in instances
+    )
+    other_worker = stack.new_user(role=WORKER)
+
+    assert operaton_post(stack, f"/task/{first}/claim", {"userId": taker.id}) == 204
+    assert operaton_post(stack, f"/task/{second}/claim", {"userId": other_worker.id}) == 204
+    seen = {}
+    for name, user in {"worker": worker, "taker": taker, "starter": starter}.items():
+        status, tasks = tasks_of(stack, user)
+        assert status == 200, tasks
+        seen[name] = [task for task in tasks if task["process_instance_id"] in instances]
+    assert [task["id"] for task in seen["worker"]] == [third]
+    assert [(task["id"], task["assignee"]) for task in seen["taker"]] == [(first, taker.id)]
+    assert seen["starter"] == []
+    assert seen["worker"][0] | {"created": None} == {
+        "id": third,
+        "name": "Xử lý yêu cầu",
+        "description": None,
+        "assignee": None,
+        "created": None,
+        "due": None,
+        "priority": 50,
+        "task_key": "xu_ly",
+        "process_instance_id": instances[2],
+        "process_definition_id": found[0]["processDefinitionId"],
+        "suspended": False,
+    }
+    assert len(tasks_of(stack, worker, "?limit=1")[1]) == 1
+    assert tasks_of(stack, stack.new_user()) == (200, [])
+
+
+def test_core_answers_503_while_operaton_is_unreachable(stack):
+    user = stack.new_user(role=WORKER)
+    network = stack.network("default")
+    container = stack.container("operaton")
+
+    stack.run_docker("network", "disconnect", network, container)
+    try:
+        unreachable = tasks_of(stack, user)
+    finally:
+        stack.run_docker("network", "connect", "--alias", "operaton", network, container)
+
+    assert unreachable == (503, NO_TASKS)
+    assert tasks_of(stack, user)[0] == 200
+
+
+def test_core_stops_calling_operaton_while_it_refuses_account_of_core(stack):
+    token = stack.token(stack.new_user(role=WORKER))
+    url = f"{stack.url}/core/tasks"
+
+    assert rest_status(stack, "core:sai-mat-khau") == 401
+    replies = [stack.call("GET", url, token=token) for _ in range(3)]
+    refusals = stack.logs("core").count("Service core ngừng gọi Operaton trong 60 giây")
+    wait_until_core_account_works(stack)
+    paused = stack.call("GET", url, token=token)
+    stack.compose("restart", "core")
+    stack.wait_until_answers("/core/health")
+
+    assert [reply.status for reply in replies] == [503, 503, 503]
+    assert all(json.loads(reply.body) == NO_TASKS for reply in replies)
+    assert refusals == 1
+    assert paused.status == 503
+    assert stack.call("GET", url, token=token).status == 200
 
 
 def test_killed_operaton_restarts_by_itself(stack):
