@@ -292,7 +292,7 @@ def test_type_outside_list_is_refused(stack, token):
     assert "không được phép" in json.loads(reply.body)["detail"]
 
 
-@pytest.mark.parametrize("change", [1, -1], ids=["dài hơn", "ngắn hơn"])
+@pytest.mark.parametrize("change", [1, -1], ids=["dai-hon", "ngan-hon"])
 def test_content_with_other_size_is_refused_and_not_stored(stack, user, token, change):
     content = png()
     file = declared(stack, token, content)
@@ -388,7 +388,7 @@ def test_only_core_service_writes_files_table(stack):
 
 def test_file_calls_need_token_of_logged_in_user(stack, token):
     file = declared(stack, token, png())
-    forged = stack.forged_tokens(stack.new_user())["sửa nội dung"]
+    forged = stack.forged_tokens(stack.new_user())["sua-noi-dung"]
 
     assert declare(stack, None).status == 401
     assert upload(stack, None, file, png()).status == 401
@@ -500,7 +500,7 @@ def test_user_cannot_get_file_of_another_user(stack, token):
 
     by_other = download_link(stack, other, file)
     anonymous = download_link(stack, None, file)
-    forged = download_link(stack, stack.forged_tokens(stack.new_user())["sửa nội dung"], file)
+    forged = download_link(stack, stack.forged_tokens(stack.new_user())["sua-noi-dung"], file)
     own_url = link_of(stack, other, own)["download_url"]
     swapped = open_link(stack, own_url.replace(own["id"], file["id"]))
 

@@ -4,7 +4,7 @@ import ssl
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
 from pathlib import Path
 from typing import Any, NamedTuple
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from saigonos import compose
 
@@ -14,6 +14,10 @@ DISCOVERY_PATH = f"{REALM_PATH}/.well-known/openid-configuration"
 API_PATH = "/api/"
 CORE_HEALTH_PATH = "/core/health"
 CORE_USER_PATH = "/core/me"
+AUTHORIZATION_PATH = f"{REALM_PATH}/protocol/openid-connect/auth"
+OPERATON_LOGIN_PATH = "/operaton/oauth2/authorization/operaton"
+OPERATON_CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
+OPERATON_REST_PATH = "/operaton/engine-rest/version"
 INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
@@ -29,6 +33,12 @@ class Check(NamedTuple):
     name: str
     ok: bool
     detail: str
+
+
+class Reply(NamedTuple):
+    status: int
+    body: bytes
+    location: str | None
 
 
 def service_state(service: dict[str, Any], container: dict[str, Any] | None) -> tuple[bool, str]:
@@ -74,9 +84,7 @@ def caddy_root_certificate(home: Path) -> str | None:
         return None
 
 
-def fetch(
-    url: str, certificate: str | None = None, headers: dict[str, str] | None = None
-) -> tuple[int, bytes]:
+def fetch(url: str, certificate: str | None = None, headers: dict[str, str] | None = None) -> Reply:
     parts = urlsplit(url)
     connection: HTTPConnection
     if parts.scheme == "https":
@@ -89,7 +97,7 @@ def fetch(
     try:
         connection.request("GET", parts.path, headers=headers or {})
         response = connection.getresponse()
-        return response.status, response.read()
+        return Reply(response.status, response.read(), response.getheader("Location"))
     finally:
         connection.close()
 
@@ -130,24 +138,60 @@ def core_state(health: int, invalid: int) -> tuple[bool, str]:
     return True, "service core trả lời, access token không hợp lệ bị từ chối"
 
 
+def operaton_state(url: str, status: int, location: str | None, rest: int) -> tuple[bool, str]:
+    if status != 302:
+        return False, f"lời gọi {OPERATON_LOGIN_PATH} nhận mã {status}, đúng ra là 302"
+    if not location:
+        return False, "Operaton không cho biết địa chỉ của trang đăng nhập"
+    parts = urlsplit(location)
+    target = f"{parts.scheme}://{parts.netloc}{parts.path}"
+    if target != f"{url}{AUTHORIZATION_PATH}":
+        return (
+            False,
+            f"Operaton chuyển người dùng tới {target}, không phải trang đăng nhập của Keycloak",
+        )
+    redirect = parse_qs(parts.query).get("redirect_uri", [""])[0]
+    if redirect != f"{url}{OPERATON_CALLBACK_PATH}":
+        seen = redirect.removesuffix(OPERATON_CALLBACK_PATH)
+        return False, (
+            f"Operaton nhận lời gọi qua địa chỉ {seen}, khác với SAIGONOS_URL trong file .env. "
+            "Hãy kiểm tra header X-Forwarded-Proto, X-Forwarded-Host và X-Forwarded-Port "
+            "của reverse proxy"
+        )
+    if rest != 404:
+        return False, f"REST của Operaton nhận mã {rest} qua API Gateway, đúng ra là 404"
+    return True, "Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn"
+
+
 def login_check(url: str, certificate: str | None) -> tuple[bool, str]:
-    status, body = fetch(f"{url}{DISCOVERY_PATH}", certificate)
-    return login_state(url, status, body)
+    reply = fetch(f"{url}{DISCOVERY_PATH}", certificate)
+    return login_state(url, reply.status, reply.body)
 
 
 def api_check(url: str, certificate: str | None) -> tuple[bool, str]:
-    anonymous, _ = fetch(f"{url}{API_PATH}", certificate)
-    invalid, _ = fetch(f"{url}{API_PATH}", certificate, INVALID_AUTHORIZATION)
-    return api_state(anonymous, invalid)
+    anonymous = fetch(f"{url}{API_PATH}", certificate)
+    invalid = fetch(f"{url}{API_PATH}", certificate, INVALID_AUTHORIZATION)
+    return api_state(anonymous.status, invalid.status)
 
 
 def core_check(url: str, certificate: str | None) -> tuple[bool, str]:
-    health, _ = fetch(f"{url}{CORE_HEALTH_PATH}", certificate)
-    invalid, _ = fetch(f"{url}{CORE_USER_PATH}", certificate, INVALID_AUTHORIZATION)
-    return core_state(health, invalid)
+    health = fetch(f"{url}{CORE_HEALTH_PATH}", certificate)
+    invalid = fetch(f"{url}{CORE_USER_PATH}", certificate, INVALID_AUTHORIZATION)
+    return core_state(health.status, invalid.status)
 
 
-PROBES = (("Đăng nhập", login_check), ("API", api_check), ("Core API", core_check))
+def operaton_check(url: str, certificate: str | None) -> tuple[bool, str]:
+    login = fetch(f"{url}{OPERATON_LOGIN_PATH}", certificate)
+    rest = fetch(f"{url}{OPERATON_REST_PATH}", certificate)
+    return operaton_state(url, login.status, login.location, rest.status)
+
+
+PROBES = (
+    ("Đăng nhập", login_check),
+    ("API", api_check),
+    ("Core API", core_check),
+    ("Operaton", operaton_check),
+)
 
 
 def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:

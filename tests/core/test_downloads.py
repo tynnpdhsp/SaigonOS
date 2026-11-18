@@ -26,6 +26,10 @@ def issued(file_id, now=NOW):
     return fields, expires
 
 
+def flipped(signature):
+    return signature[:-1] + ("1" if signature.endswith("0") else "0")
+
+
 def test_link_lives_at_most_sixty_seconds():
     file_id = uuid4()
 
@@ -37,7 +41,7 @@ def test_link_lives_at_most_sixty_seconds():
     assert len(fields["signature"]) == 64
 
 
-@pytest.mark.parametrize("later", [0, 30, LIFETIME], ids=["ngay", "giữa", "giây cuối"])
+@pytest.mark.parametrize("later", [0, 30, LIFETIME], ids=["ngay", "giua", "giay-cuoi"])
 def test_link_signed_by_service_is_accepted_until_it_expires(later):
     file_id = uuid4()
     fields, _ = issued(file_id)
@@ -60,21 +64,21 @@ def test_link_is_refused_after_it_expires(later):
         lambda file_id, fields: (uuid4(), fields["expires"], fields["signature"]),
         lambda file_id, fields: (file_id, str(int(fields["expires"]) + 3600), fields["signature"]),
         lambda file_id, fields: (file_id, f"0{fields['expires']}", fields["signature"]),
-        lambda file_id, fields: (file_id, fields["expires"], fields["signature"][:-1] + "0"),
+        lambda file_id, fields: (file_id, fields["expires"], flipped(fields["signature"])),
         lambda file_id, fields: (file_id, fields["expires"], fields["signature"].upper()),
         lambda file_id, fields: (file_id, fields["expires"], ""),
         lambda file_id, fields: (file_id, "", fields["signature"]),
         lambda file_id, fields: (file_id, fields["expires"], "chữ-ký-giả"),
     ],
     ids=[
-        "file khác",
-        "kéo dài hạn",
-        "thêm số 0",
-        "sửa chữ ký",
-        "chữ ký viết hoa",
-        "thiếu chữ ký",
-        "thiếu thời hạn",
-        "chữ ký không phải ASCII",
+        "file-khac",
+        "keo-dai-han",
+        "them-so-0",
+        "sua-chu-ky",
+        "chu-ky-viet-hoa",
+        "thieu-chu-ky",
+        "thieu-thoi-han",
+        "chu-ky-khong-phai-ascii",
     ],
 )
 def test_changed_link_is_refused(change):
@@ -113,6 +117,7 @@ def test_key_is_not_shown_when_links_are_printed():
         ('Đơn "nghỉ phép" đợt 2.docx', "Don _nghi phep_ dot 2.docx"),
         ("报告.pdf", "__.pdf"),
     ],
+    ids=["ten-ascii", "ten-tieng-viet", "ten-co-dau-ngoac-kep", "ten-tieng-trung"],
 )
 def test_attachment_keeps_name_and_gives_ascii_fallback(name, fallback):
     value = attachment(name)

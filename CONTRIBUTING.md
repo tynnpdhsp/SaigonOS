@@ -37,13 +37,13 @@ Lệnh này thực hiện các bước sau:
 
 ## Kiểm thử tích hợp
 
-Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,2 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2 GB RAM.
+Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,4 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 2,5 GB RAM.
 
 ```bash
 make integration
 ```
 
-Lệnh này chạy sáu nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy bảy nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -58,16 +58,19 @@ Kiểm thử `test_file_waits_while_clamav_is_down_and_is_scanned_after_restart`
 
 Kiểm thử `test_file_not_scanned_yet_cannot_be_downloaded` trong `test_files.py` tạm dừng ClamAV bằng `docker compose pause` để giữ file ở trạng thái `pending_scan`. Một số kiểm thử tải file về tự ký đường dẫn bằng khóa `CORE_DOWNLOAD_KEY` trong file `.env`. Nhờ đó, kiểm thử đường dẫn hết hạn không phải chờ 60 giây.
 
+Kiểm thử `test_deadline_passed_while_operaton_was_stopped_fires_once_it_starts` trong `test_workflow.py` dừng Operaton bằng `docker compose stop` cho tới khi một hẹn giờ quá hạn, rồi chạy lại Operaton. Hẹn giờ phải chạy ngay khi Operaton sẵn sàng. Kiểm thử `test_history_cleanup_removes_only_history_past_time_to_live` chạy việc dọn lịch sử ngay bằng REST API của Operaton thay cho việc chờ tới khung giờ ban đêm.
+
 Sau khi được tạo lại hoặc khởi động lại, một service có thể nhận địa chỉ IP mới. API Gateway cần khoảng 1 giây để nhận địa chỉ này. Do đó, kiểm thử dùng hàm `Stack.up()` thay cho lệnh `saigonos up`. Hàm này chờ tới khi API Gateway trả lời ở `/auth`, `/api/` và `/core/health`. Sau khi kill hoặc khởi động lại một service, kiểm thử gọi `Stack.wait_until_answers()` trước khi gọi API qua API Gateway. Kiểm thử `test_gateway_follows_new_address_of_core_within_seconds` trong `test_core.py` đổi địa chỉ IP của service `core` và kiểm tra API Gateway nhận địa chỉ mới trong vài giây.
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
-Một lượt chạy mất khoảng 11 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Một lượt chạy mất khoảng 18 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
 - Mỗi file mới phải bắt đầu bằng một dòng `SPDX-License-Identifier` với giá trị `Apache-2.0`. Dòng này được viết dưới dạng comment theo cú pháp của loại file đó.
 - Tính năng mới phải có kiểm thử đi kèm.
+- Id của kiểm thử có tham số được viết bằng chữ thường không dấu, các từ nối với nhau bằng dấu gạch ngang. Ví dụ: `khoang-trang`. Khi gặp id có chữ có dấu, pytest dừng ngay ở bước thu thập kiểm thử.
 - Mỗi commit message chỉ gồm một dòng theo quy ước [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Ví dụ: `feat(cli): thêm lệnh doctor`.
 - Mỗi thay đổi được thực hiện trên một branch riêng, sau đó mở pull request vào `main`. Pull request chỉ được merge khi CI chạy thành công.
 - Những thay đổi ảnh hưởng đến người dùng được ghi vào mục "Chưa phát hành" của [CHANGELOG.md](CHANGELOG.md).
@@ -94,6 +97,8 @@ Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công 
 4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](DEPENDENCIES.md).
 
 Lệnh `make lint` báo lỗi khi một image trong `compose.yaml` chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
+
+Khi đổi phiên bản Operaton, kiểm tra lại file `src/saigonos/stack/config/operaton/sso-logout.js`. File này thay plugin đăng xuất của Operaton, vì plugin gốc của bản 2.2.1 không tìm thấy nút đăng xuất trong menu tài khoản. Kiểm thử `test_logout_button_ends_session_of_operaton` báo lỗi khi menu tài khoản không còn thẻ `a` có class `logout`.
 
 Mỗi service chạy lâu dài trong `compose.yaml` cần một healthcheck thật. Không tắt healthcheck bằng `disable: true`. Với service như vậy, lệnh `docker compose up --wait` của Docker Compose 2.x báo lỗi "has no healthcheck configured", dù Docker Compose 5 vẫn chạy được. Kiểm thử trong `tests/test_compose_file.py` kiểm tra quy tắc này.
 
@@ -236,6 +241,10 @@ Script cũng cập nhật realm master. Keycloak tự tạo realm này khi khở
 
 API Gateway chặn mọi địa chỉ của realm master. Do đó, kiểm thử tích hợp gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
 
+Client `operaton` và luồng đăng nhập riêng của client này cũng là ngoại lệ. Script kiểm tra từng bước của luồng đăng nhập ở mỗi lần chạy. Khi luồng khác với thiết kế, script tắt client, xóa luồng, tạo lại luồng rồi bật lại client. Do đó, không có lúc nào client dùng luồng đăng nhập chung của realm. Các thiết lập bảo mật của client cũng được đặt lại ở mỗi lần chạy.
+
+Bước từ chối trong luồng này dùng thông báo có khóa `saigonos-operaton-admin-only`, khai báo trong thiết lập `denyErrorMessage` của bước. Nội dung tiếng Việt và tiếng Anh của thông báo nằm trong Realm overrides của realm `saigonos`. Script chỉ thêm nội dung còn thiếu, nên nội dung mà quản trị viên đã sửa được giữ nguyên.
+
 ## Service core
 
 Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
@@ -246,6 +255,7 @@ Khi sửa service `core`, cần tuân theo các quy tắc sau:
 - Mọi truy vấn tới cơ sở dữ liệu chạy trong `Database.session(caller)` hoặc `Database.service_session(caller)`. Hai hàm này mở một transaction và xóa các query plan đã lưu. Hàm `session` đặt thêm role và nội dung access token của người gọi. Việc không có người gọi, ví dụ quét file và gửi file qua đường dẫn tải về, chạy trong `Database.transaction()`. Không truy vấn bằng kết nối lấy thẳng từ pool.
 - API dành cho người đã đăng nhập nhận tham số kiểu `User`. Khi đó, lời gọi không có access token hợp lệ của người dùng có realm role `authenticated` nhận mã 401.
 - Không bật Swagger UI và ReDoc của FastAPI, vì hai trang này tải script từ máy chủ bên ngoài.
+- Lỗi 422 của FastAPI được trả qua hàm `invalid_request` trong `saigonos_core/main.py`. Hàm này bỏ trường `input` khỏi mỗi lỗi, vì JSON không biểu diễn được giá trị `NaN` và `Infinity` mà người gọi có thể gửi.
 - Đường dẫn của API không có dấu `/` ở cuối. Service không chuyển hướng địa chỉ có dấu `/` ở cuối, vì API Gateway bỏ tiền tố `/core` trước khi chuyển lời gọi tới service. Địa chỉ chuyển hướng khi đó thiếu tiền tố này.
 - Nội dung của file chỉ đi qua service `core`. Không thêm route tới SeaweedFS hoặc ClamAV ở API Gateway.
 - Bảng `core.files` chỉ được ghi trong `Database.service_session(caller)`. Phiên này chạy bằng role `core_service` và mang nội dung access token của người gọi. Nhờ đó, audit log ghi đúng người gọi. Lời gọi đọc thông tin file chạy trong `Database.session(caller)` để chính sách phân quyền từng dòng được áp dụng.
@@ -258,6 +268,43 @@ Khi sửa service `core`, cần tuân theo các quy tắc sau:
 - Trong `src/saigonos/stack/config/clamav/clamd.conf`, giá trị `MaxFileSize` phải lớn hơn `MaxScanSize`. Nếu không, ClamAV chỉ quét phần đầu của một file lớn bên trong file nén mà không báo. Kiểm thử trong `tests/test_clamd_conf.py` kiểm tra điều kiện này.
 
 Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
+
+## Operaton
+
+Cấu hình của Operaton nằm trong file `src/saigonos/stack/config/operaton/production.yml`. File này được gắn đè lên file cùng tên trong image. Các mật khẩu được lấy từ biến môi trường, không ghi trong file. Thiết lập `server.servlet.context-path` đặt mọi đường dẫn của Operaton dưới `/operaton/`, kể cả đường dẫn đăng nhập OAuth2.
+
+Khi sửa cấu hình hoặc route của Operaton, cần tuân theo các quy tắc sau:
+
+- Route `operaton` của API Gateway chỉ liệt kê các đường dẫn mà Cockpit, Tasklist và Admin cần. Không thêm REST API `/operaton/engine-rest` hoặc đường dẫn `/operaton/health` vào route.
+- Tomcat của Operaton bỏ phần sau dấu `;` trong mỗi đoạn của đường dẫn, còn APISIX so khớp cả phần này. Ví dụ, APISIX coi `/operaton/app/..;/engine-rest` là một đường dẫn của `/operaton/app/`, còn Tomcat hiểu đó là `/operaton/engine-rest`. Do đó, route từ chối mọi đường dẫn có dấu `;` và chỉ gửi tới Operaton đường dẫn đã được APISIX chuẩn hóa. Không bỏ thiết lập `vars` và `proxy-rewrite` của route.
+- Không bật `normalize_uri_like_servlet` của APISIX. Ở phiên bản 3.19.0, thiết lập này làm mất query string của các route không có `proxy-rewrite`, ví dụ route của Keycloak.
+- Operaton nhận nhóm của người dùng từ claim `groups`. Mapper của client `operaton` đưa các realm role vào claim này. Realm role `admin` có toàn quyền trong Operaton.
+- Service `processes` triển khai mỗi file BPMN thành một bản triển khai riêng. Tên của bản triển khai là tên file, nguồn là `saigonos`. Operaton dựa vào tên và nguồn để bỏ qua file không thay đổi. Do đó, không đổi tên hoặc nguồn của bản triển khai.
+- Service `core` chờ service `processes` với điều kiện `service_completed_successfully`. Không bỏ điều kiện này. Lệnh `docker compose up --wait` báo lỗi khi một service chỉ chạy một lần mà không có service nào chờ nó.
+- Trước khi triển khai, script `deploy-processes.lua` gọi Operaton một lần để kiểm tra tài khoản `core`. Khi mật khẩu sai, script dừng ngay. Nhờ đó, mỗi lần chạy chỉ tốn một lần đăng nhập sai.
+- Service `core` chỉ gọi REST API của Operaton qua lớp `Operaton` trong `saigonos_core/operaton.py`. Sau mỗi lần Operaton trả mã 401, lớp này ngừng gọi Operaton trong 60 giây. Sau 5 lần liên tiếp, lớp này ngừng gọi hẳn. Các lời gọi gửi cùng lúc và cùng nhận mã 401 chỉ tính là một lần. Do đó, service `core` không bao giờ làm Operaton khóa hẳn tài khoản `core`.
+- Operaton chỉ lưu thuộc tính `candidateStarterGroups` mà không kiểm tra thuộc tính này khi quy trình được bắt đầu qua REST API. Do đó, service `core` đọc thuộc tính từ file BPMN của phiên bản mới nhất và kiểm tra realm role của người gọi. Sau đó, service bắt đầu đúng phiên bản vừa kiểm tra bằng mã phiên bản, không bằng mã quy trình. Thuộc tính trong namespace của Operaton được đọc trước, thuộc tính trong namespace của Camunda chỉ được đọc khi thiếu, giống Operaton.
+- File BPMN được đọc bằng `xml.etree.ElementTree`, nên quy tắc S314 của Ruff được tắt cho `saigonos_core/processes.py` trong `pyproject.toml`. File này đến từ Operaton và đã được Operaton kiểm tra khi triển khai.
+- Biến `initiator` và biến ghi trong thuộc tính `initiator` của điểm bắt đầu luôn do service `core` ghi bằng claim `sub`. Operaton tự ghi tên tài khoản `core` vào biến này, rồi giá trị mà service `core` gửi ghi đè lên.
+- Danh sách việc được lấy bằng lời gọi `POST /task` với `orQueries` gồm `assignee` và `candidateGroups`. Với điều kiện `candidateGroups`, Operaton chỉ trả về việc chưa có người nhận. Không bật `includeAssignedTasks`, vì khi đó danh sách có cả việc mà người khác đã nhận. Danh sách realm role được gửi dạng mảng JSON, không gửi qua query string, vì Operaton tách query string theo dấu phẩy.
+- Nhận việc dùng lời gọi `POST /task/{id}/claim` của Operaton. Không dùng lời gọi đặt người nhận `POST /task/{id}/assignee`, vì lời gọi này ghi đè người đã nhận việc. Khi hai lời gọi claim chạy cùng lúc, Operaton chỉ ghi một lời gọi nhờ cột revision của việc. Lời gọi còn lại nhận mã 500 với lỗi `OptimisticLockingException` hoặc `TaskAlreadyClaimedException`.
+- Lời gọi claim với `userId` rỗng hoặc `null` bỏ người nhận của việc mà không báo lỗi. Do đó, `Operaton.claim` từ chối mã người nhận rỗng trước khi gọi Operaton.
+- Trước khi nhận việc, service `core` tìm việc bằng `POST /task` với `taskId`, `candidateGroups` và `includeAssignedTasks`. Lời gọi này chỉ trả về việc khi người gọi có một realm role nằm trong nhóm ứng viên, kể cả khi việc đã có người nhận.
+- Hoàn thành việc luôn dùng lời gọi `POST /task/{id}/submit-form`, không dùng `POST /task/{id}/complete`. Nhờ đó, Operaton luôn kiểm tra form của việc. Operaton không kiểm tra người nhận khi hoàn thành việc. Do đó, service `core` kiểm tra người nhận trước khi gọi Operaton.
+- Khi Operaton từ chối lời gọi claim hoặc submit-form, service `core` đọc lại việc rồi trả mã theo trạng thái mới của việc. Ví dụ, việc đã kết thúc nhận mã 404, việc đã có người khác nhận nhận mã 409. Chỉ lỗi không giải thích được bằng trạng thái của việc mới nhận mã 502.
+- Service `core` tự kiểm tra form trong `saigonos_core/forms.py` trước khi gọi `submit-form`, không dựa vào Operaton. Lý do là Operaton 2.2.1 ghi mọi biến không có trong form vào quy trình. Ràng buộc `required` và `minlength` của Operaton nhận chuỗi chỉ có khoảng trắng. Với form của việc, ràng buộc `required` của Operaton coi trường là đã nhập khi quy trình đã có biến cùng tên. Trường `boolean` của Operaton nhận chuỗi bất kỳ. Trường `date` đọc chuỗi theo mẫu `dd/MM/yyyy` và tự đổi ngày sai như `32/13/2026` thành một ngày khác. Khi giá trị không đạt, Operaton trả mã 500 thay cho 400.
+- Form được đọc từ file BPMN của phiên bản quy trình, cùng lúc với `candidateStarterGroups`. Form bắt đầu là form của điểm bắt đầu không có event definition, giống Operaton. Ở mỗi cấp của phần `formData`, thẻ trong namespace của Operaton được đọc trước, thẻ trong namespace của Camunda chỉ được đọc khi thiếu. Khi hai trường trùng `id`, chỉ trường đầu tiên có tác dụng. Độ dài chuỗi được tính theo đơn vị UTF-16 như Java. Nhờ đó, giá trị đã qua bước kiểm tra của service `core` không bị Operaton từ chối.
+- Giá trị của trường kiểu `date` được gửi với kiểu biến `Date` theo giờ UTC, dạng `yyyy-MM-dd'T'HH:mm:ss.SSSZ` của REST API. Operaton từ chối múi giờ có dấu hai chấm, ví dụ `+07:00`.
+- Bước máy làm được xử lý trong `saigonos_core/steps.py`. Service `core` lấy từng việc của topic `saigonos-function` bằng `fetchAndLock`, chờ theo kiểu long polling tối đa 5 giây và khóa việc trong 60 giây. Long polling tỉnh ngay khi có việc mới hoặc việc được mở khóa, nhưng không tỉnh khi hết thời gian chờ thử lại.
+- Hàm của bước máy làm chạy với `statement_timeout` 20 giây. Giá trị này phải nhỏ hơn thời gian khóa việc và nhỏ hơn `COMMAND_TIMEOUT` của pool kết nối. Nếu không, hàm chạy quá lâu bị thư viện asyncpg ngắt và không được tính là lỗi của hàm.
+- Dòng của bảng `core.step_runs` được ghi trong cùng transaction với lời gọi hàm, trước khi gọi hàm. Lệnh `INSERT ... ON CONFLICT DO NOTHING` chờ transaction khác đang ghi cùng mã việc. Do đó, mỗi external task chỉ chạy hàm một lần. Không gọi hàm ngoài transaction này.
+- Hàm của ứng dụng luôn được gọi qua `core.run_step`. Hàm này là `SECURITY DEFINER` của role `workflow`, nên hàm bên trong không đổi được role của phiên. Khi gọi thẳng, một hàm thường có thể dùng `RESET ROLE` để quay về role `core_service`.
+- Hàm được coi là đã khai báo khi `proacl` có quyền `EXECUTE` cấp riêng cho role `workflow`. Không dùng `has_function_privilege`, vì hàm này tính cả quyền cấp cho `PUBLIC`.
+- Khi service `core` chết trong lúc chờ long polling, lời gọi đang chờ vẫn nằm trong Operaton tới hết 5 giây. Trong thời gian đó, Operaton có thể giao một việc cho lời gọi đã chết và khóa việc này 60 giây.
+
+Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway. Kiểm thử `test_bpmn_file_cannot_take_process_of_another_file` kiểm tra việc gỡ bản triển khai khai báo lại mã quy trình của file khác. Quy trình thử của các lời gọi qua service `core` nằm trong thư mục `tests/integration/processes`. Form của quy trình thử có đủ các kiểu trường và các ràng buộc mà service `core` kiểm tra. Các kiểm thử form gửi cả những giá trị mà Operaton tự nhận, ví dụ chuỗi `true` cho trường `boolean` và chuỗi có khoảng trắng ở hai đầu cho ràng buộc `minlength`. Kiểm thử `test_core_stops_calling_operaton_while_it_refuses_account_of_core` tạm khóa tài khoản `core` bằng một lần đăng nhập sai, rồi kiểm tra service `core` chỉ gọi Operaton một lần. Sau đó, kiểm thử khởi động lại service `core`. Các kiểm thử nhận việc hoặc hoàn thành việc cùng lúc tạm dừng container của Operaton bằng `docker compose pause`, gửi các lời gọi, rồi chạy lại container. Nhờ đó, các lời gọi đều qua bước kiểm tra của service `core` và tới Operaton cùng lúc.
+
+Các hàm thử của bước máy làm nằm trong file `tests/integration/processes/yeu-cau-thu.sql`, được chạy như một migration của ứng dụng. Kiểm thử `test_function_runs_once_when_core_dies_before_reporting` giành khóa của việc bằng worker `kiem-thu` trong lúc hàm đang chạy, rồi giết tiến trình của service `core`. Sau đó, kiểm thử chờ hết thời gian long polling rồi mới mở khóa việc. Các kiểm thử làm Operaton tạm khóa tài khoản `core` thì khởi động lại service `core` khi kết thúc. Lý do là vòng lặp bước máy làm gặp lần khóa này và ngừng gọi Operaton trong 60 giây.
 
 ## Phát hành phiên bản mới
 

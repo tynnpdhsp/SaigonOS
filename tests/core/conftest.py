@@ -98,22 +98,18 @@ class Realm:
 
     def forged_tokens(self):
         return {
-            "không phải JWT": "khong-phai-token",
-            "sửa nội dung": self.tampered_token(),
-            "không ký": self.unsigned_token(),
-            "ký HS256 bằng khóa công khai": self.token_signed_with_public_key(),
-            "ký bằng khóa khác": self.token(signer=self.spare[0]),
-            "kid không có trong JWKS": self.token("khoa-la", signer=self.spare[0]),
+            "khong-phai-jwt": "khong-phai-token",
+            "sua-noi-dung": self.tampered_token(),
+            "khong-ky": self.unsigned_token(),
+            "ky-hs256-bang-khoa-cong-khai": self.token_signed_with_public_key(),
+            "ky-bang-khoa-khac": self.token(signer=self.spare[0]),
+            "kid-khong-co-trong-jwks": self.token("khoa-la", signer=self.spare[0]),
         }
 
 
-class FakeScans:
+class FakeWorker:
     def __init__(self):
         self.state = "chưa chạy"
-        self.notified = 0
-
-    def notify(self):
-        self.notified += 1
 
     async def run(self):
         self.state = "đang chạy"
@@ -123,9 +119,142 @@ class FakeScans:
             self.state = "đã dừng"
 
 
+class FakeScans(FakeWorker):
+    def __init__(self):
+        super().__init__()
+        self.notified = 0
+
+    def notify(self):
+        self.notified += 1
+
+
+class FakeOperaton:
+    def __init__(self):
+        self.definitions = {}
+        self.by_id = {}
+        self.documents = {}
+        self.looked_up = []
+        self.read = []
+        self.started = []
+        self.queries = []
+        self.found = []
+        self.items = {}
+        self.groups = {}
+        self.claims = []
+        self.submitted = []
+        self.race = None
+        self.external = []
+        self.locks = []
+        self.completed = []
+        self.failed = []
+        self.errors = {}
+        self.failure = None
+
+    def deploy(self, key, xml, version=1, suspended=False):
+        definition = {"id": f"{key}:{version}:{version:04d}", "key": key, "version": version}
+        definition["suspended"] = suspended
+        self.definitions[key] = definition
+        self.by_id[definition["id"]] = definition
+        self.documents[definition["id"]] = xml
+        return definition
+
+    def check(self):
+        if self.failure:
+            raise self.failure
+
+    def latest_definition(self, key):
+        self.check()
+        return self.definitions.get(key)
+
+    def definition(self, definition_id):
+        self.check()
+        self.looked_up.append(definition_id)
+        return self.by_id[definition_id]
+
+    def definition_xml(self, definition_id):
+        self.check()
+        self.read.append(definition_id)
+        return self.documents[definition_id]
+
+    def submit_start_form(self, definition_id, variables):
+        self.check()
+        self.started.append((definition_id, variables))
+        return {"id": f"quy-trinh-{len(self.started)}", "definitionId": definition_id}
+
+    def add_task(self, task_id="viec-1", groups=("nhan-vien",), **fields):
+        self.groups[task_id] = frozenset(groups)
+        self.items[task_id] = {
+            "id": task_id,
+            "assignee": None,
+            "suspended": False,
+            "processDefinitionId": "yeu_cau:1:0001",
+            "taskDefinitionKey": "xu_ly",
+        } | fields
+
+    def tasks(self, query, offset, limit):
+        self.check()
+        self.queries.append((query, offset, limit))
+        if "taskId" not in query:
+            return self.found
+        task = self.items.get(query["taskId"])
+        if task is None or not self.groups[task["id"]] & set(query["candidateGroups"]):
+            return []
+        return [dict(task)]
+
+    def task(self, task_id):
+        self.check()
+        task = self.items.get(task_id)
+        return None if task is None else dict(task)
+
+    def claim(self, task_id, user):
+        self.check()
+        self.claims.append((task_id, user))
+        if self.race:
+            self.race(task_id)
+        self.items[task_id]["assignee"] = user
+
+    def submit_task_form(self, task_id, variables):
+        self.check()
+        self.submitted.append((task_id, variables))
+        if self.race:
+            self.race(task_id)
+        del self.items[task_id]
+
+    def refuse(self, call):
+        error = self.errors.get(call)
+        if error:
+            raise error
+
+    def lock_external_tasks(self, worker, topic, lock, wait):
+        self.locks.append((worker, topic, lock, wait))
+        self.refuse("lock")
+        if not self.external:
+            time.sleep(0.01)
+            return []
+        return [self.external.pop(0)]
+
+    def complete_external_task(self, task_id, worker, variables):
+        self.completed.append((task_id, worker, variables))
+        self.refuse("complete")
+
+    def fail_external_task(self, task_id, worker, message, details, retries, delay):
+        self.failed.append((task_id, worker, message, details, retries, delay))
+        self.refuse("fail")
+
+
 @pytest.fixture
 def scans():
     return FakeScans()
+
+
+@pytest.fixture
+def steps():
+    return FakeWorker()
+
+
+@pytest.fixture
+def operaton():
+    return FakeOperaton()
 
 
 @pytest.fixture(scope="session")
@@ -150,4 +279,6 @@ def settings(realm):
         clamav_host="clamav",
         clamav_port=3310,
         download_key="khoa-ky-duong-dan-tai-ve",
+        operaton_url="http://operaton:8080/operaton/engine-rest",
+        operaton_password="mat-khau-tai-khoan-core",
     )

@@ -2,11 +2,13 @@
 import json
 import re
 import shlex
+from importlib.resources import files
 from pathlib import Path
 from typing import get_args
 
 import click
 import pytest
+from fastapi import HTTPException
 
 from saigonos.cli import main
 from saigonos.doctor import PROBES
@@ -21,7 +23,10 @@ from saigonos.home import (
     LARGEST_FILE_SIZE,
 )
 from saigonos_core.files import FileInfo
+from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.processes import rules_of
+from saigonos_core.tasks import Task
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
 BLOCK_LINES = [
@@ -36,6 +41,13 @@ DOCTOR_SAMPLE = SAMPLES[0]
 VERIFY_SAMPLES = [sample for sample in SAMPLES if "audit log" in sample.lower()]
 PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
 HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
+OPERATON = (files("saigonos") / "stack" / "config" / "operaton" / "production.yml").read_text(
+    encoding="utf-8"
+)
+
+
+def section(title):
+    return README.split(f"\n{title}\n", 1)[1].split("\n#", 1)[0]
 
 
 def anchor(heading):
@@ -144,9 +156,46 @@ def test_readme_lists_every_allowed_file_type():
 
 
 def test_readme_lists_every_file_status():
-    rows = re.findall(r"^\| `([a-z_]+)` \|", README, re.MULTILINE)
+    rows = re.findall(r"^\| `([a-z_]+)` \|", section("## Tải file lên"), re.MULTILINE)
 
     assert rows == list(get_args(FileInfo.model_fields["status"].annotation))
+
+
+def test_readme_lists_every_task_field():
+    rows = re.findall(r"^\| (`[^|]+) \|", section("### Danh sách việc"), re.MULTILINE)
+
+    assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
+
+
+def test_readme_lists_every_form_field_type():
+    kinds = section("### Form").split("| Ràng buộc |")[0]
+
+    assert set(re.findall(r"^\| `([a-z]+)` \|", kinds, re.MULTILINE)) == set(CHECKS)
+
+
+def test_readme_sample_process_accepts_values_of_examples():
+    [xml] = [
+        block for block in re.findall(r"```xml\n(.*?)```", README, re.DOTALL) if "yeu_cau" in block
+    ]
+    rules = rules_of(xml, "yeu_cau")
+    started, completed = (
+        dict(re.findall(r'(\w+): "([^"]*)"', values))
+        for values in re.findall(r"variables: \{ ([^}]*) \}", README)
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        submitted(rules.task_forms["xu_ly"], {}, TASK_FORM)
+
+    assert (
+        submitted(rules.start_form, started, START_FORM)["noi_dung"]["value"] == started["noi_dung"]
+    )
+    assert (
+        submitted(rules.task_forms["xu_ly"], completed, TASK_FORM)["ket_qua"]["value"]
+        == (completed["ket_qua"])
+    )
+    assert [json.loads(block) for block in re.findall(r"```json\n(.*?)```", README, re.DOTALL)] == [
+        {"detail": refused.value.detail}
+    ]
 
 
 def test_readme_links_point_to_existing_sections():
@@ -166,3 +215,11 @@ def test_readme_states_the_default_values():
     assert f"| `--max-file-size` | `{DEFAULT_MAX_FILE_SIZE}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
     assert "| `--caddy`, `--no-caddy` | Tắt |" in README
+
+
+def test_readme_states_job_settings_of_operaton():
+    wait = int(re.search(r"^ +max-wait: (\d+)$", OPERATON, re.MULTILINE)[1])
+    begin, end = re.findall(r'batch-window-(?:start|end)-time: "(\d\d:\d\d)\+0700"', OPERATON)
+
+    assert f"{wait // 1000} giây một lần" in PROSE
+    assert f"từ {begin} đến {end} giờ Việt Nam" in PROSE

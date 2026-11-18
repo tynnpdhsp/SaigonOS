@@ -74,6 +74,7 @@ def test_verified_license_replaces_reported_one(monkeypatch):
 @pytest.mark.parametrize(
     ("items", "expected"),
     [([], ""), (["MIT"], "MIT"), (["MIT", "ISC"], "ISC và MIT"), (["c", "a", "b"], "a, b và c")],
+    ids=["rong", "mot-muc", "hai-muc", "ba-muc"],
 )
 def test_vietnamese_list_joins_last_item_with_va(items, expected):
     assert dependencies.vietnamese_list(items) == expected

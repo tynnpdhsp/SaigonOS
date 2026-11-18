@@ -147,10 +147,10 @@ def forged_tokens(stack, user):
     content += token.split(".")[1]
     stranger = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return stack.forged_tokens(user) | {
-        "ký bằng khóa khác": jwt.encode(
+        "ky-bang-khoa-khac": jwt.encode(
             claims_of(token), stranger, algorithm="RS256", headers={"kid": kid}
         ),
-        "ký HS256 bằng khóa công khai": (
+        "ky-hs256-bang-khoa-cong-khai": (
             f"{content}.{segment(hmac.new(pem, content.encode(), hashlib.sha256).digest())}"
         ),
     }
@@ -250,7 +250,7 @@ def test_gateway_rejects_forged_token_before_core(stack):
 def test_core_rejects_forged_token_called_directly(stack):
     user = stack.new_user()
     id_token = grant(stack, user, scope="openid profile")["id_token"]
-    forged = forged_tokens(stack, user) | {"ID token": id_token}
+    forged = forged_tokens(stack, user) | {"id-token": id_token}
 
     replies = {name: direct(stack, "/me", token) for name, token in forged.items()}
 

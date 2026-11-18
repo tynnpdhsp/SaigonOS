@@ -26,12 +26,12 @@ def test_token_signed_by_realm_key_gives_its_claims(realm, verifier):
 @pytest.mark.parametrize(
     "name",
     [
-        "không phải JWT",
-        "sửa nội dung",
-        "không ký",
-        "ký HS256 bằng khóa công khai",
-        "ký bằng khóa khác",
-        "kid không có trong JWKS",
+        "khong-phai-jwt",
+        "sua-noi-dung",
+        "khong-ky",
+        "ky-hs256-bang-khoa-cong-khai",
+        "ky-bang-khoa-khac",
+        "kid-khong-co-trong-jwks",
     ],
 )
 def test_forged_token_is_rejected(realm, verifier, name):
@@ -55,17 +55,17 @@ def test_forged_token_is_rejected(realm, verifier, name):
         {"typ": None},
     ],
     ids=[
-        "hết hạn",
-        "thiếu exp",
-        "exp không phải số",
-        "iat ở tương lai",
-        "iss của realm khác",
-        "thiếu iss",
-        "thiếu sub",
-        "sub không phải chuỗi",
-        "ID token",
-        "refresh token",
-        "thiếu typ",
+        "het-han",
+        "thieu-exp",
+        "exp-khong-phai-so",
+        "iat-o-tuong-lai",
+        "iss-cua-realm-khac",
+        "thieu-iss",
+        "thieu-sub",
+        "sub-khong-phai-chuoi",
+        "id-token",
+        "refresh-token",
+        "thieu-typ",
     ],
 )
 def test_token_with_wrong_claims_is_rejected(realm, verifier, changes):

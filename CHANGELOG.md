@@ -7,6 +7,31 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Service `operaton` chạy các quy trình BPMN 2.0 bằng Operaton. Operaton lưu dữ liệu trong cơ sở dữ liệu `operaton` riêng. Service `databases` tạo cơ sở dữ liệu này và role `operaton` khi chưa có, kể cả với cơ sở dữ liệu được tạo từ phiên bản cũ.
+- Cockpit, Tasklist và Admin của Operaton ở địa chỉ `/operaton/` của API Gateway. Chỉ tài khoản có realm role `admin` đăng nhập được, bằng mật khẩu và OTP. Tài khoản khác được báo rằng chỉ tài khoản quản trị mới vào được, bằng tiếng Việt hoặc tiếng Anh. Khi tài khoản bị khóa trong Keycloak, phiên đăng nhập của Operaton kết thúc ngay ở lời gọi tiếp theo. Nút đăng xuất của ba trang kết thúc phiên đăng nhập của Operaton, nên lần mở tiếp theo phải nhập lại mật khẩu và mã OTP.
+- Service `realm` tạo client `operaton` và luồng đăng nhập riêng của client này trong realm `saigonos`. Khi luồng đăng nhập hoặc các thiết lập bảo mật của client bị thay đổi, service đặt lại như cũ.
+- REST API của Operaton chỉ dành cho service `core`. REST API này không mở qua API Gateway và cần đăng nhập bằng tài khoản `core` của Operaton.
+- Lệnh `saigonos init` thêm các giá trị `OPERATON_DB_PASSWORD`, `OPERATON_CLIENT_SECRET` và `CORE_OPERATON_PASSWORD` vào file `.env`.
+- Service `processes` triển khai các file BPMN trong thư mục `config/operaton/processes` vào Operaton mỗi khi hệ thống khởi động. File không thay đổi thì không tạo phiên bản mới của quy trình. File bị lỗi làm lệnh `saigonos up` kết thúc với mã lỗi. Một file không thay được quy trình đã khai báo trong file khác. Lệnh `saigonos init` tạo sẵn thư mục này.
+- Lệnh `saigonos doctor` kiểm tra Operaton qua API Gateway. Trang đăng nhập phải dùng đúng địa chỉ truy cập của hệ thống và REST API của Operaton phải bị chặn.
+- Lời gọi `POST /core/processes/{key}/start` bắt đầu phiên bản mới nhất của một quy trình. Người gọi cần một realm role có trong thuộc tính `candidateStarterGroups` của quy trình. Quy trình không khai báo thuộc tính này thì không bắt đầu được qua API. Service `core` ghi mã người gọi vào biến `initiator` và người gọi không gửi được biến này.
+- Lời gọi `GET /core/tasks` trả về các việc mà người gọi đã nhận và các việc chưa ai nhận có nhóm ứng viên là một realm role của người gọi. Việc mà người khác đã nhận không có trong danh sách.
+- Lời gọi `POST /core/tasks/{id}/claim` nhận một việc chưa có người nhận. Người gọi cần một realm role nằm trong nhóm ứng viên của việc. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Những người còn lại nhận mã 409.
+- Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Các biến được gửi qua form của việc trong Operaton. Người hoàn thành việc không gửi được biến `initiator`.
+- Lời gọi bắt đầu quy trình và lời gọi hoàn thành việc chỉ nhận các trường được khai báo trong form của file BPMN, tức các thẻ `operaton:formField`. Service `core` kiểm tra kiểu của từng trường và các ràng buộc `required`, `minlength`, `maxlength`, `min`, `max` và `readonly` trước khi gửi tới Operaton. Chuỗi chỉ có khoảng trắng được coi là chưa nhập. Khi một giá trị không đạt, lời gọi nhận mã 422 với nội dung bắt đầu bằng `LỖI TUÂN THỦ` và nêu tên trường. Khi đó, việc vẫn thuộc người nhận và quy trình không đi tiếp.
+- Bước máy làm của quy trình gọi một hàm của cơ sở dữ liệu. Bước này là service task có topic `saigonos-function` và thuộc tính `function` nêu tên hàm. Hàm cần được cấp quyền `EXECUTE` cho role `workflow` và chạy với quyền của role này. Kết quả của hàm được ghi thành biến của quy trình.
+- Mỗi bước máy làm chỉ chạy hàm một lần, kể cả khi service `core` dừng đột ngột trước khi báo Operaton. Hàm báo lỗi được thử lại sau 5 giây, 30 giây và 2 phút. Hàm chưa được khai báo hoặc sai kiểu làm bước máy làm trở thành incident trong Cockpit.
+- Khi Operaton từ chối tài khoản `core`, service `core` ngừng gọi Operaton trong 60 giây. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi khởi động lại. Nhờ đó, Operaton không khóa hẳn tài khoản `core`.
+- Quy trình có thể gắn hẹn giờ trên biên của một việc. Khi việc quá hạn, quy trình rẽ sang nhánh khác, ví dụ chuyển việc cho nhóm quản lý. Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần, nên hẹn giờ chạy chậm nhất khoảng 2 giây sau hạn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
+- Mỗi ngày từ 01:00 đến 05:00 giờ Việt Nam, Operaton xóa lịch sử của các quy trình đã kết thúc quá thời gian `historyTimeToLive`.
+- Khi container dừng, Operaton dừng job executor và đóng các kết nối tới cơ sở dữ liệu trước khi thoát.
+
+### Sửa
+
+- Lời gọi tới service `core` có giá trị `NaN` hoặc `Infinity` trong nội dung nhận mã 422 thay cho 500. Nội dung lỗi 422 không còn chép lại giá trị mà người gọi đã gửi.
+
 ## [0.3.0] - 2026-11-17
 
 ### Thêm

@@ -78,7 +78,7 @@ def free_port():
 
 
 def free_ports():
-    options = ("--http-port", "--admin-port", "--keycloak-port")
+    options = ("--http-port", "--admin-port", "--keycloak-port", "--seaweedfs-port")
     return [value for option in options for value in (option, str(free_port()))]
 
 
@@ -270,9 +270,9 @@ class Stack:
         header, payload, signature = self.token(user).split(".")
         claims = decode(payload) | {"preferred_username": "admin"}
         return {
-            "không phải JWT": "khong-phai-token",
-            "sửa nội dung": f"{header}.{encode(claims)}.{signature}",
-            "không ký": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
+            "khong-phai-jwt": "khong-phai-token",
+            "sua-noi-dung": f"{header}.{encode(claims)}.{signature}",
+            "khong-ky": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
         }
 
     def api(self, token=None, headers=None, address=None):

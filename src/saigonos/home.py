@@ -21,6 +21,7 @@ APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
 CADDY_PROFILE = "caddy"
 OPTIONAL_SERVICES = (CADDY_PROFILE,)
 BYTECODE_FOLDER = "__pycache__"
+PROCESS_FOLDER = Path("config", "operaton", "processes")
 SECRET_KEYS = (
     "POSTGRES_PASSWORD",
     "KEYCLOAK_DB_PASSWORD",
@@ -32,6 +33,9 @@ SECRET_KEYS = (
     "SEAWEEDFS_ACCESS_KEY",
     "SEAWEEDFS_SECRET_KEY",
     "SEAWEEDFS_ADMIN_PASSWORD",
+    "OPERATON_DB_PASSWORD",
+    "OPERATON_CLIENT_SECRET",
+    "CORE_OPERATON_PASSWORD",
 )
 SECRET_ALPHABET = string.ascii_letters + string.digits
 SECRET_LENGTH = 32
@@ -238,6 +242,9 @@ def init_home(
     write_private(home / ".env", "\n".join(lines) + "\n")
 
     copy_tree(files("saigonos").joinpath("stack"), home)
+    processes = home / PROCESS_FOLDER
+    processes.mkdir(exist_ok=True)
+    processes.chmod(0o755)
     listen = listen_address(new_http_host, new_http_port)
     return Initialized(
         url=url, listen=listen, new_secrets=len(missing), caddy=CADDY_PROFILE in profiles

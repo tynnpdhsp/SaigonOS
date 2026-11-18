@@ -6,14 +6,20 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from saigonos_core import __version__, files
+from saigonos_core import __version__, files, processes, tasks
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
 from saigonos_core.downloads import DownloadLinks
+from saigonos_core.operaton import Operaton
+from saigonos_core.processes import Processes
 from saigonos_core.scans import Scans
+from saigonos_core.steps import Steps
 from saigonos_core.storage import Storage
 from saigonos_core.tokens import TokenVerifier
 
@@ -36,6 +42,8 @@ class Settings:
     clamav_host: str
     clamav_port: int
     download_key: str
+    operaton_url: str
+    operaton_password: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -50,6 +58,8 @@ class Settings:
             os.environ["CLAMAV_HOST"],
             int(os.environ["CLAMAV_PORT"]),
             os.environ["DOWNLOAD_KEY"],
+            os.environ["OPERATON_URL"],
+            os.environ["OPERATON_PASSWORD"],
         )
 
 
@@ -64,6 +74,13 @@ class Me(BaseModel):
 
 
 router = APIRouter()
+
+
+async def invalid_request(request: Request, error: RequestValidationError) -> JSONResponse:
+    errors = [
+        {name: value for name, value in item.items() if name != "input"} for item in error.errors()
+    ]
+    return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
 
 
 @router.get("/health", summary="Trạng thái của service", responses=UNAVAILABLE)
@@ -85,6 +102,8 @@ def create_app(
     database: Database | None = None,
     storage: Storage | None = None,
     scans: Scans | None = None,
+    operaton: Operaton | None = None,
+    steps: Steps | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -92,15 +111,20 @@ def create_app(
         settings.storage_url, settings.storage_access_key, settings.storage_secret_key
     )
     scans = scans or Scans(database, storage, ClamAV(settings.clamav_host, settings.clamav_port))
+    operaton = operaton or Operaton(settings.operaton_url, settings.operaton_password)
+    definitions = Processes(operaton)
+    steps = steps or Steps(database, operaton, definitions)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.open()
-        worker = asyncio.create_task(scans.run())
+        workers = [asyncio.create_task(scans.run()), asyncio.create_task(steps.run())]
         yield
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
+        for worker in workers:
+            worker.cancel()
+        for worker in workers:
+            with suppress(asyncio.CancelledError):
+                await worker
         await database.close()
 
     app = FastAPI(
@@ -119,6 +143,12 @@ def create_app(
     app.state.storage = storage
     app.state.scans = scans
     app.state.downloads = DownloadLinks(settings.download_key)
+    app.state.operaton = operaton
+    app.state.processes = definitions
+    app.state.steps = steps
+    app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
     app.include_router(files.router)
+    app.include_router(processes.router)
+    app.include_router(tasks.router)
     return app

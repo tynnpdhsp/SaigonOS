@@ -53,6 +53,15 @@ def test_verify_computes_hash_without_function_stored_in_database():
         ({"rows": 7, "missing": 6, "changed": 2}, 1, CHANGED.format(row=2)),
         ({"rows": 7, "missing": 1, "changed": 2}, 1, MISSING.format(row=1)),
     ],
+    ids=[
+        "nguyen-ven",
+        "chua-co-dong",
+        "dong-bi-sua",
+        "thieu-dong",
+        "thieu-truoc-sua",
+        "sua-truoc-thieu",
+        "thieu-dong-dau",
+    ],
 )
 def test_verify_reports_first_broken_row(home, cli, docker, state, exit_code, output):
     docker.reply("exec", chain(**state))

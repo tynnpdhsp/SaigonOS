@@ -124,6 +124,8 @@ services:
       MASTER_FRONTEND_URL: http://localhost:${SAIGONOS_KEYCLOAK_PORT:?}/auth
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+      OPERATON_CLIENT_SECRET: ${OPERATON_CLIENT_SECRET:?}
     volumes:
       - ./config/keycloak:/config:ro
     entrypoint: ["resty", "-I", "/usr/local/apisix/deps/share/lua/5.1", "/config/setup-realm.lua"]
@@ -168,6 +170,24 @@ services:
       - /var/lib/postgresql
     entrypoint: ["sh", "/config/migrate.sh"]
     command: ["core", "/config/migrations"]
+
+  databases:
+    image: postgres:18.6-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+    volumes:
+      - ./config/postgres:/config:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["psql", "--no-psqlrc", "--quiet", "--set=ON_ERROR_STOP=1", "--file=/config/databases.sql"]
 
   postgrest:
     image: postgrest/postgrest:v16.5
@@ -293,6 +313,8 @@ services:
         condition: service_completed_successfully
       seaweedfs:
         condition: service_healthy
+      processes:
+        condition: service_completed_successfully
     environment:
       JWT_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
       JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
@@ -308,6 +330,8 @@ services:
       DOWNLOAD_KEY: ${CORE_DOWNLOAD_KEY:?}
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
+      OPERATON_URL: http://operaton:8080/operaton/engine-rest
+      OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
     networks:
       - default
       - storage
@@ -319,6 +343,50 @@ services:
       retries: 3
       start_period: 60s
       start_interval: 2s
+
+  operaton:
+    image: operaton/operaton:2.2.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      databases:
+        condition: service_completed_successfully
+    command: ["./operaton.sh", "--production", "--webapps", "--rest", "--oauth2"]
+    # tini gửi SIGINT cho cả nhóm tiến trình, run.sh của image chờ Java tắt xong rồi mới thoát
+    stop_signal: SIGINT
+    environment:
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+      OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+      OPERATON_CLIENT_SECRET: ${OPERATON_CLIENT_SECRET:?}
+      CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+      JAVA_OPTS: -Xms128m -Xmx512m
+      TINI_KILL_PROCESS_GROUP: "1"
+    volumes:
+      - ./config/operaton/production.yml:/operaton/configuration/production.yml:ro
+      # file trong thư mục public được Operaton dùng thay cho file cùng đường dẫn của plugin
+      - ./config/operaton/sso-logout.js:/operaton/public/plugin-webapp/sso-logout-plugin/app/plugin.js:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8080/operaton/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+      start_interval: 3s
+
+  processes:
+    image: apache/apisix:3.19.0-ubuntu
+    restart: "no"
+    depends_on:
+      operaton:
+        condition: service_healthy
+    environment:
+      OPERATON_URL: http://operaton:8080/operaton/engine-rest
+      CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+    volumes:
+      - ./config/operaton:/config:ro
+    entrypoint: ["sh", "-c"]
+    command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/deploy-processes.lua /config/processes/*.bpmn"]
 
   caddy:
     image: caddy:2.11.9-alpine

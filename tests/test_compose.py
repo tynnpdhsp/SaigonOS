@@ -125,6 +125,7 @@ def test_capture_returns_output(home, docker):
         ("Cannot connect to the Docker daemon\n", "Cannot connect to the Docker daemon"),
         ("", "mã thoát 2"),
     ],
+    ids=["co-stderr", "stderr-rong"],
 )
 def test_capture_raises_with_reason_when_compose_fails(home, docker, error, reason):
     docker.reply("ps", error=error, code=2)
