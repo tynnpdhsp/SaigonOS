@@ -18,6 +18,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra Operaton qua API Gateway. Trang đăng nhập phải dùng đúng địa chỉ truy cập của hệ thống và REST API của Operaton phải bị chặn.
 - Lời gọi `POST /core/processes/{key}/start` bắt đầu phiên bản mới nhất của một quy trình. Người gọi cần một realm role có trong thuộc tính `candidateStarterGroups` của quy trình. Quy trình không khai báo thuộc tính này thì không bắt đầu được qua API. Service `core` ghi mã người gọi vào biến `initiator` và người gọi không gửi được biến này.
 - Lời gọi `GET /core/tasks` trả về các việc mà người gọi đã nhận và các việc chưa ai nhận có nhóm ứng viên là một realm role của người gọi. Việc mà người khác đã nhận không có trong danh sách.
+- Lời gọi `POST /core/tasks/{id}/claim` nhận một việc chưa có người nhận. Người gọi cần một realm role nằm trong nhóm ứng viên của việc. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Những người còn lại nhận mã 409.
+- Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Các biến được gửi qua form của việc trong Operaton. Người hoàn thành việc không gửi được biến `initiator`.
 - Khi Operaton từ chối tài khoản `core`, service `core` ngừng gọi Operaton trong 60 giây. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi khởi động lại. Nhờ đó, Operaton không khóa hẳn tài khoản `core`.
 
 ### Sửa
