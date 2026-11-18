@@ -5,8 +5,12 @@ import html
 import json
 import re
 import struct
+import threading
 import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
 
@@ -43,6 +47,13 @@ STARTER = "nguoi-gui"
 WORKER = "nhan-vien"
 FORBIDDEN = {"detail": "Người gọi không có realm role được bắt đầu quy trình này"}
 NO_TASKS = {"detail": "Chưa lấy được danh sách việc vì Operaton chưa sẵn sàng"}
+TASK_NOT_FOUND = {"detail": "Không tìm thấy việc"}
+NOT_CANDIDATE = {"detail": "Người gọi không có realm role nằm trong nhóm ứng viên của việc này"}
+TAKEN = {"detail": "Việc đã có người khác nhận"}
+NOT_ASSIGNEE = {"detail": "Chỉ người nhận việc mới hoàn thành được việc này"}
+TASK_SUSPENDED = {"detail": "Việc đang tạm ngưng"}
+INITIATORS = ("initiator", "nguoi_tao")
+ROUNDS = 20
 
 
 def totp(secret, step=0):
@@ -194,11 +205,12 @@ def versions(stack, key):
     return [(item["version"], item["resource"], item["name"]) for item in definitions]
 
 
-def operaton_post(stack, path, body):
+def operaton_send(stack, method, path, body):
     url = f"http://127.0.0.1:8080/operaton/engine-rest{path}"
     options = ["--silent", "--output", "/dev/null", "--write-out", "%{http_code}"]
     options += ["--user", core_account(stack), "--header", "Content-Type: application/json"]
-    result = stack.exec("operaton", "curl", *options, "--data", json.dumps(body), url)
+    options += ["--request", method, "--data", json.dumps(body)]
+    result = stack.exec("operaton", "curl", *options, url)
     return int(result.stdout)
 
 
@@ -223,6 +235,66 @@ def start(stack, user, key="yeu_cau_thu", variables=None):
 def tasks_of(stack, user, query=""):
     reply = stack.call("GET", f"{stack.url}/core/tasks{query}", token=stack.token(user))
     return reply.status, json.loads(reply.body)
+
+
+def act(stack, token, task, action, variables=None):
+    body = None if variables is None else {"variables": variables}
+    reply = stack.call("POST", f"{stack.url}/core/tasks/{task}/{action}", token=token, body=body)
+    return reply.status, json.loads(reply.body) if reply.body else None
+
+
+def task_of(stack, instance):
+    [task] = operaton_get(stack, f"/task?processInstanceId={instance}")
+    return task["id"]
+
+
+def new_tasks(stack, starter, count=1):
+    token = stack.token(starter)
+    url = f"{stack.url}/core/processes/yeu_cau_thu/start"
+    instances = []
+    for _ in range(count):
+        reply = stack.call("POST", url, token=token, body={})
+        assert reply.status == 201, reply.body
+        instances.append(json.loads(reply.body)["id"])
+    found = operaton_get(stack, "/task?processDefinitionKey=yeu_cau_thu")
+    tasks = {task["processInstanceId"]: task["id"] for task in found}
+    return [tasks[instance] for instance in instances]
+
+
+def assignees(stack, tasks):
+    found = operaton_get(stack, "/task?processDefinitionKey=yeu_cau_thu")
+    return {task["id"]: task["assignee"] for task in found if task["id"] in tasks}
+
+
+def by_status(replies):
+    return sorted(replies, key=lambda reply: reply[0])
+
+
+def together(calls):
+    barrier = threading.Barrier(len(calls))
+
+    def run(call):
+        barrier.wait()
+        return call()
+
+    with ThreadPoolExecutor(len(calls)) as pool:
+        return list(pool.map(run, calls))
+
+
+def through_paused_operaton(stack, calls):
+    with ThreadPoolExecutor(len(calls)) as pool:
+        stack.compose("pause", "operaton")
+        try:
+            futures = [pool.submit(call) for call in calls]
+            time.sleep(1)
+        finally:
+            stack.compose("unpause", "operaton")
+        return [future.result() for future in futures]
+
+
+def refused_by_operaton(stack, task):
+    lines = stack.logs("operaton").splitlines()
+    return any("ENGINE-REST-HTTP500" in line and task in line for line in lines)
 
 
 @pytest.fixture(scope="module")
@@ -679,8 +751,8 @@ def test_task_list_shows_own_tasks_and_claimable_tasks_of_caller_only(stack, req
     )
     other_worker = stack.new_user(role=WORKER)
 
-    assert operaton_post(stack, f"/task/{first}/claim", {"userId": taker.id}) == 204
-    assert operaton_post(stack, f"/task/{second}/claim", {"userId": other_worker.id}) == 204
+    assert operaton_send(stack, "POST", f"/task/{first}/claim", {"userId": taker.id}) == 204
+    assert operaton_send(stack, "POST", f"/task/{second}/claim", {"userId": other_worker.id}) == 204
     seen = {}
     for name, user in {"worker": worker, "taker": taker, "starter": starter}.items():
         status, tasks = tasks_of(stack, user)
@@ -704,6 +776,168 @@ def test_task_list_shows_own_tasks_and_claimable_tasks_of_caller_only(stack, req
     }
     assert len(tasks_of(stack, worker, "?limit=1")[1]) == 1
     assert tasks_of(stack, stack.new_user()) == (200, [])
+
+
+def test_worker_claims_and_completes_task_until_process_ends(stack, requests_process):
+    starter = stack.new_user(role=STARTER)
+    worker = stack.new_user(role=WORKER)
+    status, started = start(stack, starter, variables={"noi_dung": "Máy 12 không lên màn hình"})
+    task = task_of(stack, started["id"])
+    token = stack.token(worker)
+
+    claimed = act(stack, token, task, "claim")
+    again = act(stack, token, task, "claim")
+    listed = [item["assignee"] for item in tasks_of(stack, worker)[1] if item["id"] == task]
+    done = act(stack, token, task, "complete", {"ket_qua": "Đã thay cáp màn hình", "so_gio": 2})
+
+    assert status == 201
+    assert (claimed, again, listed, done) == ((204, None), (204, None), [worker.id], (204, None))
+    instance = operaton_get(stack, f"/history/process-instance/{started['id']}")
+    history = operaton_get(stack, f"/history/task?processInstanceId={started['id']}")
+    written = operaton_get(stack, f"/history/variable-instance?processInstanceId={started['id']}")
+    assert instance["state"] == "COMPLETED"
+    assert [(item["assignee"], item["deleteReason"]) for item in history] == [
+        (worker.id, "completed")
+    ]
+    assert {item["name"]: item["value"] for item in written} == {
+        "noi_dung": "Máy 12 không lên màn hình",
+        "initiator": starter.id,
+        "nguoi_tao": starter.id,
+        "ket_qua": "Đã thay cáp màn hình",
+        "so_gio": 2,
+    }
+    assert act(stack, token, task, "complete") == (404, TASK_NOT_FOUND)
+    assert act(stack, token, task, "claim") == (404, TASK_NOT_FOUND)
+
+
+def test_two_workers_claiming_same_task_together_get_one_claim(stack, requests_process):
+    workers = [stack.new_user(role=WORKER) for _ in range(2)]
+    tasks = new_tasks(stack, stack.new_user(role=STARTER), ROUNDS)
+    tokens = [stack.token(worker) for worker in workers]
+
+    rounds = [
+        together([partial(act, stack, token, task, "claim") for token in tokens]) for task in tasks
+    ]
+
+    held = assignees(stack, tasks)
+    for task, replies in zip(tasks, rounds, strict=True):
+        assert by_status(replies) == [(204, None), (409, TAKEN)]
+        winner = workers[[status for status, _ in replies].index(204)]
+        assert held[task] == winner.id
+
+
+def test_claim_refused_inside_operaton_gives_409_to_loser(stack, requests_process):
+    workers = [stack.new_user(role=WORKER) for _ in range(2)]
+    [task] = new_tasks(stack, stack.new_user(role=STARTER))
+    tokens = [stack.token(worker) for worker in workers]
+
+    replies = through_paused_operaton(
+        stack, [partial(act, stack, token, task, "claim") for token in tokens]
+    )
+
+    assert by_status(replies) == [(204, None), (409, TAKEN)]
+    winner = workers[[status for status, _ in replies].index(204)]
+    assert assignees(stack, [task]) == {task: winner.id}
+    assert refused_by_operaton(stack, task)
+
+
+def test_same_worker_claiming_twice_together_gets_task(stack, requests_process):
+    worker = stack.new_user(role=WORKER)
+    [task] = new_tasks(stack, stack.new_user(role=STARTER))
+    token = stack.token(worker)
+
+    replies = through_paused_operaton(stack, [partial(act, stack, token, task, "claim")] * 2)
+
+    assert replies == [(204, None), (204, None)]
+    assert assignees(stack, [task]) == {task: worker.id}
+
+
+def test_task_completed_twice_together_is_completed_once(stack, requests_process):
+    worker = stack.new_user(role=WORKER)
+    [task] = new_tasks(stack, stack.new_user(role=STARTER))
+    token = stack.token(worker)
+    assert act(stack, token, task, "claim") == (204, None)
+    completion = partial(act, stack, token, task, "complete", {"ket_qua": "Đã xử lý"})
+
+    replies = through_paused_operaton(stack, [completion] * 2)
+
+    assert by_status(replies) == [(204, None), (404, TASK_NOT_FOUND)]
+    [history] = operaton_get(stack, f"/history/task?taskId={task}")
+    assert (history["assignee"], history["deleteReason"]) == (worker.id, "completed")
+
+
+def test_user_outside_candidate_groups_cannot_claim_or_complete(stack, requests_process):
+    worker = stack.new_user(role=WORKER)
+    outsider = stack.new_user(role=STARTER)
+    stack.grant_role(outsider, "quan-ly")
+    [task] = new_tasks(stack, outsider)
+    token = stack.token(outsider)
+
+    before = act(stack, token, task, "claim"), act(stack, token, task, "complete")
+    claimed = act(stack, stack.token(worker), task, "claim")
+    after = act(stack, token, task, "claim"), act(stack, token, task, "complete")
+
+    assert before == ((403, NOT_CANDIDATE), (403, NOT_ASSIGNEE))
+    assert claimed == (204, None)
+    assert after == ((403, NOT_CANDIDATE), (403, NOT_ASSIGNEE))
+    assert assignees(stack, [task]) == {task: worker.id}
+
+
+def test_worker_cannot_take_or_complete_task_claimed_by_another(stack, requests_process):
+    first, second = (stack.new_user(role=WORKER) for _ in range(2))
+    [task] = new_tasks(stack, stack.new_user(role=STARTER))
+    token = stack.token(second)
+
+    claimed = act(stack, stack.token(first), task, "claim")
+    taken = act(stack, token, task, "claim")
+    refused = act(stack, token, task, "complete", {"ket_qua": "Đã xử lý"})
+
+    assert (claimed, taken, refused) == ((204, None), (409, TAKEN), (403, NOT_ASSIGNEE))
+    assert assignees(stack, [task]) == {task: first.id}
+
+
+def test_assignee_cannot_overwrite_initiator_when_completing(stack, requests_process):
+    starter = stack.new_user(role=STARTER)
+    worker = stack.new_user(role=WORKER)
+    _, started = start(stack, starter)
+    task = task_of(stack, started["id"])
+    token = stack.token(worker)
+    assert act(stack, token, task, "claim") == (204, None)
+
+    replies = [act(stack, token, task, "complete", {name: worker.id}) for name in INITIATORS]
+
+    assert [status for status, _ in replies] == [422, 422]
+    assert variables_of(stack, started["id"]) == dict.fromkeys(INITIATORS, starter.id)
+    assert assignees(stack, [task]) == {task: worker.id}
+
+
+def test_suspended_task_cannot_be_claimed_or_completed(stack, requests_process):
+    worker = stack.new_user(role=WORKER)
+    _, started = start(stack, stack.new_user(role=STARTER))
+    task = task_of(stack, started["id"])
+    token = stack.token(worker)
+    path = f"/process-instance/{started['id']}/suspended"
+
+    assert operaton_send(stack, "PUT", path, {"suspended": True}) == 204
+    refused_claim = act(stack, token, task, "claim")
+    assert operaton_send(stack, "PUT", path, {"suspended": False}) == 204
+    claimed = act(stack, token, task, "claim")
+    assert operaton_send(stack, "PUT", path, {"suspended": True}) == 204
+    refused_completion = act(stack, token, task, "complete")
+    assert operaton_send(stack, "PUT", path, {"suspended": False}) == 204
+
+    assert refused_claim == (409, TASK_SUSPENDED)
+    assert claimed == (204, None)
+    assert refused_completion == (409, TASK_SUSPENDED)
+    assert act(stack, token, task, "complete") == (204, None)
+
+
+def test_claim_and_complete_of_unknown_task_are_not_found(stack):
+    token = stack.token(stack.new_user(role=WORKER))
+    task = str(uuid.uuid4())
+
+    assert act(stack, token, task, "claim") == (404, TASK_NOT_FOUND)
+    assert act(stack, token, task, "complete") == (404, TASK_NOT_FOUND)
 
 
 def test_core_answers_503_while_operaton_is_unreachable(stack):
