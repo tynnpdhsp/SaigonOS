@@ -95,6 +95,7 @@ STEP_FIELDS = {
     "han_xu_ly": "date",
 }
 ROUNDS = 20
+RACES = 5
 
 
 def totp(secret, step=0):
@@ -1136,17 +1137,23 @@ def test_two_workers_claiming_same_task_together_get_one_claim(stack, requests_p
 
 def test_claim_refused_inside_operaton_gives_409_to_loser(stack, requests_process):
     workers = [stack.new_user(role=WORKER) for _ in range(2)]
-    [task] = new_tasks(stack, stack.new_user(role=STARTER))
-    tokens = [stack.token(worker) for worker in workers]
+    starter = stack.new_user(role=STARTER)
+    refused = []
+    for _ in range(RACES):
+        [task] = new_tasks(stack, starter)
+        tokens = [stack.token(worker) for worker in workers]
 
-    replies = through_paused_operaton(
-        stack, [partial(act, stack, token, task, "claim") for token in tokens]
-    )
+        replies = through_paused_operaton(
+            stack, [partial(act, stack, token, task, "claim") for token in tokens]
+        )
 
-    assert by_status(replies) == [(204, None), (409, TAKEN)]
-    winner = workers[[status for status, _ in replies].index(204)]
-    assert assignees(stack, [task]) == {task: winner.id}
-    assert refused_by_operaton(stack, task)
+        assert by_status(replies) == [(204, None), (409, TAKEN)]
+        winner = workers[[status for status, _ in replies].index(204)]
+        assert assignees(stack, [task]) == {task: winner.id}
+        if refused_by_operaton(stack, task):
+            refused.append(task)
+            break
+    assert refused, f"Operaton không từ chối lần nhận việc nào trong {RACES} lượt"
 
 
 def test_same_worker_claiming_twice_together_gets_task(stack, requests_process):
