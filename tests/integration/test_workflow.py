@@ -10,7 +10,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
@@ -47,6 +47,7 @@ CLOSED_PATHS = {
 REDIRECTS = {301, 302, 303, 307}
 TEST_PROCESS = Path(__file__).parent / "processes" / "yeu-cau-thu.bpmn"
 TEST_FUNCTIONS = TEST_PROCESS.with_suffix(".sql")
+DEADLINE_PROCESS = TEST_PROCESS.with_name("yeu-cau-co-han-thu.bpmn")
 TOPIC = "saigonos-function"
 STEPS = {
     "nguoi_chay_thu": "thu_nghiem.nguoi_chay",
@@ -65,6 +66,8 @@ STEPS = {
 }
 STARTER = "nguoi-gui"
 WORKER = "nhan-vien"
+MANAGER = "quan-ly"
+VIETNAM = timezone(timedelta(hours=7))
 FORBIDDEN = {"detail": "Người gọi không có realm role được bắt đầu quy trình này"}
 NO_TASKS = {"detail": "Chưa lấy được danh sách việc vì Operaton chưa sẵn sàng"}
 TASK_NOT_FOUND = {"detail": "Không tìm thấy việc"}
@@ -190,8 +193,8 @@ def wait_until_core_account_works(stack, timeout=30):
         time.sleep(1)
 
 
-def bpmn(key, name="Quy trình thử", history=True, starters=None):
-    time_to_live = ' operaton:historyTimeToLive="P30D"' if history else ""
+def bpmn(key, name="Quy trình thử", history="P30D", starters=None):
+    time_to_live = f' operaton:historyTimeToLive="{history}"' if history else ""
     if starters is not None:
         time_to_live += f' operaton:candidateStarterGroups="{starters}"'
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -247,6 +250,15 @@ def operaton_send(stack, method, path, body):
     options += ["--request", method, "--data", json.dumps(body)]
     result = stack.exec("operaton", "curl", *options, url)
     return int(result.stdout)
+
+
+def operaton_post(stack, path, body):
+    url = f"http://127.0.0.1:8080/operaton/engine-rest{path}"
+    options = ["--silent", "--fail", "--user", core_account(stack)]
+    options += ["--header", "Content-Type: application/json", "--data", json.dumps(body)]
+    result = stack.exec("operaton", "curl", *options, url)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
 
 
 def started_count(stack, key):
@@ -388,6 +400,30 @@ def instant(value):
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f%z")
 
 
+def start_with_deadline(stack, seconds, code=None):
+    due = datetime.now(UTC) + timedelta(seconds=seconds)
+    due = due.replace(microsecond=due.microsecond // 1000 * 1000)
+    variables = REQUEST | {"han_xu_ly": due.isoformat(timespec="milliseconds")}
+    if code:
+        variables["ma_yeu_cau"] = code
+    status, started = start(stack, stack.new_user(role=STARTER), "yeu_cau_co_han_thu", variables)
+    assert status == 201, started
+    return started["id"], due
+
+
+def escalated(stack, instance):
+    path = f"/task?processInstanceId={instance}&taskDefinitionKey=xu_ly_qua_han"
+    [task] = wait_for(
+        lambda: operaton_get(stack, path), f"Việc của quy trình {instance} chưa sang nhóm quản lý"
+    )
+    return task
+
+
+def in_night_window(moment):
+    night = moment.astimezone(VIETNAM).replace(hour=1, minute=0, second=0, microsecond=0)
+    return night <= moment <= night + timedelta(hours=4)
+
+
 def step_bpmn(key, function):
     properties = ""
     if function:
@@ -438,6 +474,14 @@ def machine_steps(stack, requests_process):
     with bpmn_files(stack, files):
         code, _, errors = deploy(stack)
     assert code == 0, errors
+
+
+@pytest.fixture(scope="module")
+def deadline_process(stack, requests_process):
+    with bpmn_files(stack, {DEADLINE_PROCESS.name: DEADLINE_PROCESS.read_text(encoding="utf-8")}):
+        code, _, errors = deploy(stack)
+    assert code == 0, errors
+    return "yeu_cau_co_han_thu"
 
 
 def test_operaton_runs_on_own_database(stack):
@@ -1354,6 +1398,168 @@ def test_function_runs_once_when_core_dies_before_reporting(stack, machine_steps
     assert state == "COMPLETED"
     assert stack.sql(f"SELECT count(*) FROM thu_nghiem.lan_chay WHERE ma = '{code}'") == [["1"]]
     assert written(stack, instance)["so_lan"] == 1
+
+
+def test_process_with_deadline_cannot_start_without_deadline(stack, deadline_process):
+    before = started_count(stack, deadline_process)
+
+    status, reply = start(stack, stack.new_user(role=STARTER), deadline_process, REQUEST)
+
+    assert (status, reply) == (422, {"detail": "LỖI TUÂN THỦ: Phải nhập Hạn xử lý (han_xu_ly)"})
+    assert started_count(stack, deadline_process) == before
+
+
+def test_overdue_task_moves_to_managers_within_seconds(stack, deadline_process):
+    worker = stack.new_user(role=WORKER)
+    manager = stack.new_user(role=MANAGER)
+    began = time.monotonic()
+    instance, due = start_with_deadline(stack, 10)
+    [task] = operaton_get(stack, f"/task?processInstanceId={instance}")
+
+    moved = escalated(stack, instance)
+    elapsed = time.monotonic() - began
+
+    path = f"/history/task?processInstanceId={instance}&taskDefinitionKey=xu_ly"
+    seen = {
+        name: [
+            item["id"]
+            for item in tasks_of(stack, user)[1]
+            if item["process_instance_id"] == instance
+        ]
+        for name, user in {"worker": worker, "manager": manager}.items()
+    }
+    assert (task["taskDefinitionKey"], instant(task["due"])) == ("xu_ly", due)
+    assert elapsed < 15
+    assert instant(moved["created"]) >= due
+    assert [(item["id"], item["deleteReason"]) for item in operaton_get(stack, path)] == [
+        (task["id"], "deleted")
+    ]
+    assert seen == {"worker": [], "manager": [moved["id"]]}
+    cancel(stack, instance)
+
+
+def test_assignee_loses_overdue_task_and_manager_finishes_process(stack, deadline_process):
+    code = f"YC-{uuid.uuid4().hex[:8]}"
+    stack.sql(f"INSERT INTO thu_nghiem.yeu_cau (ma) VALUES ('{code}')")
+    worker = stack.new_user(role=WORKER)
+    manager = stack.new_user(role=MANAGER)
+    instance, _ = start_with_deadline(stack, 5, code)
+    task = task_of(stack, instance)
+    token = stack.token(worker)
+    claimed = act(stack, token, task, "claim")
+
+    moved = escalated(stack, instance)["id"]
+    boss = stack.token(manager)
+    late = act(stack, token, task, "complete", RESULT)
+    taken = act(stack, token, moved, "claim")
+    handled = (
+        act(stack, boss, moved, "claim"),
+        act(stack, boss, moved, "complete", {"ket_qua": "Quản lý đã thay màn hình"}),
+    )
+
+    history = operaton_get(
+        stack, f"/history/task?processInstanceId={instance}&sortBy=startTime&sortOrder=asc"
+    )
+    assert claimed == (204, None)
+    assert late == (404, TASK_NOT_FOUND)
+    assert taken == (403, NOT_CANDIDATE)
+    assert handled == ((204, None), (204, None))
+    assert finished(stack, instance) == "COMPLETED"
+    assert stack.sql(f"SELECT trang_thai, ket_qua FROM thu_nghiem.yeu_cau WHERE ma = '{code}'") == [
+        ["da_xu_ly", "Quản lý đã thay màn hình"]
+    ]
+    assert [
+        (item["taskDefinitionKey"], item["assignee"], item["deleteReason"]) for item in history
+    ] == [
+        ("xu_ly", worker.id, "deleted"),
+        ("xu_ly_qua_han", manager.id, "completed"),
+    ]
+
+
+def test_task_completed_before_deadline_removes_timer(stack, deadline_process):
+    worker = stack.new_user(role=WORKER)
+    instance, due = start_with_deadline(stack, 60)
+    timers = operaton_get(stack, f"/job?processInstanceId={instance}&timers=true")
+    task = task_of(stack, instance)
+    token = stack.token(worker)
+
+    done = act(stack, token, task, "claim"), act(stack, token, task, "complete", RESULT)
+
+    history = operaton_get(stack, f"/history/task?processInstanceId={instance}")
+    assert done == ((204, None), (204, None))
+    assert [instant(job["dueDate"]) for job in timers] == [due]
+    assert finished(stack, instance) == "COMPLETED"
+    assert operaton_get(stack, f"/job?processInstanceId={instance}") == []
+    assert [item["taskDefinitionKey"] for item in history] == ["xu_ly"]
+
+
+def test_deadline_passed_while_operaton_was_stopped_fires_once_it_starts(stack, deadline_process):
+    closed = "ENGINE-00007 Process Engine default closed"
+    before = stack.logs("operaton").count(closed)
+    instance, due = start_with_deadline(stack, 5)
+    container = stack.container("operaton")
+
+    assert stack.compose_result("stop", "operaton").returncode == 0
+    stopped = stack.inspect(container, "{{.State.Status}} {{.State.ExitCode}}")
+    time.sleep(max((due - datetime.now(UTC)).total_seconds(), 0) + 2)
+    assert stack.compose_result("start", "operaton").returncode == 0
+    deadline = time.monotonic() + 180
+    while stack.inspect(container, "{{.State.Health.Status}}") != "healthy":
+        assert time.monotonic() < deadline, "Operaton chưa khởi động lại"
+        time.sleep(1)
+    back = time.monotonic()
+    moved = escalated(stack, instance)
+
+    assert stopped == "exited 130"
+    assert stack.logs("operaton").count(closed) == before + 1
+    assert time.monotonic() - back < 5
+    assert instant(moved["created"]) > due + timedelta(seconds=2)
+    wait_until_core_account_works(stack)
+    cancel(stack, instance)
+
+
+def test_history_cleanup_is_scheduled_every_night_in_vietnam(stack):
+    window = operaton_get(stack, "/history/cleanup/configuration")
+    begin, end = (instant(window[name]) for name in ("batchWindowStartTime", "batchWindowEndTime"))
+    [job] = operaton_get(stack, "/history/cleanup/jobs")
+
+    assert window["enabled"] is True
+    assert begin.astimezone(VIETNAM).strftime("%H:%M") == "01:00"
+    assert end - begin == timedelta(hours=4)
+    assert in_night_window(instant(job["dueDate"]))
+
+
+def test_history_cleanup_removes_only_history_past_time_to_live(stack):
+    files = {
+        "het-han-ngay.bpmn": bpmn("het_han_ngay", history="P0D"),
+        "giu-lai.bpmn": bpmn("giu_lai"),
+    }
+    with bpmn_files(stack, files):
+        assert deploy(stack)[0] == 0
+    expired, kept = (
+        operaton_post(stack, f"/process-definition/key/{key}/start", {})["id"]
+        for key in ("het_han_ngay", "giu_lai")
+    )
+
+    def history(instance):
+        return operaton_get(stack, f"/history/process-instance?processInstanceId={instance}")
+
+    [old], [new] = history(expired), history(kept)
+    operaton_post(stack, "/history/cleanup?immediatelyDue=true", {})
+    wait_for(lambda: history(expired) == [], "Operaton chưa xóa lịch sử đã hết hạn")
+
+    [job] = wait_for(
+        lambda: [
+            job
+            for job in operaton_get(stack, "/history/cleanup/jobs")
+            if in_night_window(instant(job["dueDate"]))
+        ],
+        "Việc dọn lịch sử chưa được hẹn lại vào ban đêm",
+    )
+    assert instant(old["removalTime"]) == instant(old["endTime"])
+    assert instant(new["removalTime"]) - instant(new["endTime"]) == timedelta(days=30)
+    assert [item["id"] for item in history(kept)] == [kept]
+    assert job["exceptionMessage"] is None
 
 
 def test_core_answers_503_while_operaton_is_unreachable(stack):
