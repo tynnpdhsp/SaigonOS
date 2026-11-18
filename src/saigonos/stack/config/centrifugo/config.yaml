@@ -2,6 +2,7 @@
 client:
   token:
     jwks_public_endpoint: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
+    audience: saigonos
   allow_anonymous_connect_without_token: false
   disallow_anonymous_connection_tokens: true
 http_server:

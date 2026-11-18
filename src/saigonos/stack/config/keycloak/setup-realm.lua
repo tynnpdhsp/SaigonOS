@@ -28,6 +28,17 @@ local MAPPER = {
         ["introspection.token.claim"] = "true",
     },
 }
+local AUDIENCE_MAPPER = {
+    name = "audience saigonos",
+    protocol = "openid-connect",
+    protocolMapper = "oidc-audience-mapper",
+    config = {
+        ["included.custom.audience"] = "saigonos",
+        ["access.token.claim"] = "true",
+        ["id.token.claim"] = "false",
+        ["introspection.token.claim"] = "true",
+    },
+}
 
 local OPERATON = "operaton"
 local OPERATON_FLOW = "saigonos operaton"
@@ -172,11 +183,15 @@ local function add_attribute()
     return true
 end
 
-local function add_mapper()
+local function roles_scope()
     local scope = find(call("GET", REALM .. "/client-scopes"), SCOPE)
     if not scope then
         fail("Realm " .. REALM .. " không có client scope " .. SCOPE)
     end
+    return scope
+end
+
+local function add_mapper(scope)
     if find(scope.protocolMappers, MAPPER.name) then
         return false
     end
@@ -332,6 +347,30 @@ local function differs(current, wanted)
     return false
 end
 
+local function setup_audience(scope)
+    local path = REALM .. "/client-scopes/" .. scope.id .. "/protocol-mappers/models"
+    local name = AUDIENCE_MAPPER.name
+    local mapper = find(scope.protocolMappers, name)
+    if not mapper then
+        call("POST", path, AUDIENCE_MAPPER)
+        print("Đã thêm mapper " .. name .. " vào client scope " .. SCOPE .. " của realm " .. REALM)
+        return true
+    end
+    local kind = AUDIENCE_MAPPER.protocolMapper
+    if mapper.protocolMapper == kind and not differs(mapper.config, AUDIENCE_MAPPER.config) then
+        return false
+    end
+    call("PUT", path .. "/" .. mapper.id, {
+        id = mapper.id,
+        name = name,
+        protocol = AUDIENCE_MAPPER.protocol,
+        protocolMapper = kind,
+        config = AUDIENCE_MAPPER.config,
+    })
+    print("Mapper " .. name .. " của client scope " .. SCOPE .. " đã bị thay đổi nên được đặt lại")
+    return true
+end
+
 local function setup_operaton()
     local client = find_client()
     local changed = false
@@ -391,9 +430,11 @@ end
 log_in()
 secure_master()
 local attribute_added = add_attribute()
-local mapper_added = add_mapper()
+local scope = roles_scope()
+local mapper_added = add_mapper(scope)
+local audience_changed = setup_audience(scope)
 local texts_added = add_texts()
 local operaton_changed = setup_operaton()
-if not attribute_added and not mapper_added and not texts_added and not operaton_changed then
+if not (attribute_added or mapper_added or audience_changed or texts_added or operaton_changed) then
     print("Realm " .. REALM .. " không cần thay đổi")
 end
