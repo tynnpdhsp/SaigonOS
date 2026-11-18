@@ -6,17 +6,35 @@ from fastapi.testclient import TestClient
 
 from saigonos_core.main import create_app
 from saigonos_core.operaton import OperatonError, OperatonUnavailableError
-from saigonos_core.processes import Rules, rules_of
+from saigonos_core.processes import rules_of
 
 OPERATON = "http://operaton.org/schema/1.0/bpmn"
 CAMUNDA = "http://camunda.org/schema/1.0/bpmn"
 STARTER = "nguoi-gui"
 FORBIDDEN = {"detail": "Người gọi không có realm role được bắt đầu quy trình này"}
+REQUIRED = '<operaton:constraint name="required" />'
 
 
-def bpmn(key, starters=None, initiator=None, prefix="operaton", extra=""):
+def form_field(name, kind="string", *constraints):
+    validation = f"<operaton:validation>{''.join(constraints)}</operaton:validation>"
+    return f'<operaton:formField id="{name}" type="{kind}">{validation}</operaton:formField>'
+
+
+FIELDS = (
+    form_field("noi_dung"),
+    form_field("so_luong", "long"),
+    form_field("khan", "boolean"),
+    form_field("han", "date"),
+    form_field("ghi"),
+)
+
+
+def bpmn(key, starters=None, initiator=None, prefix="operaton", extra="", fields=FIELDS):
     starter = f' {prefix}:candidateStarterGroups="{starters}"' if starters is not None else ""
     event = f' {prefix}:initiator="{initiator}"' if initiator else ""
+    data = ""
+    if fields is not None:
+        data = f"<operaton:formData>{''.join(fields)}</operaton:formData>"
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:operaton="{OPERATON}" xmlns:camunda="{CAMUNDA}"
@@ -25,7 +43,9 @@ def bpmn(key, starters=None, initiator=None, prefix="operaton", extra=""):
     <bpmn:startEvent id="bat_dau_khac" operaton:initiator="nguoi_khac" />
   </bpmn:process>
   <bpmn:process id="{key}" isExecutable="true"{starter}{extra}>
-    <bpmn:startEvent id="bat_dau"{event} />
+    <bpmn:startEvent id="bat_dau"{event}>
+      <bpmn:extensionElements>{data}</bpmn:extensionElements>
+    </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>
 """
@@ -63,7 +83,7 @@ def initiator(realm):
 def test_caller_with_starter_role_starts_latest_version(client, operaton, realm):
     operaton.deploy("yeu_cau", bpmn("yeu_cau", f"quan-ly,{STARTER}"), version=1)
     latest = operaton.deploy("yeu_cau", bpmn("yeu_cau", f"quan-ly,{STARTER}"), version=3)
-    variables = {"noi_dung": "Máy 12 hỏng", "so_luong": 2, "ty_le": 0.5, "khan": True, "ghi": None}
+    variables = {"noi_dung": "Máy 12 hỏng", "so_luong": 2, "khan": True, "ghi": None}
 
     reply = start(client, bearer(realm, STARTER), variables=variables)
 
@@ -75,7 +95,6 @@ def test_caller_with_starter_role_starts_latest_version(client, operaton, realm)
             {
                 "noi_dung": {"value": "Máy 12 hỏng", "type": "String"},
                 "so_luong": {"value": 2, "type": "Long"},
-                "ty_le": {"value": 0.5, "type": "Double"},
                 "khan": {"value": True, "type": "Boolean"},
                 "ghi": {"value": None, "type": "Null"},
                 "initiator": initiator(realm),
@@ -160,7 +179,9 @@ def test_starter_groups_are_read_as_operaton_reads_them(xml, starters):
     ],
 )
 def test_initiators_are_read_from_start_events_of_process(xml, initiators):
-    assert rules_of(xml, "yeu_cau") == Rules(frozenset({STARTER}), frozenset(initiators))
+    rules = rules_of(xml, "yeu_cau")
+
+    assert (rules.starters, rules.initiators) == (frozenset({STARTER}), frozenset(initiators))
 
 
 @pytest.mark.parametrize("name", ["initiator", "nguoi_tao"])
@@ -172,6 +193,63 @@ def test_caller_cannot_send_variable_of_initiator(client, operaton, realm, name)
     assert reply.status_code == 422
     assert reply.json()["detail"] == (
         f"Biến {name} do service core ghi bằng mã người gọi. Người gọi không gửi được biến này"
+    )
+    assert operaton.started == []
+
+
+def test_values_are_sent_with_types_of_start_form(client, operaton, realm):
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER))
+
+    reply = start(client, bearer(realm, STARTER), variables={"han": "2026-11-20T09:00:00+07:00"})
+
+    assert reply.status_code == 201
+    assert operaton.started[0][1] == {
+        "han": {"value": "2026-11-20T02:00:00.000+0000", "type": "Date"},
+        "initiator": initiator(realm),
+    }
+
+
+def test_variable_outside_start_form_is_refused(client, operaton, realm):
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER))
+
+    reply = start(client, bearer(realm, STARTER), variables={"noi_dung": "x", "ty_le": 0.5})
+
+    assert (reply.status_code, reply.json()) == (
+        422,
+        {"detail": "Form bắt đầu của quy trình không nhận biến ty_le"},
+    )
+    assert operaton.started == []
+
+
+@pytest.mark.parametrize("fields", [None, ()], ids=["không có form", "form không có trường"])
+def test_process_without_start_form_is_started_without_variables(client, operaton, realm, fields):
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER, fields=fields))
+
+    started = start(client, bearer(realm, STARTER))
+    refused = start(client, bearer(realm, STARTER), variables={"noi_dung": "x"})
+
+    assert started.status_code == 201
+    assert (refused.status_code, refused.json()) == (
+        422,
+        {"detail": "Form bắt đầu của quy trình không nhận biến noi_dung"},
+    )
+    assert operaton.started == [("yeu_cau:1:0001", {"initiator": initiator(realm)})]
+
+
+@pytest.mark.parametrize(
+    "variables",
+    [{"ghi": "x"}, {"noi_dung": None}, {"noi_dung": ""}, {"noi_dung": " \t\n "}],
+    ids=["thiếu", "null", "rỗng", "khoảng trắng"],
+)
+def test_required_field_of_start_form_needs_value(client, operaton, realm, variables):
+    fields = (form_field("noi_dung", "string", REQUIRED), form_field("ghi"))
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER, fields=fields))
+
+    reply = start(client, bearer(realm, STARTER), variables=variables)
+
+    assert (reply.status_code, reply.json()) == (
+        422,
+        {"detail": "LỖI TUÂN THỦ: Phải nhập noi_dung"},
     )
     assert operaton.started == []
 
@@ -227,7 +305,8 @@ def test_variable_outside_supported_values_is_refused(client, operaton, realm, v
 
 
 def test_largest_supported_values_are_accepted(client, operaton, realm):
-    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER))
+    fields = (form_field("n" * 64), form_field("lon", "long"), form_field("nho", "long"))
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER, fields=fields))
     variables = {"n" * 64: "x" * 4000, "lon": 2**63 - 1, "nho": -(2**63)}
 
     reply = start(client, bearer(realm, STARTER), variables=variables)

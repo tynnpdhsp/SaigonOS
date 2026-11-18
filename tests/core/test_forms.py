@@ -3,6 +3,88 @@ import pytest
 from fastapi import HTTPException
 
 from saigonos_core.forms import START_FORM, TASK_FORM, FormField, submitted
+from saigonos_core.processes import form_of, rules_of
+
+DEFINITIONS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="yeu_cau" isExecutable="true">
+    <bpmn:startEvent id="theo_tin_nhan">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="tu_tin_nhan" type="string" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+      <bpmn:messageEventDefinition messageRef="tin_nhan" />
+    </bpmn:startEvent>
+    <bpmn:startEvent id="bat_dau">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="noi_dung" label=" Nội dung " type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+              <operaton:constraint name="minlength" config="5" />
+              <operaton:constraint name="minlength" config="+10" />
+              <operaton:constraint name="maxlength" config="abc" />
+              <operaton:constraint name="maxlength" config="200" />
+              <operaton:constraint name="maxlength" config="100" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="so_luong" label="" type="long">
+            <operaton:validation>
+              <operaton:constraint name="min" config="-1" />
+              <operaton:constraint name="max" config="1.5" />
+              <operaton:constraint name="readonly" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="muc_uu_tien" type="enum">
+            <operaton:value id="cao" name="Cao" />
+            <operaton:value name="Không có mã" />
+            <operaton:value id="thap" name="Thấp" />
+          </operaton:formField>
+          <operaton:formField id="noi_dung" type="long" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+    <bpmn:userTask id="xu_ly">
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="ket_qua" type="string" />
+        </camunda:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:subProcess id="nhanh">
+      <bpmn:userTask id="duyet">
+        <bpmn:extensionElements>
+          <camunda:formData>
+            <camunda:formField id="bi_bo_qua" type="string" />
+          </camunda:formData>
+          <operaton:formData>
+            <operaton:formField id="dong_y" type="boolean">
+              <camunda:validation>
+                <camunda:constraint name="required" />
+              </camunda:validation>
+            </operaton:formField>
+          </operaton:formData>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+    </bpmn:subProcess>
+    <bpmn:userTask id="xem" />
+  </bpmn:process>
+  <bpmn:process id="chi_tin_nhan" isExecutable="true">
+    <bpmn:startEvent id="nhan_tin">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="tu_tin_nhan" type="string" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+      <bpmn:messageEventDefinition messageRef="tin_nhan" />
+    </bpmn:startEvent>
+  </bpmn:process>
+</bpmn:definitions>
+"""
 
 RESULT = FormField("ket_qua", "string", "Kết quả", required=True, min_length=5, max_length=20)
 HOURS = FormField("so_gio", "long", "Số giờ", minimum=1, maximum=8)
@@ -189,6 +271,30 @@ def test_every_problem_is_named_in_order_of_form():
 )
 def test_field_is_named_by_label_and_id(field, title):
     assert refusal((field,), {}) == f"LỖI TUÂN THỦ: Phải nhập {title}"
+
+
+def test_start_form_comes_from_start_event_without_event_definition():
+    assert rules_of(DEFINITIONS, "yeu_cau").start_form == (
+        FormField("noi_dung", "string", "Nội dung", required=True, min_length=10, max_length=100),
+        FormField("so_luong", "long", readonly=True, minimum=-1),
+        FormField("muc_uu_tien", "enum", choices=("cao", "thap")),
+    )
+
+
+def test_task_forms_are_read_by_task_id_as_operaton_reads_them():
+    assert rules_of(DEFINITIONS, "yeu_cau").task_forms == {
+        "xu_ly": (FormField("ket_qua", "string"),),
+        "duyet": (FormField("dong_y", "boolean", required=True),),
+        "xem": (),
+    }
+
+
+@pytest.mark.parametrize("key", ["chi_tin_nhan", "khong_co"])
+def test_process_without_none_start_event_has_no_forms(key):
+    rules = rules_of(DEFINITIONS, key)
+
+    assert (rules.start_form, rules.task_forms) == ((), {})
+    assert form_of(None) == ()
 
 
 def test_field_of_unknown_type_is_refused():

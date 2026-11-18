@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-from dataclasses import dataclass
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Annotated, Any
 from xml.etree import ElementTree
 
@@ -18,11 +20,13 @@ from pydantic import (
 from starlette.concurrency import run_in_threadpool
 
 from saigonos_core.api import BAD_GATEWAY, UNAUTHORIZED, UNAVAILABLE, Message, User, operaton_errors
+from saigonos_core.forms import START_FORM, Form, FormField, submitted
 from saigonos_core.operaton import Operaton
 
 BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 EXTENSIONS = ("http://operaton.org/schema/1.0/bpmn", "http://camunda.org/schema/1.0/bpmn")
 INITIATOR = "initiator"
+NUMBER = re.compile(r"[+-]?[0-9]+")
 KEY = r"^[A-Za-z_][A-Za-z0-9_.-]*$"
 NAME = r"^[A-Za-z_][A-Za-z0-9_]*$"
 MAX_KEY = 255
@@ -56,8 +60,8 @@ class StartRequest(BaseModel):
     variables: dict[Name, Value] = Field(
         default_factory=dict,
         description=(
-            "Biến của quy trình. Giá trị là chuỗi tối đa 4.000 ký tự, số nguyên, số thực, "
-            "true, false hoặc null"
+            "Giá trị của các trường trong form bắt đầu của quy trình. Tên biến là thuộc tính id "
+            "của trường trong file BPMN"
         ),
         examples=[{"noi_dung": "Máy 12 không lên màn hình", "so_luong": 1}],
     )
@@ -73,6 +77,8 @@ class StartedProcess(BaseModel):
 class Rules:
     starters: frozenset[str]
     initiators: frozenset[str]
+    start_form: Form = ()
+    task_forms: dict[str, Form] = field(default_factory=dict)
 
 
 def extension(element: ElementTree.Element, name: str) -> str | None:
@@ -83,8 +89,70 @@ def extension(element: ElementTree.Element, name: str) -> str | None:
     return None
 
 
+def children(element: ElementTree.Element | None, name: str) -> list[ElementTree.Element]:
+    if element is None:
+        return []
+    for namespace in EXTENSIONS:
+        found = element.findall(f"{{{namespace}}}{name}")
+        if found:
+            return found
+    return []
+
+
+def child(element: ElementTree.Element | None, name: str) -> ElementTree.Element | None:
+    return next(iter(children(element, name)), None)
+
+
 def listed(value: str | None) -> frozenset[str]:
     return frozenset(part.strip() for part in (value or "").split(",") if part.strip())
+
+
+def number(config: str | None) -> int | None:
+    return int(config) if config is not None and NUMBER.fullmatch(config) else None
+
+
+def bound(
+    configs: dict[str | None, list[int | None]], name: str, strictest: Callable[[list[int]], int]
+) -> int | None:
+    values = [value for value in configs.get(name, []) if value is not None]
+    return strictest(values) if values else None
+
+
+def field_of(element: ElementTree.Element) -> FormField:
+    configs: dict[str | None, list[int | None]] = {}
+    for constraint in children(child(element, "validation"), "constraint"):
+        configs.setdefault(constraint.get("name"), []).append(number(constraint.get("config")))
+    choices = (value.get("id") for value in children(element, "value"))
+    return FormField(
+        name=element.get("id", ""),
+        kind=element.get("type", ""),
+        label=(element.get("label") or "").strip() or None,
+        required="required" in configs,
+        readonly="readonly" in configs,
+        min_length=bound(configs, "minlength", max),
+        max_length=bound(configs, "maxlength", min),
+        minimum=bound(configs, "min", max),
+        maximum=bound(configs, "max", min),
+        choices=tuple(choice for choice in choices if choice is not None),
+    )
+
+
+def form_of(element: ElementTree.Element | None) -> Form:
+    if element is None:
+        return ()
+    data = child(element.find(f"{{{BPMN}}}extensionElements"), "formData")
+    fields: dict[str, FormField] = {}
+    for item in children(data, "formField"):
+        found = field_of(item)
+        fields.setdefault(found.name, found)
+    return tuple(fields.values())
+
+
+def initial_event(process: ElementTree.Element) -> ElementTree.Element | None:
+    for event in process.findall(f"{{{BPMN}}}startEvent"):
+        if not any(item.tag.endswith(("EventDefinition", "eventDefinitionRef")) for item in event):
+            return event
+    return None
 
 
 def rules_of(xml: str, key: str) -> Rules:
@@ -92,9 +160,12 @@ def rules_of(xml: str, key: str) -> Rules:
         if process.get("id") == key:
             events = process.findall(f"{{{BPMN}}}startEvent")
             initiators = {extension(event, "initiator") for event in events}
+            tasks = process.iter(f"{{{BPMN}}}userTask")
             return Rules(
                 listed(extension(process, "candidateStarterGroups")),
                 frozenset({INITIATOR} | {name for name in initiators if name}),
+                form_of(initial_event(process)),
+                {task.get("id", ""): form_of(task) for task in tasks},
             )
     return Rules(frozenset(), frozenset({INITIATOR}))
 
@@ -151,6 +222,11 @@ router = APIRouter(prefix="/processes")
     "/{key}/start",
     status_code=201,
     summary="Bắt đầu phiên bản mới nhất của quy trình",
+    description=(
+        "Bắt đầu quy trình bằng form bắt đầu khai trong file BPMN. Nội dung chỉ được chứa các "
+        "trường của form này. Khi một giá trị không đạt ràng buộc của trường, lời gọi nhận mã 422 "
+        "với nội dung bắt đầu bằng LỖI TUÂN THỦ"
+    ),
     responses=UNAUTHORIZED
     | {
         403: {"model": Message, "description": FORBIDDEN},
@@ -178,7 +254,7 @@ async def start_process(
         if definition["suspended"]:
             raise HTTPException(409, SUSPENDED)
         check_variables(rules, variables)
-        sent = {name: typed(value) for name, value in variables.items()}
+        sent = submitted(rules.start_form, variables, START_FORM)
         sent |= {name: typed(user.claims["sub"]) for name in rules.initiators}
         instance = await run_in_threadpool(
             processes.operaton.submit_start_form, definition["id"], sent
