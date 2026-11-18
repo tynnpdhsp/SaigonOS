@@ -93,6 +93,43 @@ class Operaton:
         path = f"/task/{segment(task_id)}/submit-form"
         self.result(*self.call("POST", path, {"variables": variables}), expected=204)
 
+    def lock_external_tasks(
+        self, worker: str, topic: str, lock: float, wait: float
+    ) -> list[dict[str, Any]]:
+        body = {
+            "workerId": worker,
+            "maxTasks": 1,
+            "asyncResponseTimeout": int(wait * 1000),
+            "topics": [
+                {
+                    "topicName": topic,
+                    "lockDuration": int(lock * 1000),
+                    "includeExtensionProperties": True,
+                }
+            ],
+        }
+        return self.result(*self.call("POST", "/external-task/fetchAndLock", body))
+
+    def complete_external_task(
+        self, task_id: str, worker: str, variables: dict[str, dict[str, Any]]
+    ) -> None:
+        path = f"/external-task/{segment(task_id)}/complete"
+        body = {"workerId": worker, "variables": variables}
+        self.result(*self.call("POST", path, body), expected=204)
+
+    def fail_external_task(
+        self, task_id: str, worker: str, message: str, details: str, retries: int, delay: float
+    ) -> None:
+        path = f"/external-task/{segment(task_id)}/failure"
+        body = {
+            "workerId": worker,
+            "errorMessage": message,
+            "errorDetails": details,
+            "retries": retries,
+            "retryTimeout": int(delay * 1000),
+        }
+        self.result(*self.call("POST", path, body), expected=204)
+
     @staticmethod
     def result(status: int, data: Any, expected: int = 200) -> Any:
         if status != expected:

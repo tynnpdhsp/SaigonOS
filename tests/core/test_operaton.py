@@ -209,6 +209,60 @@ def test_submit_task_form_sends_variables(server, operaton):
     assert json.loads(body) == {"variables": variables}
 
 
+def test_lock_external_tasks_waits_for_one_task_of_topic(server, operaton):
+    task = {"id": "buoc-1", "topicName": "saigonos-function"}
+    server.reply("POST", "/external-task/fetchAndLock", 200, [task])
+
+    locked = operaton.lock_external_tasks("may-1", "saigonos-function", 60, 5)
+
+    assert locked == [task]
+    assert json.loads(server.requests[0][3]) == {
+        "workerId": "may-1",
+        "maxTasks": 1,
+        "asyncResponseTimeout": 5000,
+        "topics": [
+            {
+                "topicName": "saigonos-function",
+                "lockDuration": 60000,
+                "includeExtensionProperties": True,
+            }
+        ],
+    }
+
+
+def test_complete_external_task_sends_worker_and_variables(server, operaton):
+    server.reply("POST", "/external-task/buoc-1/complete", 204)
+    variables = {"da_xu_ly": {"value": True, "type": "Boolean"}}
+
+    operaton.complete_external_task("buoc-1", "may-1", variables)
+
+    assert json.loads(server.requests[0][3]) == {"workerId": "may-1", "variables": variables}
+
+
+def test_fail_external_task_sends_retries_and_delay_in_milliseconds(server, operaton):
+    server.reply("POST", "/external-task/buoc-1/failure", 204)
+
+    operaton.fail_external_task("buoc-1", "may-1", "Hàm báo lỗi", "SQLSTATE P0001", 2, 30)
+
+    assert json.loads(server.requests[0][3]) == {
+        "workerId": "may-1",
+        "errorMessage": "Hàm báo lỗi",
+        "errorDetails": "SQLSTATE P0001",
+        "retries": 2,
+        "retryTimeout": 30000,
+    }
+
+
+def test_external_task_locked_by_another_worker_raises_error(server, operaton):
+    message = "External Task buoc-1 cannot be completed by worker 'may-1'."
+    server.reply("POST", "/external-task/buoc-1/complete", 400, {"message": message})
+
+    with pytest.raises(OperatonError) as raised:
+        operaton.complete_external_task("buoc-1", "may-1", {})
+
+    assert raised.value.status == 400
+
+
 def test_other_success_status_than_expected_raises_error(server, operaton):
     server.reply("POST", "/task/viec-1/submit-form", 200, {"ket_qua": "xong"})
 
