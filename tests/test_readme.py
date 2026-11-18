@@ -205,6 +205,15 @@ def test_readme_links_point_to_existing_sections():
     assert set(links) <= {anchor(heading) for heading in HEADINGS}
 
 
+def test_readme_table_of_contents_lists_every_section():
+    listed = re.findall(r"^- \[(.+)\]\(#(.+)\)$", section("## Mục lục"), re.MULTILINE)
+    sections = [
+        title for title in re.findall(r"^## (.+)$", PROSE, re.MULTILINE) if title != "Mục lục"
+    ]
+
+    assert listed == [(title, anchor(title)) for title in sections]
+
+
 def test_readme_states_the_default_values():
     assert f"| `--http-host` | `{DEFAULT_HTTP_HOST}` |" in README
     assert f"| `--http-port` | `{DEFAULT_HTTP_PORT}` |" in README

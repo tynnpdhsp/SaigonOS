@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.4.0] - 2026-11-18
+
 ### Thêm
 
 - Service `operaton` chạy các quy trình BPMN 2.0 bằng Operaton. Operaton lưu dữ liệu trong cơ sở dữ liệu `operaton` riêng. Service `databases` tạo cơ sở dữ liệu này và role `operaton` khi chưa có, kể cả với cơ sở dữ liệu được tạo từ phiên bản cũ.
@@ -27,6 +29,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Quy trình có thể gắn hẹn giờ trên biên của một việc. Khi việc quá hạn, quy trình rẽ sang nhánh khác, ví dụ chuyển việc cho nhóm quản lý. Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần, nên hẹn giờ chạy chậm nhất khoảng 2 giây sau hạn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
 - Mỗi ngày từ 01:00 đến 05:00 giờ Việt Nam, Operaton xóa lịch sử của các quy trình đã kết thúc quá thời gian `historyTimeToLive`.
 - Khi container dừng, Operaton dừng job executor và đóng các kết nối tới cơ sở dữ liệu trước khi thoát.
+
+### Thay đổi
+
+- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng đĩa vì có thêm Operaton.
 
 ### Sửa
 
@@ -146,7 +152,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.3.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
 [0.1.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.1.1
