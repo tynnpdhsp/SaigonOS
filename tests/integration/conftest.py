@@ -78,7 +78,7 @@ def free_port():
 
 
 def free_ports():
-    options = ("--http-port", "--admin-port", "--keycloak-port")
+    options = ("--http-port", "--admin-port", "--keycloak-port", "--seaweedfs-port")
     return [value for option in options for value in (option, str(free_port()))]
 
 
