@@ -572,23 +572,64 @@ Ví dụ sau là một quy trình đơn giản gồm điểm bắt đầu và đ
 </bpmn:definitions>
 ```
 
+### Form
+
+Form khai báo các giá trị mà người dùng nhập khi bắt đầu quy trình hoặc khi hoàn thành việc. Form bắt đầu nằm trong thẻ `startEvent` của quy trình. Form của việc nằm trong thẻ `userTask`. Mỗi trường của form là một thẻ `operaton:formField` trong phần `operaton:formData`. Thuộc tính `id` là tên biến của trường, `label` là tên hiển thị và `type` là kiểu của trường. Form viết với tiền tố `camunda:` của Camunda 7 cũng được đọc như Operaton đọc.
+
+Ví dụ sau khai báo trường `ket_qua` của một việc. Trường này bắt buộc nhập và phải có ít nhất 10 ký tự:
+
+```xml
+<bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien">
+  <bpmn:extensionElements>
+    <operaton:formData>
+      <operaton:formField id="ket_qua" label="Kết quả" type="string">
+        <operaton:validation>
+          <operaton:constraint name="required" />
+          <operaton:constraint name="minlength" config="10" />
+        </operaton:validation>
+      </operaton:formField>
+    </operaton:formData>
+  </bpmn:extensionElements>
+</bpmn:userTask>
+```
+
+Service `core` chỉ nhận các trường được khai báo trong form. Lời gọi gửi biến không có trong form nhận mã 422. Nhờ đó, người dùng không ghi đè được các biến khác của quy trình. Ví dụ, form của việc không khai báo trường `noi_dung` thì người hoàn thành việc không sửa được biến `noi_dung`. Quy trình hoặc việc không có form chỉ nhận nội dung không có biến nào.
+
+Thuộc tính `id` của trường bắt đầu bằng chữ cái không dấu hoặc dấu gạch dưới. Các ký tự tiếp theo là chữ cái không dấu, chữ số hoặc dấu gạch dưới. Tên dài tối đa 64 ký tự. Kiểu của trường quy định giá trị được nhận:
+
+| Kiểu | Giá trị trong JSON | Kiểu biến trong Operaton |
+|---|---|---|
+| `string` | Chuỗi tối đa 4.000 ký tự | `String` |
+| `long` | Số nguyên từ -2^63 tới 2^63 - 1 | `Long` |
+| `boolean` | `true` hoặc `false` | `Boolean` |
+| `date` | Chuỗi ngày giờ theo ISO 8601 có múi giờ, ví dụ `2026-11-20T09:00:00+07:00` | `Date`, lưu theo giờ UTC |
+| `enum` | Chuỗi bằng thuộc tính `id` của một thẻ `operaton:value` trong trường | `String` |
+
+Trường không bắt buộc nhận thêm giá trị `null`. Các ràng buộc của trường nằm trong phần `operaton:validation`:
+
+| Ràng buộc | Ý nghĩa |
+|---|---|
+| `required` | Bắt buộc nhập. Giá trị `null`, chuỗi rỗng và chuỗi chỉ có khoảng trắng được coi là chưa nhập |
+| `minlength` | Số ký tự tối thiểu của chuỗi, không tính khoảng trắng ở đầu và cuối |
+| `maxlength` | Số ký tự tối đa của chuỗi |
+| `min`, `max` | Giá trị nhỏ nhất và lớn nhất của trường kiểu `long` |
+| `readonly` | Trường chỉ để xem. Service `core` không nhận giá trị của trường này |
+
+Service `core` kiểm tra form trước khi gửi các giá trị tới Operaton. Khi một giá trị không đạt, lời gọi nhận mã 422 với nội dung bắt đầu bằng `LỖI TUÂN THỦ`. Nội dung lỗi nêu tên hiển thị và tên biến của từng trường không đạt. Khi đó, quy trình chưa được bắt đầu, hoặc việc vẫn thuộc người nhận và quy trình không đi tiếp. Ví dụ, lời gọi hoàn thành việc `xu_ly` ở trên mà thiếu trường `ket_qua` nhận nội dung sau:
+
+```json
+{"detail": "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"}
+```
+
 ### Bắt đầu quy trình
 
 Lời gọi `POST /core/processes/{key}/start` bắt đầu phiên bản mới nhất của quy trình có mã `key`. Mã quy trình là thuộc tính `id` của thẻ `process`. Lời gọi cần access token của người dùng đã đăng nhập.
 
 Người gọi phải có một realm role nằm trong thuộc tính `operaton:candidateStarterGroups` của thẻ `process`. Giá trị của thuộc tính là danh sách tên realm role, cách nhau bởi dấu phẩy, không dùng biểu thức `${...}`. Quy trình không có thuộc tính này thì không ai bắt đầu được qua API. File BPMN viết cho Camunda 7 với tiền tố `camunda:` cũng được đọc như Operaton đọc.
 
-Nội dung của lời gọi có thể chứa các biến của quy trình trong trường `variables`. Tên biến bắt đầu bằng chữ cái không dấu hoặc dấu gạch dưới, tiếp theo là chữ cái không dấu, chữ số hoặc dấu gạch dưới, dài tối đa 64 ký tự. Giá trị của biến được đổi sang kiểu của Operaton như sau:
+Nội dung của lời gọi chứa giá trị của các trường trong form bắt đầu, đặt trong trường `variables`. Quy tắc của form được trình bày ở mục [Form](#form).
 
-| Giá trị trong JSON | Kiểu biến trong Operaton |
-|---|---|
-| Chuỗi tối đa 4.000 ký tự | `String` |
-| Số nguyên từ -2^63 tới 2^63 - 1 | `Long` |
-| Số thực | `Double` |
-| `true` hoặc `false` | `Boolean` |
-| `null` | `Null` |
-
-Service `core` ghi mã người gọi, tức claim `sub` của access token, vào biến `initiator`. Khi điểm bắt đầu của quy trình có thuộc tính `operaton:initiator`, biến mang tên ghi trong thuộc tính này cũng nhận mã người gọi. Người gọi không gửi được các biến này.
+Service `core` ghi mã người gọi, tức claim `sub` của access token, vào biến `initiator`. Khi điểm bắt đầu của quy trình có thuộc tính `operaton:initiator`, biến mang tên ghi trong thuộc tính này cũng nhận mã người gọi. Người gọi không gửi được các biến này, kể cả khi form khai báo trường cùng tên.
 
 Ví dụ, một ứng dụng web bắt đầu quy trình `yeu_cau` như sau:
 
@@ -603,7 +644,7 @@ const { id, version } = await reply.json();
 
 Lời gọi trả về mã 201 kèm mã của quy trình vừa bắt đầu trong trường `id` và phiên bản của quy trình trong trường `version`.
 
-Quy trình `yeu_cau` trong ví dụ được lưu trong file `yeu-cau.bpmn`. Người có realm role `nguoi-gui` bắt đầu được quy trình. Việc `xu_ly` chờ một người có realm role `nhan-vien` nhận:
+Quy trình `yeu_cau` trong ví dụ được lưu trong file `yeu-cau.bpmn`. Người có realm role `nguoi-gui` bắt đầu được quy trình. Form bắt đầu có trường `noi_dung` bắt buộc nhập. Việc `xu_ly` chờ một người có realm role `nhan-vien` nhận. Form của việc này có trường `ket_qua` bắt buộc nhập và phải có ít nhất 10 ký tự:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -612,9 +653,30 @@ Quy trình `yeu_cau` trong ví dụ được lưu trong file `yeu-cau.bpmn`. Ng�
                   id="yeu_cau_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
   <bpmn:process id="yeu_cau" name="Tiếp nhận yêu cầu" isExecutable="true"
                 operaton:historyTimeToLive="P30D" operaton:candidateStarterGroups="nguoi-gui">
-    <bpmn:startEvent id="bat_dau" />
+    <bpmn:startEvent id="bat_dau">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="noi_dung" label="Nội dung" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
     <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="xu_ly" />
-    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien" />
+    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="ket_qua" label="Kết quả" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+              <operaton:constraint name="minlength" config="10" />
+            </operaton:validation>
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
     <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ket_thuc" />
     <bpmn:endEvent id="ket_thuc" />
   </bpmn:process>
@@ -648,7 +710,7 @@ Mỗi việc gồm các trường sau:
 
 Lời gọi `POST /core/tasks/{id}/claim` nhận việc có mã `id` cho người gọi. Mã việc là trường `id` trong danh sách việc. Người gọi phải có một realm role nằm trong nhóm ứng viên của việc. Việc đã có người khác nhận thì không nhận được. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Những người còn lại nhận mã 409. Gọi lại lời gọi này với việc mà người gọi đã nhận thì không có gì thay đổi.
 
-Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Chỉ người nhận việc mới hoàn thành được việc. Nội dung của lời gọi có thể chứa các biến trong trường `variables`, theo cùng quy tắc với lời gọi bắt đầu quy trình. Service `core` gửi các biến này qua form của việc trong Operaton. Sau đó, quy trình đi tiếp sang bước sau. Người hoàn thành việc cũng không gửi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
+Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Chỉ người nhận việc mới hoàn thành được việc. Nội dung của lời gọi chứa giá trị của các trường trong form của việc, đặt trong trường `variables`. Service `core` kiểm tra các giá trị theo mục [Form](#form) rồi gửi qua form của việc trong Operaton. Sau đó, quy trình đi tiếp sang bước sau. Người hoàn thành việc cũng không gửi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
 
 Cả hai lời gọi cần access token của người dùng đã đăng nhập. Khi thành công, lời gọi trả về mã 204 và không có nội dung.
 
@@ -677,6 +739,7 @@ Các mã lỗi của các lời gọi về quy trình và việc:
 | 409 | Bắt đầu quy trình | Quy trình đang tạm ngưng trong Cockpit |
 | 409 | Nhận việc | Việc đã có người khác nhận |
 | 409 | Nhận việc, hoàn thành việc | Việc đang tạm ngưng vì quy trình chứa việc bị tạm ngưng trong Cockpit |
+| 422 | Bắt đầu quy trình, hoàn thành việc | Giá trị không theo form trong file BPMN, ví dụ thiếu trường bắt buộc hoặc gửi biến không có trong form |
 | 422 | Tất cả | Nội dung hoặc tham số không hợp lệ, ví dụ người gọi gửi biến `initiator` |
 | 502 | Tất cả | Operaton báo lỗi. Nội dung lỗi được ghi vào log của service `core` |
 | 503 | Tất cả | Operaton chưa sẵn sàng hoặc đang từ chối tài khoản `core` |
@@ -698,7 +761,7 @@ Bước máy làm là một service task trong file BPMN. Bước này gọi m�
 </bpmn:serviceTask>
 ```
 
-Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình, ví dụ `{"ma_yeu_cau": "YC-01", "ket_qua": "Đã thay cáp màn hình"}`. Biến kiểu ngày giờ được truyền dưới dạng chuỗi. Quy trình có biến thuộc kiểu khác chuỗi, số, ngày giờ, `true`, `false` và `null` thì bước máy làm không chạy được. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình, theo quy tắc ở mục [Bắt đầu quy trình](#bắt-đầu-quy-trình). Hàm không ghi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
+Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình, ví dụ `{"ma_yeu_cau": "YC-01", "ket_qua": "Đã thay cáp màn hình"}`. Biến kiểu ngày giờ được truyền dưới dạng chuỗi theo giờ UTC, ví dụ `2026-11-20T02:00:00.000+0000`. Quy trình có biến thuộc kiểu khác chuỗi, số, ngày giờ, `true`, `false` và `null` thì bước máy làm không chạy được. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình. Tên biến theo quy tắc của thuộc tính `id` ở mục [Form](#form). Giá trị là chuỗi tối đa 4.000 ký tự, số nguyên, số thực, `true`, `false` hoặc `null`. Hàm không ghi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
 
 Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Ví dụ, ứng dụng khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
 

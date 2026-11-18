@@ -7,6 +7,7 @@ from typing import get_args
 
 import click
 import pytest
+from fastapi import HTTPException
 
 from saigonos.cli import main
 from saigonos.doctor import PROBES
@@ -21,7 +22,9 @@ from saigonos.home import (
     LARGEST_FILE_SIZE,
 )
 from saigonos_core.files import FileInfo
+from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.processes import rules_of
 from saigonos_core.tasks import Task
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
@@ -158,6 +161,37 @@ def test_readme_lists_every_task_field():
     rows = re.findall(r"^\| (`[^|]+) \|", section("### Danh sách việc"), re.MULTILINE)
 
     assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
+
+
+def test_readme_lists_every_form_field_type():
+    kinds = section("### Form").split("| Ràng buộc |")[0]
+
+    assert set(re.findall(r"^\| `([a-z]+)` \|", kinds, re.MULTILINE)) == set(CHECKS)
+
+
+def test_readme_sample_process_accepts_values_of_examples():
+    [xml] = [
+        block for block in re.findall(r"```xml\n(.*?)```", README, re.DOTALL) if "yeu_cau" in block
+    ]
+    rules = rules_of(xml, "yeu_cau")
+    started, completed = (
+        dict(re.findall(r'(\w+): "([^"]*)"', values))
+        for values in re.findall(r"variables: \{ ([^}]*) \}", README)
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        submitted(rules.task_forms["xu_ly"], {}, TASK_FORM)
+
+    assert (
+        submitted(rules.start_form, started, START_FORM)["noi_dung"]["value"] == started["noi_dung"]
+    )
+    assert (
+        submitted(rules.task_forms["xu_ly"], completed, TASK_FORM)["ket_qua"]["value"]
+        == (completed["ket_qua"])
+    )
+    assert [json.loads(block) for block in re.findall(r"```json\n(.*?)```", README, re.DOTALL)] == [
+        {"detail": refused.value.detail}
+    ]
 
 
 def test_readme_links_point_to_existing_sections():
