@@ -32,6 +32,11 @@ local MAPPER = {
 local OPERATON = "operaton"
 local OPERATON_FLOW = "saigonos operaton"
 local NOT_ADMIN_FLOW = "saigonos operaton not admin"
+local ADMIN_ONLY = "saigonos-operaton-admin-only"
+local ADMIN_ONLY_TEXTS = {
+    { locale = "vi", text = "Chỉ tài khoản quản trị mới vào được trang này." },
+    { locale = "en", text = "Only administrator accounts can open this page." },
+}
 local OPERATON_STEPS = {
     { provider = "auth-username-password-form", requirement = "REQUIRED" },
     { flow = NOT_ADMIN_FLOW, requirement = "CONDITIONAL" },
@@ -39,9 +44,16 @@ local OPERATON_STEPS = {
         parent = NOT_ADMIN_FLOW,
         provider = "conditional-user-role",
         requirement = "REQUIRED",
+        config_alias = NOT_ADMIN_FLOW .. " role",
         config = { condUserRole = "admin", negate = "true" },
     },
-    { parent = NOT_ADMIN_FLOW, provider = "deny-access-authenticator", requirement = "REQUIRED" },
+    {
+        parent = NOT_ADMIN_FLOW,
+        provider = "deny-access-authenticator",
+        requirement = "REQUIRED",
+        config_alias = NOT_ADMIN_FLOW .. " message",
+        config = { denyErrorMessage = ADMIN_ONLY },
+    },
     { provider = "auth-otp-form", requirement = "REQUIRED" },
 }
 local GROUPS_MAPPER = {
@@ -249,7 +261,7 @@ local function build_flow()
         call("PUT", flow_path(parent) .. "/executions", execution)
         if step.config then
             call("POST", REALM .. "/authentication/executions/" .. execution.id .. "/config", {
-                alias = NOT_ADMIN_FLOW .. " role",
+                alias = step.config_alias,
                 config = step.config,
             })
         end
@@ -259,6 +271,23 @@ local function build_flow()
         fail("Không tạo được luồng đăng nhập " .. OPERATON_FLOW .. " của realm " .. REALM)
     end
     return flow.id
+end
+
+local function add_texts()
+    local added = false
+    for _, entry in ipairs(ADMIN_ONLY_TEXTS) do
+        local path = REALM .. "/localization/" .. entry.locale
+        if call("GET", path)[ADMIN_ONLY] == nil then
+            local key_path = "/admin/realms/" .. path .. "/" .. ADMIN_ONLY
+            local response = send("PUT", key_path, entry.text, "text/plain; charset=utf-8")
+            if response.status >= 300 then
+                fail("Keycloak từ chối việc thêm thông báo " .. ADMIN_ONLY .. ": " .. response.body)
+            end
+            print("Đã thêm thông báo " .. ADMIN_ONLY .. " (" .. entry.locale .. ") vào realm " .. REALM)
+            added = true
+        end
+    end
+    return added
 end
 
 local function find_client()
@@ -363,7 +392,8 @@ log_in()
 secure_master()
 local attribute_added = add_attribute()
 local mapper_added = add_mapper()
+local texts_added = add_texts()
 local operaton_changed = setup_operaton()
-if not attribute_added and not mapper_added and not operaton_changed then
+if not attribute_added and not mapper_added and not texts_added and not operaton_changed then
     print("Realm " .. REALM .. " không cần thay đổi")
 end
