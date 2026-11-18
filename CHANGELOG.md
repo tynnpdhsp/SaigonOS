@@ -28,6 +28,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Mỗi ngày từ 01:00 đến 05:00 giờ Việt Nam, Operaton xóa lịch sử của các quy trình đã kết thúc quá thời gian `historyTimeToLive`.
 - Khi container dừng, Operaton dừng job executor và đóng các kết nối tới cơ sở dữ liệu trước khi thoát.
 
+### Thay đổi
+
+- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng đĩa vì có thêm Operaton.
+
 ### Sửa
 
 - Lời gọi tới service `core` có giá trị `NaN` hoặc `Infinity` trong nội dung nhận mã 422 thay cho 500. Nội dung lỗi 422 không còn chép lại giá trị mà người gọi đã gửi.
