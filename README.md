@@ -524,7 +524,7 @@ Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operat
 
 REST API của Operaton không mở qua API Gateway. Chỉ hai service `core` và `processes` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
 
-Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần Operaton từ chối tài khoản `core`. Trong thời gian này, các lời gọi cần Operaton nhận mã 503. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại, và log của service ghi cách khắc phục. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD` trong file `.env`, chạy lại lệnh `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core` bằng lệnh sau:
+Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần Operaton từ chối tài khoản `core`. Trong thời gian này, các lời gọi cần Operaton nhận mã 503 và các bước máy làm chưa được chạy. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại, và log của service ghi cách khắc phục. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD` trong file `.env`, chạy lại lệnh `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core` bằng lệnh sau:
 
 ```bash
 cd ~/saigonos
@@ -680,6 +680,53 @@ Các mã lỗi của các lời gọi về quy trình và việc:
 | 422 | Tất cả | Nội dung hoặc tham số không hợp lệ, ví dụ người gọi gửi biến `initiator` |
 | 502 | Tất cả | Operaton báo lỗi. Nội dung lỗi được ghi vào log của service `core` |
 | 503 | Tất cả | Operaton chưa sẵn sàng hoặc đang từ chối tài khoản `core` |
+
+### Bước máy làm
+
+Bước máy làm là một service task trong file BPMN. Bước này gọi một hàm trong cơ sở dữ liệu `saigonos`. Service `core` lấy các bước này từ Operaton, gọi hàm rồi ghi kết quả của hàm thành biến của quy trình.
+
+Để khai báo bước máy làm, thẻ `serviceTask` cần có thuộc tính `operaton:type="external"` và `operaton:topic="saigonos-function"`. Tên hàm nằm trong thuộc tính `function` của phần `operaton:properties`, có dạng `schema.ten_ham`. Tên chỉ gồm chữ thường không dấu, chữ số và dấu gạch dưới. Ví dụ, bước sau gọi hàm `ung_dung.ghi_ket_qua`:
+
+```xml
+<bpmn:serviceTask id="ghi_ket_qua" name="Ghi kết quả" operaton:type="external"
+                  operaton:topic="saigonos-function">
+  <bpmn:extensionElements>
+    <operaton:properties>
+      <operaton:property name="function" value="ung_dung.ghi_ket_qua" />
+    </operaton:properties>
+  </bpmn:extensionElements>
+</bpmn:serviceTask>
+```
+
+Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình, ví dụ `{"ma_yeu_cau": "YC-01", "ket_qua": "Đã thay cáp màn hình"}`. Biến kiểu ngày giờ được truyền dưới dạng chuỗi. Quy trình có biến thuộc kiểu khác chuỗi, số, ngày giờ, `true`, `false` và `null` thì bước máy làm không chạy được. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình, theo quy tắc ở mục [Bắt đầu quy trình](#bắt-đầu-quy-trình). Hàm không ghi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
+
+Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Ví dụ, ứng dụng khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
+
+```sql
+GRANT USAGE ON SCHEMA ung_dung TO workflow;
+GRANT SELECT, UPDATE ON ung_dung.yeu_cau TO workflow;
+
+CREATE FUNCTION ung_dung.ghi_ket_qua(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE ung_dung.yeu_cau SET trang_thai = 'da_xu_ly', ket_qua = bien ->> 'ket_qua'
+    WHERE ma = bien ->> 'ma_yeu_cau';
+    RETURN jsonb_build_object('da_cap_nhat', FOUND);
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.ghi_ket_qua(jsonb) TO workflow;
+```
+
+Service `core` chạy bước máy làm theo các quy tắc sau:
+
+- Hàm chạy trong một transaction và tối đa 20 giây. Audit log ghi role `workflow` trong cột `db_role`. Cột `actor` để trống vì bước này không có người gọi.
+- Hàm được gọi qua một hàm `SECURITY DEFINER` của role `workflow`. Do đó, hàm không đổi được role của phiên làm việc, ví dụ bằng lệnh `RESET ROLE`.
+- Mỗi bước máy làm chỉ chạy hàm một lần. Kết quả của hàm được ghi vào bảng `core.step_runs` trong cùng transaction với hàm. Khi service `core` dừng đột ngột sau khi hàm chạy xong, bước này được chạy tiếp sau tối đa 1 phút bằng kết quả đã ghi, không gọi lại hàm.
+- Khi hàm báo lỗi, mọi thay đổi của hàm bị hủy. Service `core` thử lại sau 5 giây, 30 giây rồi 2 phút. Sau lần lỗi thứ tư, bước máy làm trở thành incident trong Cockpit.
+- Khi hàm không tồn tại, chưa được khai báo, sai kiểu tham số hoặc kiểu trả về, hoặc kết quả không ghi được thành biến, bước máy làm trở thành incident ngay mà không thử lại.
+
+Nội dung lỗi của incident nằm trong Cockpit, ở thẻ Incidents của quy trình. Bấm vào nội dung lỗi để xem chi tiết, gồm mã SQLSTATE và vị trí lỗi trong hàm. Sau khi sửa lỗi, bước máy làm được chạy lại bằng thao tác Increment Number of Retries của incident.
 
 ## Cập nhật phiên bản
 
