@@ -12,6 +12,27 @@ Lõi cung cấp bốn service chính:
 
 Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
+## Mục lục
+
+- [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
+- [Cài đặt](#cài-đặt)
+- [Truy cập hệ thống](#truy-cập-hệ-thống)
+- [Tài khoản quản trị](#tài-khoản-quản-trị)
+- [Tài liệu API](#tài-liệu-api)
+- [API của service core](#api-của-service-core)
+- [Tải file lên](#tải-file-lên)
+- [Tải file về](#tải-file-về)
+- [Cấu hình](#cấu-hình)
+- [Khởi động và dừng](#khởi-động-và-dừng)
+- [Triển khai trên máy chủ chưa có reverse proxy](#triển-khai-trên-máy-chủ-chưa-có-reverse-proxy)
+- [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
+- [Kiểm tra audit log](#kiểm-tra-audit-log)
+- [Quét mã độc](#quét-mã-độc)
+- [Quy trình](#quy-trình)
+- [Cập nhật phiên bản](#cập-nhật-phiên-bản)
+- [Tham gia phát triển](#tham-gia-phát-triển)
+- [Giấy phép](#giấy-phép)
+
 ## Yêu cầu hệ thống
 
 - Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
