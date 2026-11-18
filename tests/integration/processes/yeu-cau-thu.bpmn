@@ -5,9 +5,49 @@
                   id="yeu_cau_thu_dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
   <bpmn:process id="yeu_cau_thu" name="Yêu cầu thử" isExecutable="true"
                 operaton:historyTimeToLive="P30D" operaton:candidateStarterGroups="nguoi-gui">
-    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
+    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="noi_dung" label="Nội dung" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+              <operaton:constraint name="maxlength" config="200" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="ma_yeu_cau" label="Mã yêu cầu" type="string" />
+          <operaton:formField id="so_luong" label="Số lượng" type="long">
+            <operaton:validation>
+              <operaton:constraint name="min" config="1" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="khan" label="Khẩn" type="boolean" />
+          <operaton:formField id="muc_uu_tien" label="Mức ưu tiên" type="enum">
+            <operaton:value id="cao" name="Cao" />
+            <operaton:value id="thap" name="Thấp" />
+          </operaton:formField>
+          <operaton:formField id="han_xu_ly" label="Hạn xử lý" type="date" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
     <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="xu_ly" />
-    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien" />
+    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="noi_dung" label="Nội dung" type="string">
+            <operaton:validation>
+              <operaton:constraint name="readonly" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="ket_qua" label="Kết quả" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+              <operaton:constraint name="minlength" config="10" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="so_gio" label="Số giờ" type="long" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
     <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ghi_ket_qua" />
     <bpmn:serviceTask id="ghi_ket_qua" name="Ghi kết quả" operaton:type="external"
                       operaton:topic="saigonos-function">

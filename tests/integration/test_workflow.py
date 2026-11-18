@@ -73,6 +73,17 @@ TAKEN = {"detail": "Việc đã có người khác nhận"}
 NOT_ASSIGNEE = {"detail": "Chỉ người nhận việc mới hoàn thành được việc này"}
 TASK_SUSPENDED = {"detail": "Việc đang tạm ngưng"}
 INITIATORS = ("initiator", "nguoi_tao")
+REQUEST = {"noi_dung": "Máy 12 không lên màn hình"}
+RESULT = {"ket_qua": "Đã thay cáp màn hình"}
+STEP_FIELDS = {
+    "ma": "string",
+    "cho": "long",
+    "noi_dung": "string",
+    "so_luong": "long",
+    "khan": "boolean",
+    "ghi_chu": "string",
+    "han_xu_ly": "date",
+}
 ROUNDS = 20
 
 
@@ -277,7 +288,7 @@ def new_tasks(stack, starter, count=1):
     url = f"{stack.url}/core/processes/yeu_cau_thu/start"
     instances = []
     for _ in range(count):
-        reply = stack.call("POST", url, token=token, body={})
+        reply = stack.call("POST", url, token=token, body={"variables": REQUEST})
         assert reply.status == 201, reply.body
         instances.append(json.loads(reply.body)["id"])
     found = operaton_get(stack, "/task?processDefinitionKey=yeu_cau_thu")
@@ -386,13 +397,20 @@ def step_bpmn(key, function):
           <operaton:property name="function" value="{function}" />
         </operaton:properties>
       </bpmn:extensionElements>"""
+    fields = "".join(
+        f'<operaton:formField id="{name}" type="{kind}" />' for name, kind in STEP_FIELDS.items()
+    )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
                   id="{key}_dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
   <bpmn:process id="{key}" isExecutable="true" operaton:historyTimeToLive="P30D"
                 operaton:candidateStarterGroups="{STARTER}">
-    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
+    <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao">
+      <bpmn:extensionElements>
+        <operaton:formData>{fields}</operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
     <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="buoc_may" />
     <bpmn:serviceTask id="buoc_may" operaton:type="external" operaton:topic="{TOPIC}">{properties}
     </bpmn:serviceTask>
@@ -816,6 +834,83 @@ def test_caller_cannot_send_variable_of_initiator(stack, requests_process, name)
     assert started_count(stack, requests_process) == before
 
 
+@pytest.mark.parametrize(
+    "variables",
+    [{}, {"noi_dung": ""}, {"noi_dung": " \t\n "}],
+    ids=["thiếu", "rỗng", "khoảng trắng"],
+)
+def test_start_without_required_field_is_compliance_error(stack, requests_process, variables):
+    before = started_count(stack, requests_process)
+
+    status, reply = start(
+        stack, stack.new_user(role=STARTER), variables=variables | {"so_luong": 2}
+    )
+
+    assert (status, reply) == (422, {"detail": "LỖI TUÂN THỦ: Phải nhập Nội dung (noi_dung)"})
+    assert started_count(stack, requests_process) == before
+
+
+def test_start_form_gives_variables_types_of_fields(stack, requests_process):
+    variables = REQUEST | {"so_luong": 2, "khan": False, "muc_uu_tien": "cao"}
+
+    status, started = start(
+        stack,
+        stack.new_user(role=STARTER),
+        variables=variables | {"han_xu_ly": "2026-11-20T09:00:00+07:00"},
+    )
+
+    found = operaton_get(stack, f"/process-instance/{started['id']}/variables")
+    assert status == 201
+    assert {
+        name: (item["type"], item["value"])
+        for name, item in found.items()
+        if name not in INITIATORS
+    } == {
+        "noi_dung": ("String", REQUEST["noi_dung"]),
+        "so_luong": ("Long", 2),
+        "khan": ("Boolean", False),
+        "muc_uu_tien": ("String", "cao"),
+        "han_xu_ly": ("Date", "2026-11-20T02:00:00.000+0000"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("variables", "detail"),
+    [
+        ({"ghi_chu": "x"}, "Form bắt đầu của quy trình không nhận biến ghi_chu"),
+        ({"noi_dung": "x" * 201}, "LỖI TUÂN THỦ: Nội dung (noi_dung) không được dài quá 200 ký tự"),
+        ({"so_luong": 0}, "LỖI TUÂN THỦ: Số lượng (so_luong) không được nhỏ hơn 1"),
+        ({"so_luong": "2"}, "LỖI TUÂN THỦ: Số lượng (so_luong) phải là số nguyên"),
+        ({"khan": "true"}, "LỖI TUÂN THỦ: Khẩn (khan) phải là true hoặc false"),
+        (
+            {"muc_uu_tien": "vua"},
+            "LỖI TUÂN THỦ: Mức ưu tiên (muc_uu_tien) phải là một trong các giá trị cao, thap",
+        ),
+        (
+            {"han_xu_ly": "20/11/2026"},
+            "LỖI TUÂN THỦ: Hạn xử lý (han_xu_ly) phải là ngày giờ theo ISO 8601 có múi giờ. "
+            "Ví dụ: 2026-11-20T09:00:00+07:00",
+        ),
+    ],
+    ids=[
+        "không có trong form",
+        "quá dài",
+        "quá nhỏ",
+        "số dạng chuỗi",
+        "chuỗi true",
+        "enum",
+        "ngày",
+    ],
+)
+def test_start_refuses_values_outside_start_form(stack, requests_process, variables, detail):
+    before = started_count(stack, requests_process)
+
+    status, reply = start(stack, stack.new_user(role=STARTER), variables=REQUEST | variables)
+
+    assert (status, reply) == (422, {"detail": detail})
+    assert started_count(stack, requests_process) == before
+
+
 def test_user_without_starter_role_cannot_start_process(stack, requests_process):
     user = stack.new_user(role=WORKER)
     before = started_count(stack, requests_process)
@@ -860,7 +955,7 @@ def test_task_list_shows_own_tasks_and_claimable_tasks_of_caller_only(stack, req
     starter = stack.new_user(role=STARTER)
     worker = stack.new_user(role=WORKER)
     taker = stack.new_user()
-    instances = [start(stack, starter)[1]["id"] for _ in range(3)]
+    instances = [start(stack, starter, variables=REQUEST)[1]["id"] for _ in range(3)]
     found = operaton_get(stack, f"/task?processDefinitionKey={requests_process}")
     first, second, third = (
         next(task["id"] for task in found if task["processInstanceId"] == instance)
@@ -973,7 +1068,7 @@ def test_task_completed_twice_together_is_completed_once(stack, requests_process
     [task] = new_tasks(stack, stack.new_user(role=STARTER))
     token = stack.token(worker)
     assert act(stack, token, task, "claim") == (204, None)
-    completion = partial(act, stack, token, task, "complete", {"ket_qua": "Đã xử lý"})
+    completion = partial(act, stack, token, task, "complete", RESULT)
 
     replies = through_paused_operaton(stack, [completion] * 2)
 
@@ -1006,7 +1101,7 @@ def test_worker_cannot_take_or_complete_task_claimed_by_another(stack, requests_
 
     claimed = act(stack, stack.token(first), task, "claim")
     taken = act(stack, token, task, "claim")
-    refused = act(stack, token, task, "complete", {"ket_qua": "Đã xử lý"})
+    refused = act(stack, token, task, "complete", RESULT)
 
     assert (claimed, taken, refused) == ((204, None), (409, TAKEN), (403, NOT_ASSIGNEE))
     assert assignees(stack, [task]) == {task: first.id}
@@ -1015,7 +1110,7 @@ def test_worker_cannot_take_or_complete_task_claimed_by_another(stack, requests_
 def test_assignee_cannot_overwrite_initiator_when_completing(stack, requests_process):
     starter = stack.new_user(role=STARTER)
     worker = stack.new_user(role=WORKER)
-    _, started = start(stack, starter)
+    _, started = start(stack, starter, variables=REQUEST)
     task = task_of(stack, started["id"])
     token = stack.token(worker)
     assert act(stack, token, task, "claim") == (204, None)
@@ -1023,13 +1118,47 @@ def test_assignee_cannot_overwrite_initiator_when_completing(stack, requests_pro
     replies = [act(stack, token, task, "complete", {name: worker.id}) for name in INITIATORS]
 
     assert [status for status, _ in replies] == [422, 422]
-    assert variables_of(stack, started["id"]) == dict.fromkeys(INITIATORS, starter.id)
+    assert variables_of(stack, started["id"]) == REQUEST | dict.fromkeys(INITIATORS, starter.id)
     assert assignees(stack, [task]) == {task: worker.id}
+
+
+def test_completion_outside_task_form_keeps_task_with_assignee(stack, requests_process):
+    worker = stack.new_user(role=WORKER)
+    _, started = start(stack, stack.new_user(role=STARTER), variables=REQUEST)
+    instance = started["id"]
+    task = task_of(stack, instance)
+    token = stack.token(worker)
+    assert act(stack, token, task, "claim") == (204, None)
+    before = variables_of(stack, instance)
+    attempts = [
+        ({}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": ""}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": " \t\n "}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        (
+            {"ket_qua": "     Đã xong     "},
+            "LỖI TUÂN THỦ: Kết quả (ket_qua) phải có ít nhất 10 ký tự",
+        ),
+        (RESULT | {"so_gio": 1.5}, "LỖI TUÂN THỦ: Số giờ (so_gio) phải là số nguyên"),
+        (RESULT | {"noi_dung": "Sửa nội dung"}, "Form của việc không nhận biến noi_dung"),
+        (RESULT | {"ma_yeu_cau": "YC-khac"}, "Form của việc không nhận biến ma_yeu_cau"),
+    ]
+
+    replies = [act(stack, token, task, "complete", variables) for variables, _ in attempts]
+
+    unfinished = operaton_get(
+        stack, f"/history/activity-instance?processInstanceId={instance}&unfinished=true"
+    )
+    assert replies == [(422, {"detail": detail}) for _, detail in attempts]
+    assert assignees(stack, [task]) == {task: worker.id}
+    assert variables_of(stack, instance) == before
+    assert [item["activityId"] for item in unfinished] == ["xu_ly"]
+    assert act(stack, token, task, "complete", RESULT) == (204, None)
+    assert finished(stack, instance) == "COMPLETED"
 
 
 def test_suspended_task_cannot_be_claimed_or_completed(stack, requests_process):
     worker = stack.new_user(role=WORKER)
-    _, started = start(stack, stack.new_user(role=STARTER))
+    _, started = start(stack, stack.new_user(role=STARTER), variables=REQUEST)
     task = task_of(stack, started["id"])
     token = stack.token(worker)
     path = f"/process-instance/{started['id']}/suspended"
@@ -1045,7 +1174,7 @@ def test_suspended_task_cannot_be_claimed_or_completed(stack, requests_process):
     assert refused_claim == (409, TASK_SUSPENDED)
     assert claimed == (204, None)
     assert refused_completion == (409, TASK_SUSPENDED)
-    assert act(stack, token, task, "complete") == (204, None)
+    assert act(stack, token, task, "complete", RESULT) == (204, None)
 
 
 def test_claim_and_complete_of_unknown_task_are_not_found(stack):
@@ -1060,13 +1189,14 @@ def test_process_runs_to_end_with_machine_step_updating_row(stack, requests_proc
     code = f"YC-{uuid.uuid4().hex[:8]}"
     stack.sql(f"INSERT INTO thu_nghiem.yeu_cau (ma) VALUES ('{code}')")
     worker = stack.new_user(role=WORKER)
-    status, started = start(stack, stack.new_user(role=STARTER), variables={"ma_yeu_cau": code})
+    variables = REQUEST | {"ma_yeu_cau": code}
+    status, started = start(stack, stack.new_user(role=STARTER), variables=variables)
     instance = started["id"]
     task = task_of(stack, instance)
     token = stack.token(worker)
 
     claimed = act(stack, token, task, "claim")
-    done = act(stack, token, task, "complete", {"ket_qua": "Đã thay cáp màn hình"})
+    done = act(stack, token, task, "complete", RESULT)
     state = finished(stack, instance)
 
     assert (status, claimed, done, state) == (201, (204, None), (204, None), "COMPLETED")
@@ -1085,15 +1215,18 @@ def test_process_runs_to_end_with_machine_step_updating_row(stack, requests_proc
 
 def test_function_gets_variables_and_runs_as_workflow(stack, machine_steps):
     starter = stack.new_user(role=STARTER)
-    variables = {"noi_dung": "Máy 12", "so_luong": 2, "ty_le": 0.5, "khan": True, "ghi_chu": None}
+    variables = {"noi_dung": "Máy 12", "so_luong": 2, "khan": True, "ghi_chu": None}
+    due = {"han_xu_ly": "2026-11-20T09:00:00+07:00"}
 
-    _, started = start(stack, starter, "nguoi_chay_thu", variables)
+    _, started = start(stack, starter, "nguoi_chay_thu", variables | due)
     state = finished(stack, started["id"])
 
     found = written(stack, started["id"])
     assert state == "COMPLETED"
     assert (found["vai_tro"], found["role"]) == ("workflow", "workflow")
-    assert json.loads(found["bien"]) == variables | dict.fromkeys(INITIATORS, starter.id)
+    assert json.loads(found["bien"]) == variables | dict.fromkeys(INITIATORS, starter.id) | {
+        "han_xu_ly": "2026-11-20T02:00:00.000+0000"
+    }
 
 
 @pytest.mark.parametrize(
