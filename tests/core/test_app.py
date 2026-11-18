@@ -218,6 +218,8 @@ def test_settings_come_from_environment(monkeypatch, settings):
         "CLAMAV_HOST": settings.clamav_host,
         "CLAMAV_PORT": "3311",
         "DOWNLOAD_KEY": "khoa-khac",
+        "OPERATON_URL": "http://may-khac:8080/operaton/engine-rest",
+        "OPERATON_PASSWORD": "mat-khau-khac",
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
@@ -226,7 +228,12 @@ def test_settings_come_from_environment(monkeypatch, settings):
     app = create_app(database=database)
 
     assert app.state.settings == replace(
-        settings, max_file_size=25, clamav_port=3311, download_key="khoa-khac"
+        settings,
+        max_file_size=25,
+        clamav_port=3311,
+        download_key="khoa-khac",
+        operaton_url="http://may-khac:8080/operaton/engine-rest",
+        operaton_password="mat-khau-khac",
     )
     assert app.state.downloads == DownloadLinks("khoa-khac")
     assert app.state.tokens.issuer == settings.issuer
@@ -237,4 +244,7 @@ def test_settings_come_from_environment(monkeypatch, settings):
     assert app.state.scans.database is database
     assert app.state.scans.storage is app.state.storage
     assert app.state.scans.clamav == ClamAV(settings.clamav_host, 3311)
+    assert app.state.operaton.url == "http://may-khac:8080/operaton/engine-rest"
+    assert app.state.operaton.authorization == "Basic Y29yZTptYXQta2hhdS1raGFj"
+    assert app.state.processes.operaton is app.state.operaton
     assert app.servers == [{"url": settings.public_url}]

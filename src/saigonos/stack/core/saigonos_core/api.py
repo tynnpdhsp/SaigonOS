@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -6,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from saigonos_core.callers import Caller, caller_of
+from saigonos_core.operaton import OperatonError, OperatonUnavailableError
 from saigonos_core.tokens import InvalidTokenError, KeysUnavailableError
 
 
@@ -18,6 +22,21 @@ UNAUTHORIZED = {
     401: {"model": Message, "description": "Thiếu access token hoặc access token không hợp lệ"}
 }
 UNAVAILABLE = {503: {"model": Message, "description": "Service chưa sẵn sàng"}}
+BAD_GATEWAY = {502: {"model": Message, "description": "Operaton báo lỗi"}}
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def operaton_errors(unavailable: str, action: str) -> Iterator[None]:
+    try:
+        yield
+    except OperatonUnavailableError as error:
+        logger.warning("%s: %s", unavailable, error)
+        raise HTTPException(503, f"{unavailable} vì Operaton chưa sẵn sàng") from None
+    except OperatonError as error:
+        logger.error("Operaton báo lỗi khi %s: %s", action, error)
+        raise HTTPException(502, f"Operaton báo lỗi khi {action}") from None
 
 
 def get_caller(

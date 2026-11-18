@@ -11,11 +11,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from saigonos_core import __version__, files
+from saigonos_core import __version__, files, processes
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
 from saigonos_core.downloads import DownloadLinks
+from saigonos_core.operaton import Operaton
+from saigonos_core.processes import Processes
 from saigonos_core.scans import Scans
 from saigonos_core.storage import Storage
 from saigonos_core.tokens import TokenVerifier
@@ -39,6 +41,8 @@ class Settings:
     clamav_host: str
     clamav_port: int
     download_key: str
+    operaton_url: str
+    operaton_password: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -53,6 +57,8 @@ class Settings:
             os.environ["CLAMAV_HOST"],
             int(os.environ["CLAMAV_PORT"]),
             os.environ["DOWNLOAD_KEY"],
+            os.environ["OPERATON_URL"],
+            os.environ["OPERATON_PASSWORD"],
         )
 
 
@@ -95,6 +101,7 @@ def create_app(
     database: Database | None = None,
     storage: Storage | None = None,
     scans: Scans | None = None,
+    operaton: Operaton | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -102,6 +109,7 @@ def create_app(
         settings.storage_url, settings.storage_access_key, settings.storage_secret_key
     )
     scans = scans or Scans(database, storage, ClamAV(settings.clamav_host, settings.clamav_port))
+    operaton = operaton or Operaton(settings.operaton_url, settings.operaton_password)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -129,7 +137,10 @@ def create_app(
     app.state.storage = storage
     app.state.scans = scans
     app.state.downloads = DownloadLinks(settings.download_key)
+    app.state.operaton = operaton
+    app.state.processes = Processes(operaton)
     app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
     app.include_router(files.router)
+    app.include_router(processes.router)
     return app

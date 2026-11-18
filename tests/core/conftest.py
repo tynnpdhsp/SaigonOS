@@ -123,9 +123,55 @@ class FakeScans:
             self.state = "đã dừng"
 
 
+class FakeOperaton:
+    def __init__(self):
+        self.definitions = {}
+        self.documents = {}
+        self.read = []
+        self.started = []
+        self.queries = []
+        self.found = []
+        self.failure = None
+
+    def deploy(self, key, xml, version=1, suspended=False):
+        definition = {"id": f"{key}:{version}:{version:04d}", "key": key, "version": version}
+        definition["suspended"] = suspended
+        self.definitions[key] = definition
+        self.documents[definition["id"]] = xml
+        return definition
+
+    def check(self):
+        if self.failure:
+            raise self.failure
+
+    def latest_definition(self, key):
+        self.check()
+        return self.definitions.get(key)
+
+    def definition_xml(self, definition_id):
+        self.check()
+        self.read.append(definition_id)
+        return self.documents[definition_id]
+
+    def submit_start_form(self, definition_id, variables):
+        self.check()
+        self.started.append((definition_id, variables))
+        return {"id": f"quy-trinh-{len(self.started)}", "definitionId": definition_id}
+
+    def tasks(self, query, offset, limit):
+        self.check()
+        self.queries.append((query, offset, limit))
+        return self.found
+
+
 @pytest.fixture
 def scans():
     return FakeScans()
+
+
+@pytest.fixture
+def operaton():
+    return FakeOperaton()
 
 
 @pytest.fixture(scope="session")
@@ -150,4 +196,6 @@ def settings(realm):
         clamav_host="clamav",
         clamav_port=3310,
         download_key="khoa-ky-duong-dan-tai-ve",
+        operaton_url="http://operaton:8080/operaton/engine-rest",
+        operaton_password="mat-khau-tai-khoan-core",
     )

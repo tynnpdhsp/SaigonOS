@@ -330,6 +330,8 @@ services:
       DOWNLOAD_KEY: ${CORE_DOWNLOAD_KEY:?}
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
+      OPERATON_URL: http://operaton:8080/operaton/engine-rest
+      OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
     networks:
       - default
       - storage
