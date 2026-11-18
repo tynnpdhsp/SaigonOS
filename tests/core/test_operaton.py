@@ -148,6 +148,74 @@ def test_tasks_send_query_with_paging(server, operaton):
     assert json.loads(server.requests[0][3]) == query
 
 
+def test_task_is_none_for_unknown_id(server, operaton):
+    task = {"id": "viec-1", "assignee": None}
+    server.reply("GET", "/task/viec-1", 200, task)
+    server.reply("GET", "/task/khong-co", 404, {"type": "TaskNotFoundException"})
+
+    assert operaton.task("viec-1") == task
+    assert operaton.task("khong-co") is None
+
+
+def test_definition_is_read_by_id(server, operaton):
+    definition = {"id": "yeu_cau:1:abc", "key": "yeu_cau", "version": 1}
+    server.reply("GET", "/process-definition/yeu_cau:1:abc", 200, definition)
+
+    assert operaton.definition("yeu_cau:1:abc") == definition
+
+
+def test_claim_sends_user_and_expects_no_content(server, operaton):
+    server.reply("POST", "/task/viec-1/claim", 204)
+
+    operaton.claim("viec-1", "nguoi-dung")
+
+    [(method, path, _, body)] = server.requests
+    assert (method, path) == ("POST", f"{PREFIX}/task/viec-1/claim")
+    assert json.loads(body) == {"userId": "nguoi-dung"}
+
+
+@pytest.mark.parametrize("user", ["", None])
+def test_claim_without_user_is_never_sent(server, operaton, user):
+    with pytest.raises(ValueError, match="không được rỗng"):
+        operaton.claim("viec-1", user)
+
+    assert server.requests == []
+
+
+def test_claim_of_task_taken_by_another_raises_error(server, operaton):
+    message = "Task 'viec-1' is already claimed by someone else."
+    server.reply(
+        "POST",
+        "/task/viec-1/claim",
+        500,
+        {"type": "TaskAlreadyClaimedException", "message": message},
+    )
+
+    with pytest.raises(OperatonError) as raised:
+        operaton.claim("viec-1", "nguoi-dung")
+
+    assert raised.value.status == 500
+    assert str(raised.value) == f"Operaton trả về mã 500: {message}"
+
+
+def test_submit_task_form_sends_variables(server, operaton):
+    server.reply("POST", "/task/viec-1/submit-form", 204)
+    variables = {"ket_qua": {"value": "Đã thay cáp", "type": "String"}}
+
+    operaton.submit_task_form("viec-1", variables)
+
+    [(method, path, _, body)] = server.requests
+    assert (method, path) == ("POST", f"{PREFIX}/task/viec-1/submit-form")
+    assert json.loads(body) == {"variables": variables}
+
+
+def test_other_success_status_than_expected_raises_error(server, operaton):
+    server.reply("POST", "/task/viec-1/submit-form", 200, {"ket_qua": "xong"})
+
+    with pytest.raises(OperatonError):
+        operaton.submit_task_form("viec-1", {})
+
+
 @pytest.mark.parametrize(
     ("data", "message"),
     [

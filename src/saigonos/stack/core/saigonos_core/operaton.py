@@ -60,6 +60,9 @@ class Operaton:
             return None
         return self.result(status, data)
 
+    def definition(self, definition_id: str) -> dict[str, Any]:
+        return self.result(*self.call("GET", f"/process-definition/{segment(definition_id)}"))
+
     def definition_xml(self, definition_id: str) -> str:
         status, data = self.call("GET", f"/process-definition/{segment(definition_id)}/xml")
         return self.result(status, data)["bpmn20Xml"]
@@ -74,9 +77,25 @@ class Operaton:
         paging = {"firstResult": offset, "maxResults": limit}
         return self.result(*self.call("POST", "/task", query, paging))
 
+    def task(self, task_id: str) -> dict[str, Any] | None:
+        status, data = self.call("GET", f"/task/{segment(task_id)}")
+        if status == 404:
+            return None
+        return self.result(status, data)
+
+    def claim(self, task_id: str, user: str) -> None:
+        if not user:
+            raise ValueError("Mã người nhận việc không được rỗng")
+        path = f"/task/{segment(task_id)}/claim"
+        self.result(*self.call("POST", path, {"userId": user}), expected=204)
+
+    def submit_task_form(self, task_id: str, variables: dict[str, dict[str, Any]]) -> None:
+        path = f"/task/{segment(task_id)}/submit-form"
+        self.result(*self.call("POST", path, {"variables": variables}), expected=204)
+
     @staticmethod
-    def result(status: int, data: Any) -> Any:
-        if status != 200:
+    def result(status: int, data: Any, expected: int = 200) -> Any:
+        if status != expected:
             raise OperatonError(status, message_of(data))
         return data
 
