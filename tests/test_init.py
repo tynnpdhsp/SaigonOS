@@ -215,7 +215,6 @@ def test_init_adds_setting_missing_from_env_of_older_version(home, line):
 
 def test_options_set_url_and_ports(home):
     options = ["--url", "https://DX.example.com/", "--http-port", 8000, "--admin-port", 9999]
-
     options += ["--keycloak-port", 9998, "--seaweedfs-port", 9997, "--centrifugo-port", 9996]
 
     result = init("--home", home, *options)
@@ -228,6 +227,25 @@ def test_options_set_url_and_ports(home):
     assert env["SAIGONOS_SEAWEEDFS_PORT"] == "9997"
     assert env["SAIGONOS_CENTRIFUGO_PORT"] == "9996"
     assert "Địa chỉ truy cập: https://dx.example.com\n" in result.output
+
+
+@pytest.mark.parametrize(
+    ("url", "saved"),
+    [
+        ("https://dx.example.com:443", "https://dx.example.com"),
+        ("http://DX.example.com:80/", "http://dx.example.com"),
+        ("http://[2001:DB8::1]:80", "http://[2001:db8::1]"),
+        ("https://dx.example.com:80", "https://dx.example.com:80"),
+        ("http://dx.example.com:443", "http://dx.example.com:443"),
+        ("https://dx.example.com:8443", "https://dx.example.com:8443"),
+    ],
+    ids=["https-443", "http-80", "ipv6-80", "https-80", "http-443", "https-8443"],
+)
+def test_url_drops_only_default_port_of_its_scheme(home, url, saved):
+    result = init("--home", home, "--url", url)
+
+    assert result.exit_code == 0
+    assert read_env(home)["SAIGONOS_URL"] == saved
 
 
 def test_max_file_size_is_kept_until_set_again(home):

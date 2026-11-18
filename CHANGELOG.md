@@ -19,6 +19,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thay đổi
 
 - Ví dụ cấu hình Nginx trong README chuyển tiếp kết nối WebSocket. Máy chủ đã có reverse proxy cần thêm khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` như trong ví dụ.
+- Lệnh `saigonos init` bỏ cổng mặc định khỏi địa chỉ truy cập. Ví dụ, `https://dx.example.com:443` được ghi thành `https://dx.example.com`. Trình duyệt gửi địa chỉ của trang không kèm cổng mặc định, nên Centrifugo cần địa chỉ ở dạng này để nhận kết nối.
 
 ## [0.4.0] - 2026-11-18
 

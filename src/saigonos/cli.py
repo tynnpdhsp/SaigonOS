@@ -26,6 +26,7 @@ from saigonos.home import (
 )
 
 PORT = click.IntRange(1, 65535)
+DEFAULT_PORTS = {"http": 80, "https": 443}
 MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
 MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
 COLUMN_GAP = " " * 4
@@ -61,7 +62,10 @@ def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None)
             "địa chỉ phải có dạng http://tên-máy[:cổng] hoặc https://tên-máy[:cổng], "
             "không kèm đường dẫn."
         )
-    return f"{parts.scheme}://{parts.netloc.lower()}"
+    netloc = parts.netloc.lower()
+    if parts.port == DEFAULT_PORTS[parts.scheme]:
+        netloc = netloc.rsplit(":", 1)[0]
+    return f"{parts.scheme}://{netloc}"
 
 
 def normalize_host(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
