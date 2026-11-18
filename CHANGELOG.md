@@ -24,6 +24,9 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bước máy làm của quy trình gọi một hàm của cơ sở dữ liệu. Bước này là service task có topic `saigonos-function` và thuộc tính `function` nêu tên hàm. Hàm cần được cấp quyền `EXECUTE` cho role `workflow` và chạy với quyền của role này. Kết quả của hàm được ghi thành biến của quy trình.
 - Mỗi bước máy làm chỉ chạy hàm một lần, kể cả khi service `core` dừng đột ngột trước khi báo Operaton. Hàm báo lỗi được thử lại sau 5 giây, 30 giây và 2 phút. Hàm chưa được khai báo hoặc sai kiểu làm bước máy làm trở thành incident trong Cockpit.
 - Khi Operaton từ chối tài khoản `core`, service `core` ngừng gọi Operaton trong 60 giây. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi khởi động lại. Nhờ đó, Operaton không khóa hẳn tài khoản `core`.
+- Quy trình có thể gắn hẹn giờ trên biên của một việc. Khi việc quá hạn, quy trình rẽ sang nhánh khác, ví dụ chuyển việc cho nhóm quản lý. Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần, nên hẹn giờ chạy chậm nhất khoảng 2 giây sau hạn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
+- Mỗi ngày từ 01:00 đến 05:00 giờ Việt Nam, Operaton xóa lịch sử của các quy trình đã kết thúc quá thời gian `historyTimeToLive`.
+- Khi container dừng, Operaton dừng job executor và đóng các kết nối tới cơ sở dữ liệu trước khi thoát.
 
 ### Sửa
 
