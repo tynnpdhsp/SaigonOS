@@ -44,6 +44,9 @@ operaton:
       password: ${CORE_OPERATON_PASSWORD}
     authorization:
       enabled: true
+    job-execution:
+      wait-time-in-millis: 2000
+      max-wait: 2000
     generic-properties:
       properties:
         deserialization-type-validation-enabled: true
