@@ -18,7 +18,9 @@ COCKPIT = "/operaton/app/cockpit/"
 CURRENT_USER = "/operaton/api/admin/auth/user/default"
 APPS = {"cockpit": "Operaton Cockpit", "tasklist": "Operaton Tasklist", "admin": "Operaton Admin"}
 FLOW = "saigonos operaton"
-DENIED = "Truy cập bị từ chối"
+DENIED = "Chỉ tài khoản quản trị mới vào được trang này."
+ADMIN_ONLY = "saigonos-operaton-admin-only"
+ADMIN_ONLY_EN = "Only administrator accounts can open this page."
 CLOSED_PATHS = {
     "/operaton/engine-rest/version": 404,
     "/operaton/engine-rest/engine": 404,
@@ -102,6 +104,23 @@ def operaton_client(stack):
     clients = json.loads(stack.admin("GET", "/clients?clientId=operaton").body)
     assert len(clients) == 1
     return clients[0]
+
+
+def realm_text(stack, method, locale, text=None):
+    reply = stack.master_login("admin", stack.env["KEYCLOAK_ADMIN_PASSWORD"])
+    token = json.loads(reply.body)["access_token"]
+    url = f"{stack.keycloak}/admin/realms/saigonos/localization/{locale}"
+    if method == "GET":
+        return json.loads(stack.call("GET", url, token=token).body).get(ADMIN_ONLY)
+    headers = {"Content-Type": "text/plain; charset=utf-8"}
+    content = None if text is None else text.encode()
+    return stack.call(method, f"{url}/{ADMIN_ONLY}", token=token, headers=headers, content=content)
+
+
+def run_realm(stack):
+    result = stack.compose_result("run", "--rm", "--no-deps", "realm")
+    assert result.returncode == 0, result.stderr
+    return result.stdout.splitlines()
 
 
 def rest_status(stack, user=None):
@@ -397,6 +416,41 @@ def test_realm_service_restores_login_flow_and_client_of_operaton(stack):
     assert restored["redirectUris"] == [f"{stack.url}/operaton/login/oauth2/code/operaton"]
     status, _, page, _ = Browser(stack).log_in(stack.new_user())
     assert (status, DENIED in page) == (401, True)
+
+
+def test_realm_service_restores_message_for_users_without_admin_role(stack):
+    path = "/authentication/flows/saigonos%20operaton/executions"
+    executions = json.loads(stack.admin("GET", path).body)
+    deny = next(
+        item for item in executions if item.get("providerId") == "deny-access-authenticator"
+    )
+    config_path = f"/authentication/config/{deny['authenticationConfig']}"
+    config = json.loads(stack.admin("GET", config_path).body)
+    config["config"]["denyErrorMessage"] = "access-denied"
+    assert stack.admin("PUT", config_path, config).status == 204
+
+    lines = run_realm(stack)
+    status, _, page, _ = Browser(stack).log_in(stack.new_user())
+
+    assert f"Luồng đăng nhập {FLOW} đã bị thay đổi nên được tạo lại" in lines
+    assert (status, DENIED in page) == (401, True)
+
+
+def test_realm_service_adds_missing_message_and_keeps_edited_one(stack):
+    edited = "Trang này dành cho quản trị viên."
+    assert realm_text(stack, "PUT", "vi", edited).status == 204
+    assert realm_text(stack, "DELETE", "en").status == 204
+    try:
+        lines = run_realm(stack)
+        texts = {locale: realm_text(stack, "GET", locale) for locale in ("vi", "en")}
+        status, _, page, _ = Browser(stack).log_in(stack.new_user())
+    finally:
+        realm_text(stack, "PUT", "vi", DENIED)
+
+    assert f"Đã thêm thông báo {ADMIN_ONLY} (en) vào realm saigonos" in lines
+    assert f"Đã thêm thông báo {ADMIN_ONLY} (vi) vào realm saigonos" not in lines
+    assert texts == {"vi": edited, "en": ADMIN_ONLY_EN}
+    assert (status, edited in page) == (401, True)
 
 
 def test_processes_service_reports_empty_folder(stack):
