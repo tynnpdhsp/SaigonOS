@@ -364,6 +364,8 @@ services:
       TINI_KILL_PROCESS_GROUP: "1"
     volumes:
       - ./config/operaton/production.yml:/operaton/configuration/production.yml:ro
+      # file trong thư mục public được Operaton dùng thay cho file cùng đường dẫn của plugin
+      - ./config/operaton/sso-logout.js:/operaton/public/plugin-webapp/sso-logout-plugin/app/plugin.js:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8080/operaton/health"]
       interval: 30s
