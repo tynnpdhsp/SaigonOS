@@ -2,6 +2,7 @@
 import json
 import re
 import shlex
+from importlib.resources import files
 from pathlib import Path
 from typing import get_args
 
@@ -40,6 +41,9 @@ DOCTOR_SAMPLE = SAMPLES[0]
 VERIFY_SAMPLES = [sample for sample in SAMPLES if "audit log" in sample.lower()]
 PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
 HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
+OPERATON = (files("saigonos") / "stack" / "config" / "operaton" / "production.yml").read_text(
+    encoding="utf-8"
+)
 
 
 def section(title):
@@ -211,3 +215,11 @@ def test_readme_states_the_default_values():
     assert f"| `--max-file-size` | `{DEFAULT_MAX_FILE_SIZE}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
     assert "| `--caddy`, `--no-caddy` | Tắt |" in README
+
+
+def test_readme_states_job_settings_of_operaton():
+    wait = int(re.search(r"^ +max-wait: (\d+)$", OPERATON, re.MULTILINE)[1])
+    begin, end = re.findall(r'batch-window-(?:start|end)-time: "(\d\d:\d\d)\+0700"', OPERATON)
+
+    assert f"{wait // 1000} giây một lần" in PROSE
+    assert f"từ {begin} đến {end} giờ Việt Nam" in PROSE

@@ -542,7 +542,7 @@ saigonos up
 Service `processes` tuân theo các quy tắc sau:
 
 - File không thay đổi thì không tạo phiên bản mới của quy trình. File đã sửa tạo một phiên bản mới. Các quy trình đang chạy vẫn dùng phiên bản cũ.
-- Mỗi quy trình phải có thuộc tính `operaton:historyTimeToLive`, tức thời gian giữ lịch sử của quy trình. Ví dụ, giá trị `P30D` là 30 ngày.
+- Mỗi quy trình phải có thuộc tính `operaton:historyTimeToLive`, tức thời gian giữ lịch sử của quy trình. Ví dụ, giá trị `P30D` là 30 ngày. Mỗi ngày từ 01:00 đến 05:00 giờ Việt Nam, Operaton xóa lịch sử của các quy trình đã kết thúc quá thời gian này.
 - Tên file chỉ gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và kết thúc bằng `.bpmn`.
 - Mỗi mã quy trình, tức thuộc tính `id` của thẻ `process`, chỉ được khai báo trong một file. Khi một file khai báo lại mã quy trình của file khác, service gỡ bản triển khai vừa tạo và báo lỗi. Nhờ đó, một file không thay được quy trình của file khác.
 - Xóa một file khỏi thư mục không gỡ quy trình khỏi Operaton.
@@ -790,6 +790,34 @@ Service `core` chạy bước máy làm theo các quy tắc sau:
 - Khi hàm không tồn tại, chưa được khai báo, sai kiểu tham số hoặc kiểu trả về, hoặc kết quả không ghi được thành biến, bước máy làm trở thành incident ngay mà không thử lại.
 
 Nội dung lỗi của incident nằm trong Cockpit, ở thẻ Incidents của quy trình. Bấm vào nội dung lỗi để xem chi tiết, gồm mã SQLSTATE và vị trí lỗi trong hàm. Sau khi sửa lỗi, bước máy làm được chạy lại bằng thao tác Increment Number of Retries của incident.
+
+### Hẹn giờ và leo thang
+
+Hẹn giờ (timer) gắn trên biên của một việc cho phép quy trình rẽ sang nhánh khác khi việc quá hạn. Ví dụ sau chuyển việc `xu_ly` cho nhóm quản lý khi tới thời điểm ghi trong biến `han_xu_ly`:
+
+```xml
+<bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien"
+               operaton:dueDate="${han_xu_ly}" />
+<bpmn:boundaryEvent id="qua_han" name="Quá hạn" attachedToRef="xu_ly">
+  <bpmn:timerEventDefinition>
+    <bpmn:timeDate>${han_xu_ly}</bpmn:timeDate>
+  </bpmn:timerEventDefinition>
+</bpmn:boundaryEvent>
+<bpmn:sequenceFlow id="luong_qua_han" sourceRef="qua_han" targetRef="xu_ly_qua_han" />
+<bpmn:userTask id="xu_ly_qua_han" name="Xử lý yêu cầu quá hạn" operaton:candidateGroups="quan-ly" />
+```
+
+Thẻ `boundaryEvent` chứa hẹn giờ. Thuộc tính `attachedToRef` nêu việc được gắn hẹn giờ. Thuộc tính `operaton:dueDate` ghi hạn vào trường `due` của việc trong [Danh sách việc](#danh-sách-việc).
+
+Biến `han_xu_ly` cần là một trường kiểu `date` bắt buộc nhập trong form bắt đầu. Khi quy trình thiếu biến này, Operaton báo lỗi và quy trình không được bắt đầu.
+
+Khi tới hạn mà việc `xu_ly` chưa hoàn thành, Operaton hủy việc này, kể cả khi việc đã có người nhận. Lời gọi hoàn thành việc đã bị hủy nhận mã 404. Sau đó, quy trình tạo việc `xu_ly_qua_han` chờ một người có realm role `quan-ly` nhận. Khi việc `xu_ly` được hoàn thành trước hạn, hẹn giờ cũng bị hủy.
+
+Job executor của Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần. Do đó, hẹn giờ chạy chậm nhất khoảng 2 giây sau hạn. Việc tìm này thêm khoảng 120 câu lệnh mỗi phút vào cơ sở dữ liệu `operaton`.
+
+Các hẹn giờ được lưu trong cơ sở dữ liệu `operaton`. Khi Operaton dừng rồi chạy lại, các hẹn giờ vẫn còn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
+
+Operaton chạy theo giờ UTC. Do đó, ngày giờ không ghi múi giờ và biểu thức cron trong file BPMN được tính theo giờ UTC. Ví dụ, `2026-12-01T08:00:00` là 15:00 giờ Việt Nam. Để đặt hẹn giờ theo giờ Việt Nam, ghi ngày giờ kèm múi giờ, ví dụ `2026-12-01T08:00:00+07:00`.
 
 ## Cập nhật phiên bản
 
