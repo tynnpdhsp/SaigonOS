@@ -60,8 +60,8 @@ class IdleDatabase:
 
 
 @pytest.fixture
-def client(settings, scans, operaton):
-    app = create_app(settings, IdleDatabase(), scans=scans, operaton=operaton)
+def client(settings, scans, operaton, steps):
+    app = create_app(settings, IdleDatabase(), scans=scans, operaton=operaton, steps=steps)
     with TestClient(app) as client:
         yield client
 

@@ -141,8 +141,8 @@ def storage():
 
 
 @pytest.fixture
-def client(settings, files, storage, scans):
-    with TestClient(create_app(settings, files, storage, scans)) as client:
+def client(settings, files, storage, scans, steps):
+    with TestClient(create_app(settings, files, storage, scans, steps=steps)) as client:
         yield client
 
 

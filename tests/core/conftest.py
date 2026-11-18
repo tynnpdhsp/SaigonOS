@@ -107,13 +107,9 @@ class Realm:
         }
 
 
-class FakeScans:
+class FakeWorker:
     def __init__(self):
         self.state = "chưa chạy"
-        self.notified = 0
-
-    def notify(self):
-        self.notified += 1
 
     async def run(self):
         self.state = "đang chạy"
@@ -121,6 +117,15 @@ class FakeScans:
             await asyncio.Event().wait()
         finally:
             self.state = "đã dừng"
+
+
+class FakeScans(FakeWorker):
+    def __init__(self):
+        super().__init__()
+        self.notified = 0
+
+    def notify(self):
+        self.notified += 1
 
 
 class FakeOperaton:
@@ -138,6 +143,11 @@ class FakeOperaton:
         self.claims = []
         self.submitted = []
         self.race = None
+        self.external = []
+        self.locks = []
+        self.completed = []
+        self.failed = []
+        self.errors = {}
         self.failure = None
 
     def deploy(self, key, xml, version=1, suspended=False):
@@ -209,10 +219,36 @@ class FakeOperaton:
             self.race(task_id)
         del self.items[task_id]
 
+    def refuse(self, call):
+        error = self.errors.get(call)
+        if error:
+            raise error
+
+    def lock_external_tasks(self, worker, topic, lock, wait):
+        self.locks.append((worker, topic, lock, wait))
+        self.refuse("lock")
+        if not self.external:
+            time.sleep(0.01)
+            return []
+        return [self.external.pop(0)]
+
+    def complete_external_task(self, task_id, worker, variables):
+        self.completed.append((task_id, worker, variables))
+        self.refuse("complete")
+
+    def fail_external_task(self, task_id, worker, message, details, retries, delay):
+        self.failed.append((task_id, worker, message, details, retries, delay))
+        self.refuse("fail")
+
 
 @pytest.fixture
 def scans():
     return FakeScans()
+
+
+@pytest.fixture
+def steps():
+    return FakeWorker()
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import socket
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from importlib.metadata import version
@@ -53,8 +54,8 @@ def database():
 
 
 @pytest.fixture
-def client(settings, database, scans):
-    app = create_app(settings, database, scans=scans)
+def client(settings, database, scans, steps):
+    app = create_app(settings, database, scans=scans, steps=steps)
     with TestClient(app) as client:
         yield client
 
@@ -63,8 +64,8 @@ def bearer(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_database_is_open_only_while_app_runs(settings, database, scans):
-    app = create_app(settings, database, scans=scans)
+def test_database_is_open_only_while_app_runs(settings, database, scans, steps):
+    app = create_app(settings, database, scans=scans, steps=steps)
 
     with TestClient(app):
         running = database.state
@@ -72,14 +73,24 @@ def test_database_is_open_only_while_app_runs(settings, database, scans):
     assert (running, database.state) == ("đang mở", "đã đóng")
 
 
-def test_scans_run_only_while_app_runs(settings, database, scans):
-    app = create_app(settings, database, scans=scans)
+def test_scans_run_only_while_app_runs(settings, database, scans, steps):
+    app = create_app(settings, database, scans=scans, steps=steps)
 
     with TestClient(app) as client:
         client.get("/health")
         running = scans.state
 
     assert (running, scans.state) == ("đang chạy", "đã dừng")
+
+
+def test_steps_run_only_while_app_runs(settings, database, scans, steps):
+    app = create_app(settings, database, scans=scans, steps=steps)
+
+    with TestClient(app) as client:
+        client.get("/health")
+        running = steps.state
+
+    assert (running, steps.state) == ("đang chạy", "đã dừng")
 
 
 def test_health_follows_database(client, database):
@@ -247,4 +258,8 @@ def test_settings_come_from_environment(monkeypatch, settings):
     assert app.state.operaton.url == "http://may-khac:8080/operaton/engine-rest"
     assert app.state.operaton.authorization == "Basic Y29yZTptYXQta2hhdS1raGFj"
     assert app.state.processes.operaton is app.state.operaton
+    assert app.state.steps.database is database
+    assert app.state.steps.operaton is app.state.operaton
+    assert app.state.steps.processes is app.state.processes
+    assert app.state.steps.worker == f"saigonos-core-{socket.gethostname()}"
     assert app.servers == [{"url": settings.public_url}]
