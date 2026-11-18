@@ -243,6 +243,19 @@ def test_size_up_to_limit_is_accepted(client, owner, settings):
     assert reply.status_code == 201
 
 
+@pytest.mark.parametrize("size", ["NaN", "Infinity", "-Infinity"])
+def test_size_that_is_not_finite_number_is_refused(client, files, owner, size):
+    headers = owner | {"Content-Type": "application/json"}
+    content = f'{{"name": "anh-may-hong.png", "type": "image/png", "size": {size}}}'
+
+    reply = client.post("/files", headers=headers, content=content)
+
+    assert reply.status_code == 422
+    assert [error["loc"] for error in reply.json()["detail"]] == [["body", "size"]]
+    assert "input" not in reply.json()["detail"][0]
+    assert files.queries == []
+
+
 def test_size_over_limit_is_refused(client, files, owner, settings):
     reply = declare(client, owner, size=settings.max_file_size * MB + 1)
 

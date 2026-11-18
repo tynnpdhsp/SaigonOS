@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from saigonos_core import __version__, files
@@ -66,6 +69,13 @@ class Me(BaseModel):
 router = APIRouter()
 
 
+async def invalid_request(request: Request, error: RequestValidationError) -> JSONResponse:
+    errors = [
+        {name: value for name, value in item.items() if name != "input"} for item in error.errors()
+    ]
+    return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
+
+
 @router.get("/health", summary="Trạng thái của service", responses=UNAVAILABLE)
 async def health(request: Request) -> Health:
     if not await request.app.state.database.available():
@@ -119,6 +129,7 @@ def create_app(
     app.state.storage = storage
     app.state.scans = scans
     app.state.downloads = DownloadLinks(settings.download_key)
+    app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
     app.include_router(files.router)
     return app
