@@ -12,6 +12,7 @@ import struct
 import subprocess
 import sys
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.client import HTTPConnection, HTTPException, HTTPMessage
@@ -20,7 +21,7 @@ from urllib.parse import urlencode, urlsplit
 
 import pytest
 
-from saigonos.doctor import caddy_root_certificate
+from saigonos.doctor import REALTIME_PATH, caddy_root_certificate, websocket_accept
 
 REALM = "saigonos"
 CLIENT = "kiem-thu"
@@ -28,6 +29,7 @@ OUTSIDE_SUBNETS = [f"198.51.100.{start}/28" for start in range(0, 256, 16)]
 PUBLIC_SUBNETS = {"IPv4": "192.0.2.0/28", "IPv6": "2001:db8:5a1:9::/64"}
 ROUTES = ("/auth/realms/saigonos/.well-known/openid-configuration", "/api/", "/core/health")
 ATTEMPT_TIMEOUT = 5
+TEXT, CLOSE, PING, PONG = 1, 8, 9, 10
 
 
 class Reply(NamedTuple):
@@ -55,6 +57,117 @@ class Connection(HTTPConnection):
         self.sock = socket.create_connection((self.address or self.host, self.port), self.timeout)
         if self.context is not None:
             self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
+
+
+class Closed(NamedTuple):
+    code: int | None
+    reason: str
+
+
+class Realtime:
+    def __init__(self, url, context=None, headers=None, timeout=30):
+        parts = urlsplit(url)
+        key = base64.b64encode(secrets.token_bytes(16)).decode()
+        lines = [
+            f"GET {parts.path} HTTP/1.1",
+            f"Host: {parts.netloc}",
+            "Upgrade: websocket",
+            "Connection: Upgrade",
+            f"Sec-WebSocket-Key: {key}",
+            "Sec-WebSocket-Version: 13",
+            *(f"{name}: {value}" for name, value in (headers or {}).items()),
+        ]
+        self.connection = Connection(url, context, timeout=timeout)
+        self.connection.connect()
+        self.buffer = b""
+        self.queue = deque()
+        self.pushes = []
+        self.last_id = 0
+        self.connection.sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+        status, *fields = self.read_until(b"\r\n\r\n").decode("latin-1").split("\r\n")
+        self.status = int(status.split()[1])
+        pairs = (field.partition(":") for field in fields)
+        self.headers = {name.strip().lower(): value.strip() for name, _, value in pairs}
+        accept = self.headers.get("sec-websocket-accept")
+        self.accepted = self.status == 101 and accept == websocket_accept(key)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *details):
+        self.connection.close()
+
+    def fill(self):
+        chunk = self.connection.sock.recv(65536)
+        if not chunk:
+            raise ConnectionError("Centrifugo đã đóng kết nối")
+        self.buffer += chunk
+
+    def read_until(self, marker):
+        while marker not in self.buffer:
+            self.fill()
+        head, _, self.buffer = self.buffer.partition(marker)
+        return head
+
+    def read(self, size):
+        while len(self.buffer) < size:
+            self.fill()
+        data, self.buffer = self.buffer[:size], self.buffer[size:]
+        return data
+
+    def write(self, opcode, payload):
+        mask = secrets.token_bytes(4)
+        size = len(payload)
+        if size < 126:
+            length = struct.pack(">B", 0x80 | size)
+        elif size < 1 << 16:
+            length = struct.pack(">BH", 0x80 | 126, size)
+        else:
+            length = struct.pack(">BQ", 0x80 | 127, size)
+        masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+        self.connection.sock.sendall(struct.pack(">B", 0x80 | opcode) + length + mask + masked)
+
+    def frame(self):
+        first, second = self.read(2)
+        size = second & 0x7F
+        if size == 126:
+            size = struct.unpack(">H", self.read(2))[0]
+        elif size == 127:
+            size = struct.unpack(">Q", self.read(8))[0]
+        return first & 0x0F, self.read(size)
+
+    def send(self, message):
+        self.write(TEXT, json.dumps(message).encode())
+
+    def receive(self):
+        while not self.queue:
+            opcode, payload = self.frame()
+            if opcode == CLOSE:
+                self.write(CLOSE, payload[:2])
+                code = struct.unpack(">H", payload[:2])[0] if len(payload) >= 2 else None
+                return Closed(code, payload[2:].decode())
+            if opcode == PING:
+                self.write(PONG, payload)
+            elif opcode == TEXT:
+                for line in filter(None, payload.decode().splitlines()):
+                    message = json.loads(line)
+                    if message == {}:
+                        self.send({})
+                    else:
+                        self.queue.append(message)
+        return self.queue.popleft()
+
+    def command(self, name, body):
+        self.last_id += 1
+        self.send({"id": self.last_id, name: body})
+        while True:
+            message = self.receive()
+            if isinstance(message, Closed) or message.get("id") == self.last_id:
+                return message
+            self.pushes.append(message)
+
+    def connect(self, token=None):
+        return self.command("connect", {} if token is None else {"token": token})
 
 
 def encode(data):
@@ -274,6 +387,10 @@ class Stack:
             "sua-noi-dung": f"{header}.{encode(claims)}.{signature}",
             "khong-ky": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{payload}.",
         }
+
+    def realtime(self, headers=None):
+        headers = {"Origin": self.url} if headers is None else headers
+        return Realtime(f"{self.url}{REALTIME_PATH}", self.context, headers)
 
     def api(self, token=None, headers=None, address=None):
         return self.call("GET", f"{self.url}/api/", token=token, headers=headers, address=address)
