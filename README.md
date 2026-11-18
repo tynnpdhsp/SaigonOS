@@ -166,7 +166,7 @@ Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập 
 
 ## API của service core
 
-Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file, bắt đầu quy trình và xem danh sách việc. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
+Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file, bắt đầu quy trình và xử lý việc. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
 
 API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer (`iss`), thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service từ bên trong mạng Docker vẫn bị từ chối khi access token không hợp lệ. Service chỉ chấp nhận access token, không chấp nhận ID token. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
 
@@ -644,17 +644,42 @@ Mỗi việc gồm các trường sau:
 | `process_definition_id` | Mã phiên bản của quy trình |
 | `suspended` | Việc đang tạm ngưng |
 
-Các mã lỗi của hai lời gọi:
+### Nhận việc và hoàn thành việc
+
+Lời gọi `POST /core/tasks/{id}/claim` nhận việc có mã `id` cho người gọi. Mã việc là trường `id` trong danh sách việc. Người gọi phải có một realm role nằm trong nhóm ứng viên của việc. Việc đã có người khác nhận thì không nhận được. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Những người còn lại nhận mã 409. Gọi lại lời gọi này với việc mà người gọi đã nhận thì không có gì thay đổi.
+
+Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Chỉ người nhận việc mới hoàn thành được việc. Nội dung của lời gọi có thể chứa các biến trong trường `variables`, theo cùng quy tắc với lời gọi bắt đầu quy trình. Service `core` gửi các biến này qua form của việc trong Operaton. Sau đó, quy trình đi tiếp sang bước sau. Người hoàn thành việc cũng không gửi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
+
+Cả hai lời gọi cần access token của người dùng đã đăng nhập. Khi thành công, lời gọi trả về mã 204 và không có nội dung.
+
+Ví dụ, một ứng dụng web nhận và hoàn thành việc `task` lấy từ danh sách việc như sau:
+
+```js
+const headers = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
+await fetch(`/core/tasks/${task.id}/claim`, { method: "POST", headers });
+await fetch(`/core/tasks/${task.id}/complete`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ variables: { ket_qua: "Đã thay cáp màn hình" } }),
+});
+```
+
+Các mã lỗi của các lời gọi về quy trình và việc:
 
 | Mã | Lời gọi | Ý nghĩa |
 |---|---|---|
-| 401 | Cả hai | Thiếu access token hoặc access token không hợp lệ |
+| 401 | Tất cả | Thiếu access token hoặc access token không hợp lệ |
 | 403 | Bắt đầu quy trình | Người gọi không có realm role nằm trong `candidateStarterGroups`, hoặc quy trình không khai báo thuộc tính này |
+| 403 | Nhận việc | Người gọi không có realm role nằm trong nhóm ứng viên của việc |
+| 403 | Hoàn thành việc | Người gọi không phải là người nhận việc |
 | 404 | Bắt đầu quy trình | Không có quy trình với mã này |
+| 404 | Nhận việc, hoàn thành việc | Không có việc với mã này, ví dụ việc đã được hoàn thành |
 | 409 | Bắt đầu quy trình | Quy trình đang tạm ngưng trong Cockpit |
-| 422 | Cả hai | Nội dung hoặc tham số không hợp lệ, ví dụ người gọi gửi biến `initiator` |
-| 502 | Cả hai | Operaton báo lỗi. Nội dung lỗi được ghi vào log của service `core` |
-| 503 | Cả hai | Operaton chưa sẵn sàng hoặc đang từ chối tài khoản `core` |
+| 409 | Nhận việc | Việc đã có người khác nhận |
+| 409 | Nhận việc, hoàn thành việc | Việc đang tạm ngưng vì quy trình chứa việc bị tạm ngưng trong Cockpit |
+| 422 | Tất cả | Nội dung hoặc tham số không hợp lệ, ví dụ người gọi gửi biến `initiator` |
+| 502 | Tất cả | Operaton báo lỗi. Nội dung lỗi được ghi vào log của service `core` |
+| 503 | Tất cả | Operaton chưa sẵn sàng hoặc đang từ chối tài khoản `core` |
 
 ## Cập nhật phiên bản
 
