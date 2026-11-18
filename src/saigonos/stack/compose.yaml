@@ -353,12 +353,15 @@ services:
       databases:
         condition: service_completed_successfully
     command: ["./operaton.sh", "--production", "--webapps", "--rest", "--oauth2"]
+    # tini gửi SIGINT cho cả nhóm tiến trình, run.sh của image chờ Java tắt xong rồi mới thoát
+    stop_signal: SIGINT
     environment:
       SAIGONOS_URL: ${SAIGONOS_URL:?}
       OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
       OPERATON_CLIENT_SECRET: ${OPERATON_CLIENT_SECRET:?}
       CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
       JAVA_OPTS: -Xms128m -Xmx512m
+      TINI_KILL_PROCESS_GROUP: "1"
     volumes:
       - ./config/operaton/production.yml:/operaton/configuration/production.yml:ro
     healthcheck:
