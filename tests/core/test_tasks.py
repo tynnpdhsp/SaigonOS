@@ -24,10 +24,31 @@ PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
                   id="dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
   <bpmn:process id="yeu_cau" isExecutable="true" operaton:candidateStarterGroups="nguoi-gui">
     <bpmn:startEvent id="bat_dau" operaton:initiator="nguoi_tao" />
-    <bpmn:userTask id="xu_ly" operaton:candidateGroups="nhan-vien" />
+    <bpmn:userTask id="xu_ly" operaton:candidateGroups="nhan-vien">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="noi_dung" label="Nội dung" type="string">
+            <operaton:validation>
+              <operaton:constraint name="readonly" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="ket_qua" label="Kết quả" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+              <operaton:constraint name="minlength" config="10" />
+            </operaton:validation>
+          </operaton:formField>
+          <operaton:formField id="so_gio" label="Số giờ" type="long" />
+          <operaton:formField id="xong" label="Đã xong" type="boolean" />
+          <operaton:formField id="ghi_chu" label="Ghi chú" type="string" />
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="xac_nhan" operaton:candidateGroups="nhan-vien" />
   </bpmn:process>
 </bpmn:definitions>
 """
+RESULT = {"ket_qua": "Đã thay cáp màn hình"}
 FOUND = {
     "id": "viec-1",
     "name": "Xử lý yêu cầu",
@@ -336,7 +357,7 @@ def test_openapi_document_describes_claim(client):
 
 
 def test_assignee_completes_task_through_form_with_variables(client, operaton, realm, assigned):
-    variables = {"ket_qua": "Đã thay cáp", "so_gio": 2, "ty_le": 0.5, "xong": True, "ghi_chu": None}
+    variables = {"ket_qua": "Đã thay cáp", "so_gio": 2, "xong": True, "ghi_chu": None}
 
     reply = complete(client, bearer(realm, WORKER), variables=variables)
 
@@ -347,7 +368,6 @@ def test_assignee_completes_task_through_form_with_variables(client, operaton, r
             {
                 "ket_qua": {"value": "Đã thay cáp", "type": "String"},
                 "so_gio": {"value": 2, "type": "Long"},
-                "ty_le": {"value": 0.5, "type": "Double"},
                 "xong": {"value": True, "type": "Boolean"},
                 "ghi_chu": {"value": None, "type": "Null"},
             },
@@ -356,11 +376,52 @@ def test_assignee_completes_task_through_form_with_variables(client, operaton, r
     assert "viec-1" not in operaton.items
 
 
-def test_complete_without_body_submits_empty_form(client, operaton, realm, assigned):
+def test_task_without_form_is_completed_without_variables(client, operaton, realm):
+    operaton.deploy("yeu_cau", PROCESS)
+    operaton.add_task(assignee=realm.subject, taskDefinitionKey="xac_nhan")
+
+    refused = complete(client, bearer(realm, WORKER), variables=RESULT)
     reply = client.post("/tasks/viec-1/complete", headers=bearer(realm, WORKER))
 
+    assert (refused.status_code, refused.json()) == (
+        422,
+        {"detail": "Form của việc không nhận biến ket_qua"},
+    )
     assert reply.status_code == 204
     assert operaton.submitted == [("viec-1", {})]
+
+
+@pytest.mark.parametrize(
+    ("variables", "detail"),
+    [
+        ({"so_gio": 2}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": None}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": ""}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": " \t\n "}, "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"),
+        ({"ket_qua": "  Đã xong  "}, "LỖI TUÂN THỦ: Kết quả (ket_qua) phải có ít nhất 10 ký tự"),
+        (RESULT | {"so_gio": "2"}, "LỖI TUÂN THỦ: Số giờ (so_gio) phải là số nguyên"),
+        (RESULT | {"noi_dung": "Sửa nội dung"}, "Form của việc không nhận biến noi_dung"),
+        (RESULT | {"ma_yeu_cau": "YC-02"}, "Form của việc không nhận biến ma_yeu_cau"),
+    ],
+    ids=[
+        "thiếu",
+        "null",
+        "rỗng",
+        "khoảng trắng",
+        "quá ngắn",
+        "sai kiểu",
+        "trường chỉ để xem",
+        "biến không có trong form",
+    ],
+)
+def test_task_stays_with_assignee_when_values_do_not_follow_form(
+    client, operaton, realm, assigned, variables, detail
+):
+    reply = complete(client, bearer(realm, WORKER), variables=variables)
+
+    assert (reply.status_code, reply.json()) == (422, {"detail": detail})
+    assert operaton.submitted == []
+    assert operaton.items["viec-1"]["assignee"] == realm.subject
 
 
 @pytest.mark.parametrize("assignee", [None, "nguoi-khac"], ids=["chưa ai nhận", "người khác nhận"])
@@ -407,7 +468,7 @@ def test_bpmn_of_task_is_read_once_per_version(client, operaton, realm, assigned
     operaton.add_task("viec-2", assignee=realm.subject)
 
     for task_id in ("viec-1", "viec-2"):
-        assert complete(client, bearer(realm, WORKER), task_id).status_code == 204
+        assert complete(client, bearer(realm, WORKER), task_id, RESULT).status_code == 204
 
     assert operaton.looked_up == ["yeu_cau:1:0001"]
     assert operaton.read == ["yeu_cau:1:0001"]
@@ -435,7 +496,7 @@ def test_complete_refused_by_operaton_follows_new_state_of_task(
 
     operaton.race = race
 
-    reply = complete(client, bearer(realm, WORKER))
+    reply = complete(client, bearer(realm, WORKER), variables=RESULT)
 
     assert (reply.status_code, reply.json()) == (status, detail)
 

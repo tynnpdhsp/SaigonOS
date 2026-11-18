@@ -188,6 +188,7 @@ class FakeOperaton:
             "assignee": None,
             "suspended": False,
             "processDefinitionId": "yeu_cau:1:0001",
+            "taskDefinitionKey": "xu_ly",
         } | fields
 
     def tasks(self, query, offset, limit):

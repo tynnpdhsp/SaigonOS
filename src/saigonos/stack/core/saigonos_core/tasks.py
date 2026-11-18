@@ -15,8 +15,9 @@ from saigonos_core.api import (
     operaton_errors,
 )
 from saigonos_core.callers import Caller
+from saigonos_core.forms import TASK_FORM, submitted
 from saigonos_core.operaton import Operaton, OperatonError
-from saigonos_core.processes import Name, Processes, Value, check_variables, typed
+from saigonos_core.processes import Name, Processes, Value, check_variables
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -39,8 +40,8 @@ class CompleteRequest(BaseModel):
     variables: dict[Name, Value] = Field(
         default_factory=dict,
         description=(
-            "Biến ghi vào quy trình khi hoàn thành việc. Giá trị là chuỗi tối đa 4.000 ký tự, "
-            "số nguyên, số thực, true, false hoặc null"
+            "Giá trị của các trường trong form của việc. Tên biến là thuộc tính id của trường "
+            "trong file BPMN"
         ),
         examples=[{"ket_qua": "Đã thay cáp màn hình"}],
     )
@@ -140,11 +141,12 @@ def complete_task(
     if task is None:
         raise HTTPException(404, NOT_FOUND)
     check_assignee(task, user)
-    check_variables(processes.rules(task["processDefinitionId"]), variables)
+    rules = processes.rules(task["processDefinitionId"])
+    check_variables(rules, variables)
+    form = rules.task_forms.get(task["taskDefinitionKey"], ())
+    sent = submitted(form, variables, TASK_FORM)
     try:
-        operaton.submit_task_form(
-            task_id, {name: typed(value) for name, value in variables.items()}
-        )
+        operaton.submit_task_form(task_id, sent)
     except OperatonError:
         task = operaton.task(task_id)
         if task is None:
@@ -208,8 +210,11 @@ async def claim(task_id: TaskId, request: Request, user: User) -> None:
     status_code=204,
     summary="Hoàn thành việc",
     description=(
-        "Hoàn thành một việc mà người gọi đã nhận. Các biến trong nội dung được gửi qua form "
-        "của việc trong Operaton rồi ghi vào quy trình. Sau đó, quy trình đi tiếp"
+        "Hoàn thành một việc mà người gọi đã nhận. Nội dung chỉ được chứa các trường của form "
+        "khai cho việc này trong file BPMN. Các giá trị được gửi qua form của việc trong Operaton "
+        "rồi ghi vào quy trình. Sau đó, quy trình đi tiếp. Khi một giá trị không đạt ràng buộc "
+        "của trường, lời gọi nhận mã 422 với nội dung bắt đầu bằng LỖI TUÂN THỦ. Khi đó, việc vẫn "
+        "thuộc người nhận và quy trình không đi tiếp"
     ),
     responses=UNAUTHORIZED
     | {
