@@ -2,17 +2,33 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from saigonos_core.api import BAD_GATEWAY, UNAUTHORIZED, UNAVAILABLE, User, operaton_errors
+from saigonos_core.api import (
+    BAD_GATEWAY,
+    UNAUTHORIZED,
+    UNAVAILABLE,
+    Message,
+    User,
+    operaton_errors,
+)
 from saigonos_core.callers import Caller
+from saigonos_core.operaton import Operaton, OperatonError
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+TASK_ID = r"^[A-Za-z0-9-]+$"
+MAX_ID = 64
 TIME = "%Y-%m-%dT%H:%M:%S.%f%z"
 SORTING = [{"sortBy": "created", "sortOrder": "asc"}, {"sortBy": "id", "sortOrder": "asc"}]
+NOT_FOUND = "Không tìm thấy việc"
+NOT_CANDIDATE = "Người gọi không có realm role nằm trong nhóm ứng viên của việc này"
+TAKEN = "Việc đã có người khác nhận"
+SUSPENDED = "Việc đang tạm ngưng"
+
+TaskId = Annotated[str, Path(pattern=TASK_ID, max_length=MAX_ID, description="Mã của việc")]
 
 
 class Task(BaseModel):
@@ -59,6 +75,40 @@ def query_of(caller: Caller) -> dict[str, Any]:
     return {"orQueries": [mine | {"candidateGroups": groups}], "sorting": SORTING}
 
 
+def candidate_query(task_id: str, caller: Caller) -> dict[str, Any]:
+    groups = sorted(caller.realm_roles)
+    return {"taskId": task_id, "candidateGroups": groups, "includeAssignedTasks": True}
+
+
+def claimed_by(task: dict[str, Any], user: str) -> bool:
+    if task["assignee"] == user:
+        return True
+    if task["assignee"] is not None:
+        raise HTTPException(409, TAKEN)
+    if task["suspended"]:
+        raise HTTPException(409, SUSPENDED)
+    return False
+
+
+def claim_task(operaton: Operaton, task_id: str, caller: Caller) -> None:
+    user = caller.claims["sub"]
+    found = operaton.tasks(candidate_query(task_id, caller), 0, 1)
+    if not found:
+        if operaton.task(task_id) is None:
+            raise HTTPException(404, NOT_FOUND)
+        raise HTTPException(403, NOT_CANDIDATE)
+    if claimed_by(found[0], user):
+        return
+    try:
+        operaton.claim(task_id, user)
+    except OperatonError:
+        task = operaton.task(task_id)
+        if task is None:
+            raise HTTPException(404, NOT_FOUND) from None
+        if not claimed_by(task, user):
+            raise
+
+
 router = APIRouter(prefix="/tasks")
 
 
@@ -84,3 +134,26 @@ async def list_tasks(
             request.app.state.operaton.tasks, query_of(user), offset, limit
         )
     return [task_of(data) for data in found]
+
+
+@router.post(
+    "/{task_id}/claim",
+    status_code=204,
+    summary="Nhận việc",
+    description=(
+        "Nhận một việc chưa có người nhận. Người gọi cần một realm role nằm trong nhóm ứng viên "
+        "của việc. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Gọi lại với "
+        "việc mà người gọi đã nhận thì không có gì thay đổi"
+    ),
+    responses=UNAUTHORIZED
+    | {
+        403: {"model": Message, "description": NOT_CANDIDATE},
+        404: {"model": Message, "description": NOT_FOUND},
+        409: {"model": Message, "description": f"{TAKEN}, hoặc việc đang tạm ngưng"},
+    }
+    | BAD_GATEWAY
+    | UNAVAILABLE,
+)
+async def claim(task_id: TaskId, request: Request, user: User) -> None:
+    with operaton_errors("Chưa nhận được việc", "nhận việc"):
+        await run_in_threadpool(claim_task, request.app.state.operaton, task_id, user)

@@ -131,6 +131,10 @@ class FakeOperaton:
         self.started = []
         self.queries = []
         self.found = []
+        self.items = {}
+        self.groups = {}
+        self.claims = []
+        self.race = None
         self.failure = None
 
     def deploy(self, key, xml, version=1, suspended=False):
@@ -158,10 +162,36 @@ class FakeOperaton:
         self.started.append((definition_id, variables))
         return {"id": f"quy-trinh-{len(self.started)}", "definitionId": definition_id}
 
+    def add_task(self, task_id="viec-1", groups=("nhan-vien",), **fields):
+        self.groups[task_id] = frozenset(groups)
+        self.items[task_id] = {
+            "id": task_id,
+            "assignee": None,
+            "suspended": False,
+            "processDefinitionId": "yeu_cau:1:0001",
+        } | fields
+
     def tasks(self, query, offset, limit):
         self.check()
         self.queries.append((query, offset, limit))
-        return self.found
+        if "taskId" not in query:
+            return self.found
+        task = self.items.get(query["taskId"])
+        if task is None or not self.groups[task["id"]] & set(query["candidateGroups"]):
+            return []
+        return [dict(task)]
+
+    def task(self, task_id):
+        self.check()
+        task = self.items.get(task_id)
+        return None if task is None else dict(task)
+
+    def claim(self, task_id, user):
+        self.check()
+        self.claims.append((task_id, user))
+        if self.race:
+            self.race(task_id)
+        self.items[task_id]["assignee"] = user
 
 
 @pytest.fixture
