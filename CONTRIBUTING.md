@@ -68,6 +68,7 @@ Một lượt chạy mất khoảng 17 phút. Lệnh `make check` không chạy 
 
 - Mỗi file mới phải bắt đầu bằng một dòng `SPDX-License-Identifier` với giá trị `Apache-2.0`. Dòng này được viết dưới dạng comment theo cú pháp của loại file đó.
 - Tính năng mới phải có kiểm thử đi kèm.
+- Id của kiểm thử có tham số được viết bằng chữ thường không dấu, các từ nối với nhau bằng dấu gạch ngang. Ví dụ: `khoang-trang`. Khi gặp id có chữ có dấu, pytest dừng ngay ở bước thu thập kiểm thử.
 - Mỗi commit message chỉ gồm một dòng theo quy ước [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Ví dụ: `feat(cli): thêm lệnh doctor`.
 - Mỗi thay đổi được thực hiện trên một branch riêng, sau đó mở pull request vào `main`. Pull request chỉ được merge khi CI chạy thành công.
 - Những thay đổi ảnh hưởng đến người dùng được ghi vào mục "Chưa phát hành" của [CHANGELOG.md](CHANGELOG.md).

@@ -277,6 +277,7 @@ def test_size_must_be_positive(client, files, owner, size):
         ("thu-muc/anh.png", "Tên file chứa ký tự điều khiển, dấu / hoặc dấu \\"),
         ("", "Tên file không được để trống"),
     ],
+    ids=["sai-phan-mo-rong", "gach-cheo", "ten-rong"],
 )
 def test_name_that_breaks_a_rule_is_refused(client, files, owner, name, message):
     reply = declare(client, owner, name=name)
@@ -338,7 +339,7 @@ def test_upload_larger_than_memory_buffer_is_kept_whole(client, storage, owner):
     assert storage.objects[QUARANTINE, file["id"]][0] == content
 
 
-@pytest.mark.parametrize("change", [1, -1], ids=["dài hơn", "ngắn hơn"])
+@pytest.mark.parametrize("change", [1, -1], ids=["dai-hon", "ngan-hon"])
 def test_content_with_other_size_is_refused(client, files, storage, owner, change):
     content = PNG + b"\x00" * 100
     file = declared(client, owner, content=content)
@@ -356,7 +357,7 @@ def test_content_with_other_size_is_refused(client, files, storage, owner, chang
 @pytest.mark.parametrize(
     "content",
     [b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00\xb8\x00", b"GIF89a" + PNG[6:]],
-    ids=["file chạy Windows", "ảnh GIF"],
+    ids=["file-chay-windows", "anh-gif"],
 )
 def test_content_of_other_type_is_refused(client, files, storage, owner, content):
     file = declared(client, owner, content=content)
@@ -491,6 +492,7 @@ def test_owner_gets_download_link_of_clean_file(client, files, storage, owner, s
         ("pending_scan", "File đang chờ quét mã độc nên chưa tải về được"),
         ("infected", "File có mã độc nên không tải về được"),
     ],
+    ids=["pending_upload", "pending_scan", "infected"],
 )
 def test_file_that_is_not_clean_has_no_download_link(
     client, files, storage, owner, status, message
@@ -574,7 +576,7 @@ def test_download_link_opens_again_until_it_expires(client, files, storage, owne
         {"signature": ""},
         {"expires": "", "signature": ""},
     ],
-    ids=["kéo dài hạn", "sửa chữ ký", "thiếu chữ ký", "thiếu cả hai"],
+    ids=["keo-dai-han", "sua-chu-ky", "thieu-chu-ky", "thieu-ca-hai"],
 )
 def test_changed_download_link_is_refused(client, files, storage, owner, changes):
     file = clean_file(client, files, storage, owner)
@@ -604,6 +606,7 @@ def test_download_link_of_one_file_does_not_open_another(client, files, storage,
         ("pending_scan", "File đang chờ quét mã độc nên chưa tải về được"),
         ("infected", "File có mã độc nên không tải về được"),
     ],
+    ids=["pending_scan", "infected"],
 )
 def test_signed_link_of_file_that_is_not_clean_sends_nothing(
     client, files, storage, owner, status, message

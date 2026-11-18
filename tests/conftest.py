@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from urllib.parse import urlencode
@@ -19,6 +20,14 @@ printf '%s\\n' "$(pwd -P): $*" >> "$dir/calls"
 [ -f "$dir/$2.code" ] && exit "$(cat "$dir/$2.code")"
 exit 0
 """
+ESCAPED = re.compile(r"\\[xuU][0-9a-fA-F]")
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items):
+    escaped = ", ".join(item.nodeid for item in items if ESCAPED.search(item.nodeid))
+    if escaped:
+        raise pytest.UsageError(f"Id của kiểm thử phải viết bằng chữ không dấu: {escaped}")
 
 
 class FakeDocker:

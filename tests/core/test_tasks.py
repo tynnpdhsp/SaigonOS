@@ -278,10 +278,10 @@ def test_suspended_task_cannot_be_claimed(client, operaton, realm):
         (None, 404, NOT_FOUND),
     ],
     ids=[
-        "người khác nhận trước",
-        "người gọi nhận trước",
-        "việc vừa tạm ngưng",
-        "việc vừa kết thúc",
+        "nguoi-khac-nhan-truoc",
+        "nguoi-goi-nhan-truoc",
+        "viec-vua-tam-ngung",
+        "viec-vua-ket-thuc",
     ],
 )
 def test_claim_refused_by_operaton_follows_new_state_of_task(
@@ -404,14 +404,14 @@ def test_task_without_form_is_completed_without_variables(client, operaton, real
         (RESULT | {"ma_yeu_cau": "YC-02"}, "Form của việc không nhận biến ma_yeu_cau"),
     ],
     ids=[
-        "thiếu",
+        "thieu",
         "null",
-        "rỗng",
-        "khoảng trắng",
-        "quá ngắn",
-        "sai kiểu",
-        "trường chỉ để xem",
-        "biến không có trong form",
+        "rong",
+        "khoang-trang",
+        "qua-ngan",
+        "sai-kieu",
+        "truong-chi-de-xem",
+        "bien-khong-co-trong-form",
     ],
 )
 def test_task_stays_with_assignee_when_values_do_not_follow_form(
@@ -424,7 +424,7 @@ def test_task_stays_with_assignee_when_values_do_not_follow_form(
     assert operaton.items["viec-1"]["assignee"] == realm.subject
 
 
-@pytest.mark.parametrize("assignee", [None, "nguoi-khac"], ids=["chưa ai nhận", "người khác nhận"])
+@pytest.mark.parametrize("assignee", [None, "nguoi-khac"], ids=["chua-ai-nhan", "nguoi-khac-nhan"])
 def test_only_assignee_can_complete_task(client, operaton, realm, assignee):
     operaton.deploy("yeu_cau", PROCESS)
     operaton.add_task(assignee=assignee)
@@ -482,7 +482,7 @@ def test_bpmn_of_task_is_read_once_per_version(client, operaton, realm, assigned
         (lambda realm: {"suspended": True}, 409, SUSPENDED),
         (lambda realm: {}, 502, {"detail": "Operaton báo lỗi khi hoàn thành việc"}),
     ],
-    ids=["việc vừa kết thúc", "việc vừa chuyển cho người khác", "việc vừa tạm ngưng", "lỗi khác"],
+    ids=["viec-vua-ket-thuc", "viec-vua-chuyen-cho-nguoi-khac", "viec-vua-tam-ngung", "loi-khac"],
 )
 def test_complete_refused_by_operaton_follows_new_state_of_task(
     client, operaton, realm, assigned, change, status, detail

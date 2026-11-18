@@ -88,6 +88,12 @@ def test_prerelease_tag_matches_normalized_version(project, capsys):
         ("0.3.0", "v0.3.0", "chưa có mục cho phiên bản 0.3.0"),
         ("0.2.0", "moi-nhat", "không phải là số phiên bản hợp lệ"),
     ],
+    ids=[
+        "tag-khac-phien-ban",
+        "phien-ban-dev",
+        "changelog-chua-co-muc",
+        "tag-khong-phai-phien-ban",
+    ],
 )
 def test_wrong_tag_is_rejected(project, capsys, version, tag, message):
     project(version)

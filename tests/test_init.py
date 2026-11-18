@@ -299,6 +299,18 @@ def test_max_file_size_outside_range_is_rejected(home, size):
             "--seaweedfs-port",
         ),
     ],
+    ids=[
+        "keycloak-trung-http",
+        "keycloak-trung-admin",
+        "keycloak-trung-caddy-http",
+        "keycloak-trung-caddy-https",
+        "seaweedfs-trung-http",
+        "seaweedfs-trung-admin",
+        "seaweedfs-trung-keycloak",
+        "http-trung-seaweedfs",
+        "seaweedfs-trung-caddy-http",
+        "seaweedfs-trung-caddy-https",
+    ],
 )
 def test_port_used_by_another_service_is_rejected(home, options, message, option):
     result = init("--home", home, *options)
@@ -401,6 +413,15 @@ def test_caddy_accepts_gateway_listening_on_all_addresses(home):
             "Cổng HTTP 8443 của API Gateway trùng",
         ),
     ],
+    ids=[
+        "url-mac-dinh",
+        "url-http",
+        "lang-nghe-dia-chi-lan",
+        "lang-nghe-moi-dia-chi",
+        "cong-80",
+        "cong-443",
+        "cong-cua-url",
+    ],
 )
 def test_caddy_option_rejects_settings_that_cannot_work(home, options, message):
     result = init("--home", home, "--caddy", *options)
@@ -438,6 +459,7 @@ def test_caddy_http_port_in_env_is_compared_with_gateway_port(home):
         ),
         ("SAIGONOS_HTTP_HOST=localhost", "phải lắng nghe trên địa chỉ 127.0.0.1"),
     ],
+    ids=["url-sai-cong", "host-localhost"],
 )
 def test_caddy_option_rejects_invalid_values_written_by_hand(home, line, message):
     init("--home", home, "--url", HTTPS_URL)

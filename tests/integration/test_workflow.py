@@ -735,6 +735,7 @@ def test_bpmn_file_without_history_time_to_live_stops_up_until_removed(stack):
             "Không triển khai được file khong-phai-xml.bpmn: ENGINE-09003",
         ),
     ],
+    ids=["xml-hong", "ten-file-sai", "khong-phai-xml"],
 )
 def test_broken_bpmn_file_is_reported_by_name(stack, name, text, message):
     with bpmn_files(stack, {name: text}):
@@ -837,7 +838,7 @@ def test_caller_cannot_send_variable_of_initiator(stack, requests_process, name)
 @pytest.mark.parametrize(
     "variables",
     [{}, {"noi_dung": ""}, {"noi_dung": " \t\n "}],
-    ids=["thiếu", "rỗng", "khoảng trắng"],
+    ids=["thieu", "rong", "khoang-trang"],
 )
 def test_start_without_required_field_is_compliance_error(stack, requests_process, variables):
     before = started_count(stack, requests_process)
@@ -893,13 +894,13 @@ def test_start_form_gives_variables_types_of_fields(stack, requests_process):
         ),
     ],
     ids=[
-        "không có trong form",
-        "quá dài",
-        "quá nhỏ",
-        "số dạng chuỗi",
-        "chuỗi true",
+        "khong-co-trong-form",
+        "qua-dai",
+        "qua-nho",
+        "so-dang-chuoi",
+        "chuoi-true",
         "enum",
-        "ngày",
+        "ngay",
     ],
 )
 def test_start_refuses_values_outside_start_form(stack, requests_process, variables, detail):
@@ -1240,6 +1241,16 @@ def test_function_gets_variables_and_runs_as_workflow(stack, machine_steps):
         ("ten_sai_thu", "Tên hàm Thu_Nghiem.Ghi không hợp lệ."),
         ("thieu_ham_thu", "Bước máy thiếu thuộc tính function"),
         ("ghi_initiator_thu", "Hàm thu_nghiem.ghi_initiator không được ghi biến initiator."),
+    ],
+    ids=[
+        "chua-khai-bao",
+        "cap-cho-public",
+        "khong-co-ham",
+        "sai-kieu-tham-so",
+        "sai-kieu-tra-ve",
+        "ten-sai",
+        "thieu-function",
+        "ghi-initiator",
     ],
 )
 def test_step_that_cannot_run_becomes_incident(stack, machine_steps, key, message):

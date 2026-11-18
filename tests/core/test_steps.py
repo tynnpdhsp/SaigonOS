@@ -209,6 +209,7 @@ def test_function_returning_null_completes_without_variables(steps, database, op
         ('ung_dung."cap nhat"', "không hợp lệ"),
         (f"ung_dung.{'a' * 64}", "không hợp lệ"),
     ],
+    ids=["thieu-function", "thieu-schema", "chu-hoa", "ba-phan", "dau-ngoac-kep", "ten-qua-dai"],
 )
 def test_step_without_valid_function_name_becomes_incident(
     steps, database, operaton, function, message
@@ -237,7 +238,7 @@ def test_step_without_valid_function_name_becomes_incident(
             "lệnh GRANT EXECUTE ON FUNCTION ung_dung.cap_nhat(jsonb) TO workflow",
         ),
     ],
-    ids=["không có hàm", "sai kiểu tham số", "sai kiểu trả về", "chưa khai báo"],
+    ids=["khong-co-ham", "sai-kieu-tham-so", "sai-kieu-tra-ve", "chua-khai-bao"],
 )
 def test_function_that_cannot_run_becomes_incident_without_call(
     steps, database, operaton, rows, message
@@ -273,7 +274,7 @@ def test_variable_of_other_type_becomes_incident(steps, database, operaton, kind
 @pytest.mark.parametrize(
     ("retries", "left", "delay"),
     [(None, 3, 5), (3, 2, 30), (2, 1, 120), (1, 0, 0), (10, 9, 5)],
-    ids=["lần lỗi đầu", "lần thứ hai", "lần thứ ba", "hết lượt", "quản trị cho thêm lượt"],
+    ids=["lan-loi-dau", "lan-thu-hai", "lan-thu-ba", "het-luot", "quan-tri-cho-them-luot"],
 )
 def test_function_error_is_retried_with_growing_delay(
     steps, database, operaton, caplog, retries, left, delay
@@ -324,6 +325,17 @@ def test_details_of_function_error_keep_detail_hint_and_context(steps, database,
         ('{"lon": 9223372036854775808}', "Khóa lon trong kết quả"),
         ('{"initiator": "nguoi-khac"}', "Hàm ung_dung.cap_nhat không được ghi biến initiator."),
         ('{"nguoi_tao": "nguoi-khac"}', "Hàm ung_dung.cap_nhat không được ghi biến nguoi_tao."),
+    ],
+    ids=[
+        "mang",
+        "chuoi",
+        "ten-bien-sai",
+        "object-long-nhau",
+        "gia-tri-mang",
+        "chuoi-qua-dai",
+        "so-qua-lon",
+        "ghi-initiator",
+        "ghi-nguoi-tao",
     ],
 )
 def test_result_that_cannot_become_variables_becomes_incident(

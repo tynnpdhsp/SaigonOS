@@ -98,12 +98,12 @@ class Realm:
 
     def forged_tokens(self):
         return {
-            "không phải JWT": "khong-phai-token",
-            "sửa nội dung": self.tampered_token(),
-            "không ký": self.unsigned_token(),
-            "ký HS256 bằng khóa công khai": self.token_signed_with_public_key(),
-            "ký bằng khóa khác": self.token(signer=self.spare[0]),
-            "kid không có trong JWKS": self.token("khoa-la", signer=self.spare[0]),
+            "khong-phai-jwt": "khong-phai-token",
+            "sua-noi-dung": self.tampered_token(),
+            "khong-ky": self.unsigned_token(),
+            "ky-hs256-bang-khoa-cong-khai": self.token_signed_with_public_key(),
+            "ky-bang-khoa-khac": self.token(signer=self.spare[0]),
+            "kid-khong-co-trong-jwks": self.token("khoa-la", signer=self.spare[0]),
         }
 
 

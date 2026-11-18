@@ -94,6 +94,7 @@ def test_reply_split_in_parts_is_read_whole(clamd):
 @pytest.mark.parametrize(
     "reply",
     [b"INSTREAM size limit exceeded. ERROR\0", b"stream: Can't allocate memory ERROR\0"],
+    ids=["vuot-gioi-han-kich-thuoc", "het-bo-nho"],
 )
 def test_error_reply_raises_scan_error(clamd, reply):
     clamd.replies[b"zINSTREAM"] = [reply]

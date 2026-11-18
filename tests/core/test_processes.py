@@ -221,7 +221,7 @@ def test_variable_outside_start_form_is_refused(client, operaton, realm):
     assert operaton.started == []
 
 
-@pytest.mark.parametrize("fields", [None, ()], ids=["không có form", "form không có trường"])
+@pytest.mark.parametrize("fields", [None, ()], ids=["khong-co-form", "form-khong-co-truong"])
 def test_process_without_start_form_is_started_without_variables(client, operaton, realm, fields):
     operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER, fields=fields))
 
@@ -239,7 +239,7 @@ def test_process_without_start_form_is_started_without_variables(client, operato
 @pytest.mark.parametrize(
     "variables",
     [{"ghi": "x"}, {"noi_dung": None}, {"noi_dung": ""}, {"noi_dung": " \t\n "}],
-    ids=["thiếu", "null", "rỗng", "khoảng trắng"],
+    ids=["thieu", "null", "rong", "khoang-trang"],
 )
 def test_required_field_of_start_form_needs_value(client, operaton, realm, variables):
     fields = (form_field("noi_dung", "string", REQUIRED), form_field("ghi"))

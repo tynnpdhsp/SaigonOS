@@ -130,6 +130,11 @@ def test_optional_field_left_out_is_not_sent_and_null_is_sent_as_null():
         (TASK_FORM, {"noi_dung": "Sửa nội dung", "initiator": "nguoi-khac"}, "initiator, noi_dung"),
         (START_FORM, {"noi_dung": None}, "noi_dung"),
     ],
+    ids=[
+        "bien-khong-co-trong-form",
+        "truong-chi-de-xem-va-initiator",
+        "truong-chi-de-xem-gui-null",
+    ],
 )
 def test_variable_outside_form_or_read_only_is_refused(owner, variables, names):
     assert refusal(FORM, VALID | variables, owner) == f"{owner} không nhận biến {names}"
@@ -145,7 +150,7 @@ def test_form_without_fields_accepts_only_empty_variables():
 @pytest.mark.parametrize(
     "variables",
     [{}, {"ket_qua": None}, {"ket_qua": ""}, {"ket_qua": "   "}, {"ket_qua": "\t\n\u00a0\u3000"}],
-    ids=["thiếu", "null", "rỗng", "dấu cách", "khoảng trắng khác"],
+    ids=["thieu", "null", "rong", "dau-cach", "khoang-trang-khac"],
 )
 def test_required_field_missing_or_blank_is_compliance_error(variables):
     assert refusal(FORM, variables) == "LỖI TUÂN THỦ: Phải nhập Kết quả (ket_qua)"
@@ -173,12 +178,23 @@ def test_required_field_of_any_type_needs_value(field, value):
         (12345, "Kết quả (ket_qua) phải là chuỗi"),
         (True, "Kết quả (ket_qua) phải là chuỗi"),
     ],
+    ids=["qua-ngan", "qua-dai", "emoji-qua-dai", "so-nguyen", "true"],
 )
 def test_text_outside_constraints_is_compliance_error(value, message):
     assert refusal(FORM, {"ket_qua": value}) == f"LỖI TUÂN THỦ: {message}"
 
 
-@pytest.mark.parametrize("value", ["abcde", "  abcde  ", "x" * 20, "😀" * 10, "ạ" * 20])
+@pytest.mark.parametrize(
+    "value",
+    ["abcde", "  abcde  ", "x" * 20, "😀" * 10, "ạ" * 20],
+    ids=[
+        "vua-du-toi-thieu",
+        "khoang-trang-hai-dau",
+        "vua-du-toi-da",
+        "emoji-vua-du-toi-da",
+        "chu-co-dau-vua-du-toi-da",
+    ],
+)
 def test_text_inside_constraints_is_accepted(value):
     assert submitted(FORM, {"ket_qua": value}, TASK_FORM)["ket_qua"]["value"] == value
 
@@ -193,6 +209,7 @@ def test_text_inside_constraints_is_accepted(value):
         (True, "Số giờ (so_gio) phải là số nguyên"),
         ("  ", "Số giờ (so_gio) phải là số nguyên"),
     ],
+    ids=["nho-hon-min", "lon-hon-max", "so-thuc", "chuoi-so", "true", "khoang-trang"],
 )
 def test_whole_number_outside_constraints_is_compliance_error(value, message):
     assert refusal(FORM, VALID | {"so_gio": value}) == f"LỖI TUÂN THỦ: {message}"
@@ -268,6 +285,7 @@ def test_every_problem_is_named_in_order_of_form():
         (FormField("ket_qua", "string", required=True), "ket_qua"),
         (FormField("ket_qua", "string", "ket_qua", required=True), "ket_qua"),
     ],
+    ids=["co-label", "khong-co-label", "label-trung-id"],
 )
 def test_field_is_named_by_label_and_id(field, title):
     assert refusal((field,), {}) == f"LỖI TUÂN THỦ: Phải nhập {title}"

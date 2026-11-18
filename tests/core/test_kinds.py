@@ -17,11 +17,11 @@ HEADERS = {
     XLSX: b"PK\x03\x04\x14\x00\x06\x00\x08\x00\x00\x00!\x00",
 }
 FOREIGN = {
-    "file chạy Windows": b"MZ\x90\x00\x03\x00\x00\x00\x04\x00",
-    "file chạy Linux": b"\x7fELF\x02\x01\x01\x00\x00\x00",
-    "file âm thanh WAV": b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00",
-    "văn bản UTF-16": "Xin chào".encode("utf-16"),
-    "trang HTML có byte 0": b"<html><script>alert(1)</script>\x00",
+    "file-chay-windows": b"MZ\x90\x00\x03\x00\x00\x00\x04\x00",
+    "file-chay-linux": b"\x7fELF\x02\x01\x01\x00\x00\x00",
+    "file-am-thanh-wav": b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00",
+    "van-ban-utf-16": "Xin chào".encode("utf-16"),
+    "trang-html-co-byte-0": b"<html><script>alert(1)</script>\x00",
 }
 TEXT_TYPES = {"text/plain", "text/csv"}
 ZIP_TYPES = {DOCX, XLSX}
@@ -70,6 +70,7 @@ def test_text_check_reads_whole_header_sample():
         ("text/plain", "ghi chú.v2.txt"),
         (DOCX, "đơn xin nghỉ phép.docx"),
     ],
+    ids=["jpg", "jpeg-viet-hoa", "pdf-ten-co-dau", "txt-nhieu-dau-cham", "docx-ten-co-dau"],
 )
 def test_name_with_extension_of_its_type_is_accepted(type, name):
     assert checked_name(name, type) == name
@@ -97,6 +98,21 @@ def test_name_is_stored_in_composed_form():
         ("anh", "phải có phần mở rộng .png"),
         (".png", "phải có phần mở rộng .png"),
         ("anh.png ", "phải có phần mở rộng .png"),
+    ],
+    ids=[
+        "ten-rong",
+        "qua-dai",
+        "xuong-dong",
+        "byte-0",
+        "dao-chieu-chu",
+        "phan-cach-dong",
+        "gach-cheo",
+        "gach-cheo-nguoc",
+        "them-exe",
+        "sai-phan-mo-rong",
+        "thieu-phan-mo-rong",
+        "chi-co-phan-mo-rong",
+        "khoang-trang-cuoi",
     ],
 )
 def test_name_that_breaks_a_rule_is_refused(name, message):

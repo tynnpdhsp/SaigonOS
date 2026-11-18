@@ -136,12 +136,12 @@ def test_me_needs_access_token(client, database, headers):
 @pytest.mark.parametrize(
     "name",
     [
-        "không phải JWT",
-        "sửa nội dung",
-        "không ký",
-        "ký HS256 bằng khóa công khai",
-        "ký bằng khóa khác",
-        "kid không có trong JWKS",
+        "khong-phai-jwt",
+        "sua-noi-dung",
+        "khong-ky",
+        "ky-hs256-bang-khoa-cong-khai",
+        "ky-bang-khoa-khac",
+        "kid-khong-co-trong-jwks",
     ],
 )
 def test_me_rejects_forged_token(client, database, realm, name):

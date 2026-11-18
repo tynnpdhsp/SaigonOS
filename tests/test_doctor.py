@@ -194,6 +194,7 @@ def test_login_state_accepts_addresses_matching_url():
             "khác với SAIGONOS_URL trong file .env",
         ),
     ],
+    ids=["ma-502", "html", "mang-json", "issuer-khac"],
 )
 def test_login_state_rejects_other_answers(status, body, detail):
     assert login_state(URL, status, body) == (False, detail)
@@ -271,6 +272,7 @@ def test_core_state_requires_health_and_401_for_invalid_token():
             "lời gọi có access token không hợp lệ nhận mã 200, đúng ra là 401",
         ),
     ],
+    ids=["health-503", "token-sai-nhan-200"],
 )
 def test_doctor_reports_core_service_that_fails_through_gateway(
     home, cli, docker, gateway, route, reply, detail
@@ -360,6 +362,7 @@ def test_operaton_state_accepts_login_page_at_url_and_closed_rest():
             "REST của Operaton nhận mã 200 qua API Gateway, đúng ra là 404",
         ),
     ],
+    ids=["ma-502", "sai-trang-dang-nhap", "thieu-location", "rest-mo"],
 )
 def test_operaton_state_rejects_other_answers(status, location, rest, detail):
     assert operaton_state(URL, status, location, rest) == (False, detail)
@@ -391,6 +394,7 @@ def test_operaton_state_names_address_seen_by_operaton():
             "REST của Operaton nhận mã 200 qua API Gateway, đúng ra là 404",
         ),
     ],
+    ids=["dang-nhap-404", "rest-mo"],
 )
 def test_doctor_reports_operaton_that_fails_through_gateway(
     home, cli, docker, gateway, route, reply, detail
