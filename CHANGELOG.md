@@ -7,6 +7,19 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Service `centrifugo` gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway và gửi access token của Keycloak trong lệnh connect. Centrifugo kiểm tra chữ ký, issuer, thời hạn và audience của access token. Kết nối không có access token, kết nối bằng ID token và kết nối bằng access token không mang mã người dùng đều bị từ chối. Centrifugo chỉ nhận kết nối WebSocket từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống.
+- Khi dừng, Centrifugo báo cho các client kết nối lại rồi thoát trong khoảng 1 giây.
+- API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở hai địa chỉ này. Lệnh `saigonos init` có thêm tùy chọn `--centrifugo-port` để đổi cổng này.
+- Lệnh `saigonos init` thêm các giá trị `SAIGONOS_CENTRIFUGO_PORT`, `CENTRIFUGO_API_KEY`, `CENTRIFUGO_ADMIN_PASSWORD` và `CENTRIFUGO_ADMIN_SECRET` vào file `.env`.
+- Service `realm` thêm audience `saigonos` vào access token của các client dùng client scope `roles`. Khi mapper này bị sửa hoặc bị xóa, service đặt lại như cũ.
+- Lệnh `saigonos doctor` mở thử một kết nối WebSocket tới Centrifugo qua API Gateway và kiểm tra API của Centrifugo bị chặn. Khi reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo cần kiểm tra header `Upgrade` và `Connection`.
+
+### Thay đổi
+
+- Ví dụ cấu hình Nginx trong README chuyển tiếp kết nối WebSocket. Máy chủ đã có reverse proxy cần thêm khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` như trong ví dụ.
+
 ## [0.4.0] - 2026-11-18
 
 ### Thêm
