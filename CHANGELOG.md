@@ -20,6 +20,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lời gọi `GET /core/tasks` trả về các việc mà người gọi đã nhận và các việc chưa ai nhận có nhóm ứng viên là một realm role của người gọi. Việc mà người khác đã nhận không có trong danh sách.
 - Lời gọi `POST /core/tasks/{id}/claim` nhận một việc chưa có người nhận. Người gọi cần một realm role nằm trong nhóm ứng viên của việc. Khi nhiều người cùng nhận một việc, chỉ một người nhận được. Những người còn lại nhận mã 409.
 - Lời gọi `POST /core/tasks/{id}/complete` hoàn thành việc mà người gọi đã nhận. Các biến được gửi qua form của việc trong Operaton. Người hoàn thành việc không gửi được biến `initiator`.
+- Bước máy làm của quy trình gọi một hàm của cơ sở dữ liệu. Bước này là service task có topic `saigonos-function` và thuộc tính `function` nêu tên hàm. Hàm cần được cấp quyền `EXECUTE` cho role `workflow` và chạy với quyền của role này. Kết quả của hàm được ghi thành biến của quy trình.
+- Mỗi bước máy làm chỉ chạy hàm một lần, kể cả khi service `core` dừng đột ngột trước khi báo Operaton. Hàm báo lỗi được thử lại sau 5 giây, 30 giây và 2 phút. Hàm chưa được khai báo hoặc sai kiểu làm bước máy làm trở thành incident trong Cockpit.
 - Khi Operaton từ chối tài khoản `core`, service `core` ngừng gọi Operaton trong 60 giây. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi khởi động lại. Nhờ đó, Operaton không khóa hẳn tài khoản `core`.
 
 ### Sửa
