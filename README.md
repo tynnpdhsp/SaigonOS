@@ -166,7 +166,7 @@ Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập 
 
 ## API của service core
 
-Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
+Service `core` cung cấp các API của lõi mà PostgREST không đảm nhận, ví dụ tải lên và quét mã độc file, bắt đầu quy trình và xem danh sách việc. Service được viết bằng FastAPI. API nằm ở địa chỉ `/core/` của API Gateway. Tài liệu OpenAPI 3.1 nằm ở địa chỉ http://localhost:9080/core/openapi.json. Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
 
 API Gateway kiểm tra access token của lời gọi tới `/core` như với `/api`. Service `core` kiểm tra lại chữ ký, issuer (`iss`), thời hạn, loại token và realm role `authenticated`. Do đó, lời gọi tới thẳng service từ bên trong mạng Docker vẫn bị từ chối khi access token không hợp lệ. Service chỉ chấp nhận access token, không chấp nhận ID token. Khi Keycloak đổi khóa ký, service tự lấy khóa mới.
 
@@ -524,6 +524,13 @@ Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operat
 
 REST API của Operaton không mở qua API Gateway. Chỉ hai service `core` và `processes` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
 
+Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần Operaton từ chối tài khoản `core`. Trong thời gian này, các lời gọi cần Operaton nhận mã 503. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại, và log của service ghi cách khắc phục. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD` trong file `.env`, chạy lại lệnh `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core` bằng lệnh sau:
+
+```bash
+cd ~/saigonos
+docker compose restart core
+```
+
 ### Triển khai quy trình
 
 Mỗi quy trình nằm trong một file BPMN 2.0 ở thư mục `~/saigonos/config/operaton/processes`. Lệnh `saigonos init` tạo sẵn thư mục này. Mỗi khi hệ thống khởi động, service `processes` triển khai các file trong thư mục vào Operaton. Do đó, sau khi thêm hoặc sửa một file, cần chạy lại lệnh sau:
@@ -564,6 +571,90 @@ Ví dụ sau là một quy trình đơn giản gồm điểm bắt đầu và đ
   </bpmn:process>
 </bpmn:definitions>
 ```
+
+### Bắt đầu quy trình
+
+Lời gọi `POST /core/processes/{key}/start` bắt đầu phiên bản mới nhất của quy trình có mã `key`. Mã quy trình là thuộc tính `id` của thẻ `process`. Lời gọi cần access token của người dùng đã đăng nhập.
+
+Người gọi phải có một realm role nằm trong thuộc tính `operaton:candidateStarterGroups` của thẻ `process`. Giá trị của thuộc tính là danh sách tên realm role, cách nhau bởi dấu phẩy, không dùng biểu thức `${...}`. Quy trình không có thuộc tính này thì không ai bắt đầu được qua API. File BPMN viết cho Camunda 7 với tiền tố `camunda:` cũng được đọc như Operaton đọc.
+
+Nội dung của lời gọi có thể chứa các biến của quy trình trong trường `variables`. Tên biến bắt đầu bằng chữ cái không dấu hoặc dấu gạch dưới, tiếp theo là chữ cái không dấu, chữ số hoặc dấu gạch dưới, dài tối đa 64 ký tự. Giá trị của biến được đổi sang kiểu của Operaton như sau:
+
+| Giá trị trong JSON | Kiểu biến trong Operaton |
+|---|---|
+| Chuỗi tối đa 4.000 ký tự | `String` |
+| Số nguyên từ -2^63 tới 2^63 - 1 | `Long` |
+| Số thực | `Double` |
+| `true` hoặc `false` | `Boolean` |
+| `null` | `Null` |
+
+Service `core` ghi mã người gọi, tức claim `sub` của access token, vào biến `initiator`. Khi điểm bắt đầu của quy trình có thuộc tính `operaton:initiator`, biến mang tên ghi trong thuộc tính này cũng nhận mã người gọi. Người gọi không gửi được các biến này.
+
+Ví dụ, một ứng dụng web bắt đầu quy trình `yeu_cau` như sau:
+
+```js
+const reply = await fetch("/core/processes/yeu_cau/start", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ variables: { noi_dung: "Máy 12 không lên màn hình" } }),
+});
+const { id, version } = await reply.json();
+```
+
+Lời gọi trả về mã 201 kèm mã của quy trình vừa bắt đầu trong trường `id` và phiên bản của quy trình trong trường `version`.
+
+Quy trình `yeu_cau` trong ví dụ được lưu trong file `yeu-cau.bpmn`. Người có realm role `nguoi-gui` bắt đầu được quy trình. Việc `xu_ly` chờ một người có realm role `nhan-vien` nhận:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="yeu_cau_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="yeu_cau" name="Tiếp nhận yêu cầu" isExecutable="true"
+                operaton:historyTimeToLive="P30D" operaton:candidateStarterGroups="nguoi-gui">
+    <bpmn:startEvent id="bat_dau" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="xu_ly" />
+    <bpmn:userTask id="xu_ly" name="Xử lý yêu cầu" operaton:candidateGroups="nhan-vien" />
+    <bpmn:sequenceFlow id="luong_2" sourceRef="xu_ly" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+</bpmn:definitions>
+```
+
+### Danh sách việc
+
+Lời gọi `GET /core/tasks` trả về các việc mà người gọi xử lý được. Danh sách gồm hai loại việc:
+
+- Việc mà người gọi đã nhận.
+- Việc chưa ai nhận và có nhóm ứng viên là một realm role của người gọi. Nhóm ứng viên được khai báo trong thuộc tính `operaton:candidateGroups` của thẻ `userTask`.
+
+Việc mà người khác đã nhận không có trong danh sách. Các việc được xếp theo thời điểm tạo, việc cũ nhất đứng đầu. Tham số `limit` đặt số việc tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số việc được bỏ qua ở đầu danh sách. Ví dụ, lời gọi `GET /core/tasks?offset=50&limit=50` trả về trang thứ hai.
+
+Mỗi việc gồm các trường sau:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `id` | Mã của việc |
+| `name`, `description` | Tên và mô tả của việc trong file BPMN |
+| `assignee` | Mã người nhận việc. Giá trị `null` nghĩa là việc đang chờ nhận |
+| `created`, `due` | Thời điểm tạo và hạn xử lý |
+| `priority` | Độ ưu tiên |
+| `task_key` | Mã của việc trong file BPMN, tức thuộc tính `id` của thẻ `userTask` |
+| `process_instance_id` | Mã của quy trình chứa việc, bằng trường `id` khi bắt đầu quy trình |
+| `process_definition_id` | Mã phiên bản của quy trình |
+| `suspended` | Việc đang tạm ngưng |
+
+Các mã lỗi của hai lời gọi:
+
+| Mã | Lời gọi | Ý nghĩa |
+|---|---|---|
+| 401 | Cả hai | Thiếu access token hoặc access token không hợp lệ |
+| 403 | Bắt đầu quy trình | Người gọi không có realm role nằm trong `candidateStarterGroups`, hoặc quy trình không khai báo thuộc tính này |
+| 404 | Bắt đầu quy trình | Không có quy trình với mã này |
+| 409 | Bắt đầu quy trình | Quy trình đang tạm ngưng trong Cockpit |
+| 422 | Cả hai | Nội dung hoặc tham số không hợp lệ, ví dụ người gọi gửi biến `initiator` |
+| 502 | Cả hai | Operaton báo lỗi. Nội dung lỗi được ghi vào log của service `core` |
+| 503 | Cả hai | Operaton chưa sẵn sàng hoặc đang từ chối tài khoản `core` |
 
 ## Cập nhật phiên bản
 

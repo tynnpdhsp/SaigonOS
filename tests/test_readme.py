@@ -22,6 +22,7 @@ from saigonos.home import (
 )
 from saigonos_core.files import FileInfo
 from saigonos_core.kinds import KINDS
+from saigonos_core.tasks import Task
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
 BLOCK_LINES = [
@@ -36,6 +37,10 @@ DOCTOR_SAMPLE = SAMPLES[0]
 VERIFY_SAMPLES = [sample for sample in SAMPLES if "audit log" in sample.lower()]
 PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
 HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
+
+
+def section(title):
+    return README.split(f"\n{title}\n", 1)[1].split("\n#", 1)[0]
 
 
 def anchor(heading):
@@ -144,9 +149,15 @@ def test_readme_lists_every_allowed_file_type():
 
 
 def test_readme_lists_every_file_status():
-    rows = re.findall(r"^\| `([a-z_]+)` \|", README, re.MULTILINE)
+    rows = re.findall(r"^\| `([a-z_]+)` \|", section("## Tải file lên"), re.MULTILINE)
 
     assert rows == list(get_args(FileInfo.model_fields["status"].annotation))
+
+
+def test_readme_lists_every_task_field():
+    rows = re.findall(r"^\| (`[^|]+) \|", section("### Danh sách việc"), re.MULTILINE)
+
+    assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
 
 
 def test_readme_links_point_to_existing_sections():
