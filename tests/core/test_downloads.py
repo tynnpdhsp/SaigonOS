@@ -26,6 +26,10 @@ def issued(file_id, now=NOW):
     return fields, expires
 
 
+def flipped(signature):
+    return signature[:-1] + ("1" if signature.endswith("0") else "0")
+
+
 def test_link_lives_at_most_sixty_seconds():
     file_id = uuid4()
 
@@ -60,7 +64,7 @@ def test_link_is_refused_after_it_expires(later):
         lambda file_id, fields: (uuid4(), fields["expires"], fields["signature"]),
         lambda file_id, fields: (file_id, str(int(fields["expires"]) + 3600), fields["signature"]),
         lambda file_id, fields: (file_id, f"0{fields['expires']}", fields["signature"]),
-        lambda file_id, fields: (file_id, fields["expires"], fields["signature"][:-1] + "0"),
+        lambda file_id, fields: (file_id, fields["expires"], flipped(fields["signature"])),
         lambda file_id, fields: (file_id, fields["expires"], fields["signature"].upper()),
         lambda file_id, fields: (file_id, fields["expires"], ""),
         lambda file_id, fields: (file_id, "", fields["signature"]),
