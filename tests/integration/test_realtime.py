@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 import pytest
 
@@ -30,6 +31,37 @@ CLOSED_PATHS = [
     ("GET", "/realtime/connection/websocket;x"),
     ("GET", "/connection/websocket"),
 ]
+WRITE = (
+    "SET ROLE workflow; "
+    "WITH added AS (INSERT INTO {table} (noi_dung) VALUES ({content}) RETURNING id) "
+    "SELECT core.publish({channel}, jsonb_build_object('yeu_cau', id, 'noi_dung', {content})) "
+    "FROM added"
+)
+INVALID_CHANNELS = {
+    "khong-namespace": "thu",
+    "namespace-khac": "khac:thu",
+    "chu-hoa": "PUBLIC:thu",
+    "ten-rong": "public:",
+    "khoang-trang": "public:may 12",
+    "hai-dau-hai-cham": "public:phong:may",
+    "dau-thang": "public:may#12",
+    "co-dau": "public:phòng-máy",
+    "thieu-dau-thang": "user:nguoi-a",
+    "nguoi-dung-rong": "user:#",
+    "hai-nguoi-dung": "user:#nguoi-a,nguoi-b",
+    "role-rong": "role:",
+    "qua-dai": "public:" + "a" * 249,
+}
+PUBLISHERS = ["public", "anon", "authenticated", "authenticator", "core_service", "centrifugo"]
+TABLE_PRIVILEGES = """
+SELECT c.oid::regclass::text, p.privilege
+FROM pg_class AS c,
+    unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p (privilege)
+WHERE c.relnamespace NOT IN ('pg_catalog'::regnamespace, 'information_schema'::regnamespace)
+AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+AND has_table_privilege('centrifugo', c.oid, p.privilege)
+ORDER BY 1, 2
+"""
 
 
 def decode(token, part=1):
@@ -100,9 +132,76 @@ def set_frontend_url(stack, url):
     assert reply.status == 204, reply.body
 
 
+def literal(value):
+    return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+
+
+def psql(stack, query):
+    options = ["--username=postgres", "--dbname=saigonos", "--no-psqlrc", "--tuples-only"]
+    options += ["--no-align", "--set=ON_ERROR_STOP=1", f"--command={query}"]
+    return stack.exec("postgres", "psql", *options)
+
+
+def publish(stack, channel, data):
+    arguments = f"{literal(channel)}, {literal(json.dumps(data))}"
+    return stack.sql(f"SET ROLE workflow; SELECT core.publish({arguments})")[-1][0]
+
+
+def write(stack, table, channel, content):
+    query = WRITE.format(table=table, channel=literal(channel), content=literal(content))
+    return stack.sql(query)[-1][0]
+
+
+def received(client, timeout):
+    client.connection.sock.settimeout(timeout)
+    try:
+        return client.receive()
+    except TimeoutError:
+        return None
+    finally:
+        client.connection.sock.settimeout(30)
+
+
+def publication(message):
+    push = (message or {}).get("push", {})
+    return push.get("channel"), push.get("pub", {}).get("data"), push.get("pub", {}).get("tags")
+
+
+def in_outbox(stack, message_id):
+    query = f"SELECT count(*) FROM core.outbox WHERE payload -> 'tags' ->> 'id' = '{message_id}'"
+    return int(stack.sql(query)[0][0])
+
+
+@contextmanager
+def listening(stack, user, channels):
+    key = {"X-API-Key": stack.env["CENTRIFUGO_API_KEY"]}
+    with stack.realtime() as client:
+        client_id = client.connect(stack.token(user))["connect"]["client"]
+        for channel in channels:
+            body = {"user": user.id, "client": client_id, "channel": channel}
+            reply = internal(stack, "POST", "/api/subscribe", body=body, headers=key)
+            assert (reply.status, json.loads(reply.body)) == (200, {"result": {}}), reply.body
+            assert client.receive() == {"push": {"channel": channel, "subscribe": {}}}
+        yield client
+
+
 @pytest.fixture
 def user(stack):
     return stack.new_user()
+
+
+@pytest.fixture(scope="module")
+def requests_table(stack):
+    schema = f"thu_tin_{secrets.token_hex(4)}"
+    stack.sql(
+        f"CREATE SCHEMA {schema}; "
+        f"CREATE TABLE {schema}.yeu_cau ("
+        "id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+        "noi_dung text NOT NULL CHECK (noi_dung <> '')); "
+        f"GRANT USAGE ON SCHEMA {schema} TO workflow; "
+        f"GRANT SELECT, INSERT ON {schema}.yeu_cau TO workflow"
+    )
+    return f"{schema}.yeu_cau"
 
 
 def test_doctor_reports_centrifugo(stack):
@@ -316,3 +415,124 @@ def test_new_signing_key_is_accepted_without_restart(stack, user):
 
     assert decode(stack.token(user), 0)["kid"] != old_key
     wait_for(lambda: connected(connect(stack, stack.token(user))), timeout=15)
+
+
+def test_centrifugo_starts_after_migrate_has_finished(stack):
+    services = json.loads(stack.compose("config", "--format", "json"))["services"]
+
+    centrifugo = services["centrifugo"]["depends_on"]["migrate"]["condition"]
+    migrate = services["migrate"]["depends_on"]["databases"]["condition"]
+
+    assert centrifugo == migrate == "service_completed_successfully"
+
+
+def test_row_and_message_written_together_reach_listener_within_one_second(
+    stack, user, requests_table
+):
+    tag = secrets.token_hex(4)
+    channels = [f"public:thu-{tag}", f"user:#{user.id}", f"role:thu-{tag}"]
+
+    with listening(stack, user, channels) as client:
+        for channel in channels:
+            content = f"Máy 12 không lên nguồn, kênh {channel}"
+            message_id = write(stack, requests_table, channel, content)
+            message = received(client, 1)
+
+            query = f"SELECT id FROM {requests_table} WHERE noi_dung = {literal(content)}"
+            [[row]] = stack.sql(query)
+            data = {"yeu_cau": int(row), "noi_dung": content}
+            assert publication(message) == (channel, data, {"id": message_id})
+
+
+def test_rolled_back_transaction_sends_nothing(stack, user, requests_table):
+    channel = f"public:thu-{secrets.token_hex(4)}"
+    content = f"Bị hủy {secrets.token_hex(4)}"
+    undone = WRITE.format(table=requests_table, channel=literal(channel), content=literal(content))
+
+    with listening(stack, user, [channel]) as client:
+        failed = psql(stack, f"{undone}; INSERT INTO {requests_table} (noi_dung) VALUES ('')")
+        marker = publish(stack, channel, {"moc": True})
+        message = received(client, 5)
+
+    assert failed.returncode != 0
+    assert "violates check constraint" in failed.stderr
+    assert publication(message) == (channel, {"moc": True}, {"id": marker})
+    written = f"SELECT count(*) FROM {requests_table} WHERE noi_dung = {literal(content)}"
+    assert stack.sql(written) == [["0"]]
+
+
+def test_sent_message_is_deleted_from_outbox(stack, user):
+    channel = f"public:thu-{secrets.token_hex(4)}"
+
+    with listening(stack, user, [channel]) as client:
+        message_id = publish(stack, channel, {"lan": 1})
+        message = received(client, 5)
+
+    assert publication(message) == (channel, {"lan": 1}, {"id": message_id})
+    wait_for(lambda: in_outbox(stack, message_id) == 0, timeout=5)
+
+
+def test_each_message_gets_its_own_id(stack, user):
+    channel = f"public:thu-{secrets.token_hex(4)}"
+
+    with listening(stack, user, [channel]) as client:
+        sent = [publish(stack, channel, {"lan": 1}) for _ in range(2)]
+        tags = [publication(received(client, 5))[2] for _ in sent]
+
+    assert len(set(sent)) == 2
+    assert tags == [{"id": message_id} for message_id in sent]
+
+
+@pytest.mark.parametrize("channel", INVALID_CHANNELS.values(), ids=INVALID_CHANNELS.keys())
+def test_publish_refuses_channel_outside_three_namespaces(stack, channel):
+    refused = psql(stack, f"SET ROLE workflow; SELECT core.publish({literal(channel)}, '{{}}')")
+
+    assert refused.returncode != 0
+    assert f"Kênh {literal(channel)} không hợp lệ" in refused.stderr
+
+
+def test_channel_may_have_up_to_255_characters(stack):
+    channel = "public:" + "a" * 248
+
+    message_id = publish(stack, channel, {})
+
+    assert len(channel) == 255
+    assert re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", message_id)
+
+
+def test_publish_refuses_null_channel_and_null_data(stack):
+    no_channel = psql(stack, "SET ROLE workflow; SELECT core.publish(NULL, '{}')")
+    no_data = psql(stack, "SET ROLE workflow; SELECT core.publish('public:thu', NULL)")
+
+    assert "Kênh NULL không hợp lệ" in no_channel.stderr
+    assert "Nội dung của tin không được là NULL" in no_data.stderr
+
+
+def test_only_role_workflow_can_publish(stack):
+    roles = ", ".join(literal(role) for role in [*PUBLISHERS, "workflow"])
+    query = (
+        "SELECT role, has_function_privilege(role, 'core.publish(text, jsonb)', 'EXECUTE') "
+        f"FROM unnest(ARRAY[{roles}]) AS role"
+    )
+
+    allowed = dict(stack.sql(query))
+    refused = psql(stack, "SET ROLE authenticated; SELECT core.publish('public:thu', '{}')")
+
+    assert allowed == {**dict.fromkeys(PUBLISHERS, "f"), "workflow": "t"}
+    assert "permission denied for function publish" in refused.stderr
+
+
+def test_role_centrifugo_only_reads_and_deletes_outbox(stack):
+    attributes = stack.sql(
+        "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+        "FROM pg_roles WHERE rolname = 'centrifugo'"
+    )
+    groups = stack.sql("SELECT count(*) FROM pg_auth_members WHERE member = 'centrifugo'::regrole")
+
+    assert stack.sql(TABLE_PRIVILEGES) == [["core.outbox", "DELETE"], ["core.outbox", "SELECT"]]
+    assert attributes == [["t", "f", "f", "f", "f", "f"]]
+    assert groups == [["0"]]
+    for database in ("keycloak", "operaton"):
+        options = ["--username=centrifugo", f"--dbname={database}", "--command=SELECT 1"]
+        refused = stack.exec("postgres", "psql", *options)
+        assert f'permission denied for database "{database}"' in refused.stderr
