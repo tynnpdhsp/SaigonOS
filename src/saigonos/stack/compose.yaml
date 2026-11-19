@@ -183,6 +183,7 @@ services:
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
       OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+      CENTRIFUGO_DB_PASSWORD: ${CENTRIFUGO_DB_PASSWORD:?}
     volumes:
       - ./config/postgres:/config:ro
     tmpfs:
