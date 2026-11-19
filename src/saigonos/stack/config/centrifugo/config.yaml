@@ -3,12 +3,16 @@ client:
   token:
     jwks_public_endpoint: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
     audience: saigonos
+  subscription_token:
+    enabled: true
   allow_anonymous_connect_without_token: false
   disallow_anonymous_connection_tokens: true
 channel:
   namespaces:
     - name: public
+      allow_subscribe_for_client: true
     - name: user
+      allow_user_limited_channels: true
     - name: role
 consumers:
   - enabled: true
