@@ -158,6 +158,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      databases:
+        condition: service_completed_successfully
     environment:
       PGHOST: postgres
       PGDATABASE: saigonos
