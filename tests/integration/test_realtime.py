@@ -236,7 +236,8 @@ def listening(stack, user, channels):
             body = {"user": user.id, "client": client_id, "channel": channel}
             reply = internal(stack, "POST", "/api/subscribe", body=body, headers=key)
             assert (reply.status, json.loads(reply.body)) == (200, {"result": {}}), reply.body
-            assert client.receive() == {"push": {"channel": channel, "subscribe": {}}}
+            pushed = client.receive()["push"]
+            assert (pushed["channel"], "subscribe" in pushed) == (channel, True)
         yield client
 
 
@@ -601,7 +602,7 @@ def test_any_user_can_listen_to_public_channel(stack, user):
         message_id = publish(stack, channel, {"lan": 1})
         message = received(client, 1)
 
-    assert reply["subscribe"] == {}
+    assert "expires" not in reply["subscribe"]
     assert publication(message) == (channel, {"lan": 1}, {"id": message_id})
 
 
@@ -617,7 +618,7 @@ def test_user_listens_only_to_own_channel(stack, user):
         message = received(client, 1)
 
     assert error_of(refused) == PERMISSION_DENIED
-    assert accepted["subscribe"] == {}
+    assert "expires" not in accepted["subscribe"]
     assert publication(message) == (own, {"cho": "minh"}, {"id": message_id})
 
 

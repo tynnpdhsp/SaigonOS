@@ -11,9 +11,21 @@ channel:
   namespaces:
     - name: public
       allow_subscribe_for_client: true
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
     - name: user
       allow_user_limited_channels: true
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
     - name: role
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
 consumers:
   - enabled: true
     name: outbox
