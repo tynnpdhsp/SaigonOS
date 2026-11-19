@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -321,6 +321,17 @@ Khi sửa cấu hình hoặc route của Centrifugo, cần tuân theo các quy t
 - Giữ thiết lập `usage_stats.disabled`. Nếu bỏ thiết lập này, Centrifugo gửi thống kê ẩn danh tới nhà phát triển lần đầu sau 24 đến 48 giờ mà không ghi log.
 
 Kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.py`. Client WebSocket của kiểm thử là lớp `Realtime` trong `tests/integration/conftest.py`, được viết bằng thư viện chuẩn của Python. Kiểm thử `test_expired_access_token_is_refused` dùng một client có thời hạn access token 1 giây, nên không phải chờ 60 giây. Kiểm thử `test_access_token_of_other_issuer_is_refused` tạm đặt Frontend URL của realm `saigonos` để Keycloak cấp access token có issuer khác, rồi xóa thiết lập này. Kiểm thử `test_access_token_without_user_is_refused` dùng một client chỉ có client scope `roles`. Kiểm thử `test_websocket_of_centrifugo_works_through_caddy` trong `test_caddy.py` kết nối qua HTTPS của Caddy.
+
+### Quyền nghe kênh
+
+Quyền nghe kênh được khai báo theo namespace trong `channel.namespaces`. Khi sửa namespace hoặc token kênh, cần tuân theo các quy tắc sau:
+
+- Namespace `public` có `allow_subscribe_for_client`. Namespace `user` chỉ có `allow_user_limited_channels`. Namespace `role` không có thiết lập nào, nên chỉ nghe được bằng token kênh. Không thêm `allow_subscribe_for_client` vào namespace `user` hoặc `role`.
+- Token kênh hợp lệ mở được đúng kênh ghi trong token ở mọi namespace đã khai báo, kể cả kênh `user:#<sub>` của người khác và kênh không có namespace. Do đó, lời gọi `POST /core/realtime/token` chỉ cấp token cho kênh `role:<realm role>` sau khi kiểm tra realm role của người gọi, và khóa `CENTRIFUGO_SUBSCRIPTION_KEY` không được dùng vào việc khác.
+- Giữ thiết lập `client.subscription_token.enabled`. Thiết lập này cho Centrifugo kiểm token kênh bằng khóa trong biến `CENTRIFUGO_CLIENT_SUBSCRIPTION_TOKEN_HMAC_SECRET_KEY`. Biến này và biến `SUBSCRIPTION_KEY` của service `core` cùng lấy giá trị `CENTRIFUGO_SUBSCRIPTION_KEY`. Nếu bỏ thiết lập này, Centrifugo kiểm token kênh bằng JWKS của Keycloak nên mọi token kênh bị từ chối.
+- Token kênh hết hạn không muộn hơn access token dùng để lấy token. Nhờ đó, người bị gỡ realm role không giữ được token kênh lâu hơn access token cũ. Centrifugo cho client thêm 25 giây để gửi token mới (`client.expired_sub_close_delay`) và kiểm hạn của kênh 27 giây một lần (`client.presence_update_interval`). Do đó, kênh không có token mới bị ngừng từ 25 đến 52 giây sau khi token hết hạn.
+
+Các kiểm thử quyền nghe kênh nằm trong file `tests/integration/test_realtime.py`. Client nghe kênh bằng lệnh subscribe của chính client. Kiểm thử `test_expired_channel_token_is_refused` ký token kênh bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` của bộ thử, nên không phải chờ token hết hạn.
 
 ### Gửi tin qua bảng outbox
 
