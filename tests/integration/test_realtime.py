@@ -66,6 +66,9 @@ OUTSIDE_CHANNELS = {
     "role-khong-token": ("role:admin", PERMISSION_DENIED),
 }
 FORGED_CHANNEL_TOKENS = ["ky-bang-khoa-khac", "khong-ky", "access-token", "sua-kenh"]
+NAMESPACES = ["public", "user", "role"]
+HISTORY_SIZE = 100
+OUTAGE = 60
 TABLE_PRIVILEGES = """
 SELECT c.oid::regclass::text, p.privilege
 FROM pg_class AS c,
@@ -225,6 +228,43 @@ def channel_token(stack, user, channel):
 def role_member(stack):
     role = f"thu-{secrets.token_hex(4)}"
     return stack.new_user(role=role), f"role:{role}"
+
+
+def listener(stack, namespace):
+    if namespace == "role":
+        member, channel = role_member(stack)
+        return member, channel, lambda: channel_token(stack, member, channel)
+    user = stack.new_user()
+    channel = f"user:#{user.id}" if namespace == "user" else f"public:thu-{secrets.token_hex(4)}"
+    return user, channel, lambda: None
+
+
+def position(reply):
+    result = reply["subscribe"]
+    return result["epoch"], result.get("offset", 0)
+
+
+def resubscribe(client, channel, since, token=None):
+    epoch, offset = since
+    body = {"channel": channel, "recover": True, "epoch": epoch, "offset": offset}
+    return client.command("subscribe", body if token is None else body | {"token": token})
+
+
+def history(client, channel):
+    return client.command("history", {"channel": channel, "limit": -1})
+
+
+def recovery(result):
+    return result.get("was_recovering", False), result.get("recovered", False)
+
+
+def contents(publications):
+    return [(item["data"], item["tags"]) for item in publications]
+
+
+def outbox_size(stack, channel=None):
+    condition = "" if channel is None else f" WHERE payload ->> 'channel' = {literal(channel)}"
+    return int(stack.sql(f"SELECT count(*) FROM core.outbox{condition}")[0][0])
 
 
 @contextmanager
@@ -717,3 +757,104 @@ def test_channel_token_of_other_user_closes_connection(stack, user):
 def test_channel_without_permission_is_refused(stack, user, channel, error):
     with connected_as(stack, user) as client:
         assert error_of(subscribe(client, channel)) == error
+
+
+@pytest.mark.parametrize("namespace", NAMESPACES)
+def test_reconnecting_client_receives_missed_messages(stack, namespace):
+    user, channel, token = listener(stack, namespace)
+
+    with connected_as(stack, user) as client:
+        reply = subscribe(client, channel, token())
+        first = publish(stack, channel, {"lan": 1})
+        last = received(client, 5)["push"]["pub"]
+    missed = [publish(stack, channel, {"lan": lan}) for lan in (2, 3)]
+    wait_for(lambda: outbox_size(stack, channel) == 0, timeout=5)
+    since = (reply["subscribe"]["epoch"], last["offset"])
+    with connected_as(stack, user) as client:
+        recovered = resubscribe(client, channel, since, token())["subscribe"]
+
+    assert reply["subscribe"]["recoverable"] is True
+    assert last["tags"] == {"id": first}
+    assert recovery(recovered) == (True, True)
+    assert contents(recovered["publications"]) == [
+        ({"lan": 2}, {"id": missed[0]}),
+        ({"lan": 3}, {"id": missed[1]}),
+    ]
+
+
+def test_client_that_missed_more_than_history_is_not_recovered(stack, user):
+    channel = f"public:thu-{secrets.token_hex(4)}"
+    query = (
+        "SET ROLE workflow; "
+        f"SELECT core.publish({literal(channel)}, jsonb_build_object('lan', lan)) "
+        f"FROM generate_series(1, {HISTORY_SIZE + 1}) AS lan"
+    )
+
+    with connected_as(stack, user) as client:
+        since = position(subscribe(client, channel))
+    stack.sql(query)
+    wait_for(lambda: outbox_size(stack, channel) == 0, timeout=10)
+    with connected_as(stack, user) as client:
+        reply = resubscribe(client, channel, since)["subscribe"]
+        kept = history(client, channel)["history"]
+
+    assert recovery(reply) == (True, False)
+    assert "publications" not in reply
+    assert [item["data"]["lan"] for item in kept["publications"]] == list(
+        range(2, HISTORY_SIZE + 2)
+    )
+    assert kept["offset"] == HISTORY_SIZE + 1
+
+
+def test_messages_written_while_centrifugo_is_stopped_reach_client_after_restart(stack):
+    listeners = [listener(stack, namespace) for namespace in NAMESPACES]
+    positions = []
+    for user, channel, token in listeners:
+        with connected_as(stack, user) as client:
+            positions.append(position(subscribe(client, channel, token())))
+
+    stopped_at = time.monotonic()
+    stopped = stack.compose_result("stop", "centrifugo")
+    written = [
+        [publish(stack, channel, {"lan": lan}) for lan in (1, 2)] for _, channel, _ in listeners
+    ]
+    waiting = sum(outbox_size(stack, channel) for _, channel, _ in listeners)
+    time.sleep(max(0, OUTAGE - (time.monotonic() - stopped_at)))
+    started = stack.compose_result("up", "-d", "--wait", "centrifugo")
+    wait_for(lambda: outbox_size(stack) == 0, timeout=15)
+    replies = []
+    for (user, channel, token), since in zip(listeners, positions, strict=True):
+        with connected_as(stack, user) as client:
+            reply = resubscribe(client, channel, since, token())["subscribe"]
+            replies.append((reply, history(client, channel)["history"]))
+
+    assert stopped.returncode == 0, stopped.stderr
+    assert waiting == 2 * len(listeners)
+    assert started.returncode == 0, started.stderr
+    for (reply, kept), (epoch, _), ids in zip(replies, positions, written, strict=True):
+        assert recovery(reply) == (True, False)
+        assert reply["epoch"] != epoch
+        assert contents(kept["publications"]) == [
+            ({"lan": 1}, {"id": ids[0]}),
+            ({"lan": 2}, {"id": ids[1]}),
+        ]
+
+
+def test_only_subscribed_client_reads_history(stack, user):
+    other = stack.new_user()
+    _, role_channel = role_member(stack)
+    own = f"user:#{user.id}"
+    channels = [own, f"user:#{other.id}", role_channel, f"public:thu-{secrets.token_hex(4)}"]
+    for channel in channels:
+        publish(stack, channel, {"lan": 1})
+    wait_for(lambda: all(outbox_size(stack, channel) == 0 for channel in channels), timeout=5)
+
+    with connected_as(stack, user) as client:
+        refused = [history(client, channel) for channel in channels]
+        recovering = resubscribe(client, f"user:#{other.id}", ("khac", 0))
+        subscribe(client, own)
+        allowed = history(client, own)
+
+    assert [error_of(reply) for reply in refused] == [PERMISSION_DENIED] * len(channels)
+    assert error_of(recovering) == PERMISSION_DENIED
+    assert [data for data, _ in contents(allowed["history"]["publications"])] == [{"lan": 1}]
