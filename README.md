@@ -882,7 +882,7 @@ const centrifuge = new Centrifuge("wss://dx.example.com/realtime/connection/webs
 centrifuge.connect();
 ```
 
-Access token chỉ có hiệu lực 60 giây. Trước khi access token hết hạn, thư viện gọi hàm `getToken` để lấy access token mới và gửi cho Centrifugo. Access token mới phải thuộc cùng người dùng. Nếu không nhận được access token mới, Centrifugo đóng kết nối khoảng 25 giây sau khi access token hết hạn.
+Access token chỉ có hiệu lực 60 giây. Khi access token hết hạn, thư viện gọi hàm `getToken` để lấy access token mới và gửi cho Centrifugo. Access token mới phải thuộc cùng người dùng. Nếu không nhận được access token mới, Centrifugo đóng kết nối khoảng 25 giây sau khi access token hết hạn.
 
 Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong các mã sau:
 
@@ -895,21 +895,68 @@ Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong cá
 | `3501` | Lệnh connect không có access token |
 | `3507` | Access token không mang mã người dùng |
 
+### Nghe kênh
+
+Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong ba dạng sau:
+
+| Kênh | Người nghe được | Token kênh |
+|---|---|---|
+| `public:<tên>` | Mọi người dùng đã đăng nhập | Không cần |
+| `user:#<sub>` | Chỉ người dùng có mã `<sub>`, tức claim `sub` trong access token | Không cần |
+| `role:<realm role>` | Những người dùng có realm role `<realm role>` | Cần |
+
+Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
+
+Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Kênh không có dạng `role:<realm role>` nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
+
+Token kênh có hiệu lực 60 giây và hết hạn không muộn hơn access token dùng để lấy token kênh. Khi token kênh hết hạn, thư viện gọi hàm `getToken` của kênh để lấy token mới. Nếu không nhận được token mới, Centrifugo ngừng gửi tin của kênh trong khoảng 25 đến 52 giây sau khi token kênh hết hạn. Do đó, người dùng bị gỡ realm role ngừng nhận tin của kênh chậm nhất khoảng 2 phút sau khi bị gỡ.
+
+Ví dụ, tiếp theo ví dụ ở mục [Kết nối](#kết-nối):
+
+```js
+import { UnauthorizedError } from "centrifuge";
+
+const sub = centrifuge.newSubscription("role:quan-ly", {
+  getToken: async (ctx) => {
+    await keycloak.updateToken(30);
+    const res = await fetch("https://dx.example.com/core/realtime/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keycloak.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel: ctx.channel }),
+    });
+    if (res.status === 403) {
+      throw new UnauthorizedError();
+    }
+    if (!res.ok) {
+      throw new Error(`Không lấy được token kênh, mã ${res.status}`);
+    }
+    return (await res.json()).token;
+  },
+});
+sub.on("publication", (ctx) => console.log(ctx.data));
+sub.subscribe();
+```
+
+Khi `getToken` ném `UnauthorizedError`, thư viện ngừng nghe kênh. Với lỗi khác, thư viện thử lại sau ít giây. Kênh `public:<tên>` và `user:#<sub>` không cần `getToken`, ví dụ `centrifuge.newSubscription("user:#" + keycloak.subject).subscribe()`.
+
+Khi từ chối hoặc ngừng gửi tin của kênh, Centrifugo trả về một trong các mã sau:
+
+| Mã | Ý nghĩa |
+|---|---|
+| `102` | Kênh thuộc namespace khác ba namespace trên |
+| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` không kèm token kênh hoặc kèm token kênh giả |
+| `109` | Token kênh đã hết hạn. Thư viện tự lấy token kênh mới rồi nghe lại |
+| `2501` | Kênh hết hạn vì không nhận được token kênh mới. Thư viện tự nghe lại |
+| `3500` | Token kênh của kênh khác hoặc của người dùng khác. Centrifugo đóng kết nối và thư viện không kết nối lại |
+
 ### Gửi tin từ cơ sở dữ liệu
 
-Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh. Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`.
+Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong ba dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
 
 Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới các client đang nghe kênh rồi xóa tin khỏi bảng. Khi transaction bị hủy, tin cũng bị hủy. Do đó, client chỉ nhận tin về dữ liệu đã được lưu. Các tin của cùng một transaction tới client theo đúng thứ tự gọi hàm.
-
-Tên kênh có một trong ba dạng sau:
-
-| Kênh | Người nhận |
-|---|---|
-| `public:<tên>` | Mọi người dùng đã đăng nhập |
-| `user:#<sub>` | Người dùng có mã `<sub>`, tức claim `sub` trong access token |
-| `role:<realm role>` | Những người dùng có realm role `<realm role>` |
-
-Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
 
 Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Hiện tại, chỉ role `workflow` có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình. Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
 
