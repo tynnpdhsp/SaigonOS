@@ -394,6 +394,11 @@ services:
   centrifugo:
     image: centrifugo/centrifugo:v6.10.3
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command: ["centrifugo", "--config", "/centrifugo/config.yaml"]
     environment:
       CENTRIFUGO_CLIENT_TOKEN_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
@@ -401,6 +406,7 @@ services:
       CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?}
       CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:?}
       CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:?}
+      CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN: postgresql://centrifugo:${CENTRIFUGO_DB_PASSWORD:?}@postgres:5432/saigonos
     ports:
       - host_ip: 127.0.0.1
         published: ${SAIGONOS_CENTRIFUGO_PORT:?}
