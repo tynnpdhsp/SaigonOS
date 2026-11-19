@@ -978,6 +978,30 @@ GRANT EXECUTE ON FUNCTION ung_dung.bao_da_xu_ly(jsonb) TO workflow;
 
 Centrifugo gửi mã của tin trong trường `tags` của tin, với khóa `id`. Ví dụ: `{"id": "1276d3b3-fd8f-43e0-9649-b5ef7743accf"}`. Trong một số trường hợp hiếm, client nhận một tin hai lần. Ví dụ, Centrifugo dừng đột ngột sau khi gửi tin và trước khi xóa tin khỏi bảng. Khi chạy lại, Centrifugo gửi lại tin này. Do đó, client dùng mã của tin để bỏ tin trùng.
 
+### Tin bị lỡ khi mất kết nối
+
+Mỗi kênh có history giữ tối đa 100 tin gần nhất trong 5 phút. Mỗi tin trong history có một số thứ tự (offset). History của kênh có một mã (epoch). Mã này đổi khi history được tạo lại.
+
+Khi client mất kết nối rồi kết nối lại, thư viện tự gửi epoch và offset của tin cuối cùng đã nhận. Nếu các tin bị lỡ còn đủ trong history, Centrifugo gửi lại các tin này theo đúng thứ tự, trước các tin mới. Khi đó, sự kiện `subscribed` có `recovered` là true và ứng dụng không cần làm gì thêm.
+
+Centrifugo trả `recovered` là false khi client lỡ quá 100 tin, kết nối lại sau quá 5 phút hoặc Centrifugo đã khởi động lại. Centrifugo giữ history trong bộ nhớ. Do đó, mỗi lần Centrifugo khởi động lại, history mất và mọi kênh có epoch mới. Khi `recovered` là false, client có thể đã lỡ tin, nên ứng dụng tải lại dữ liệu qua API. Ví dụ, `reloadData` dưới đây là hàm của ứng dụng, đọc lại dữ liệu qua API:
+
+```js
+sub.on("subscribed", async (ctx) => {
+  if (ctx.wasRecovering && !ctx.recovered) {
+    await reloadData();
+  }
+});
+```
+
+Tin ghi bằng hàm `core.publish` trong lúc Centrifugo dừng không bị mất. Các tin này nằm lại trong bảng `core.outbox` và được gửi ngay khi Centrifugo chạy lại, theo đúng thứ tự ghi. Client thường kết nối lại sau lúc đó, nên không nhận các tin này như tin mới. Các tin này nằm trong history của kênh. Ứng dụng chỉ hiện các tin gần đây, ví dụ danh sách thông báo, có thể đọc history thay cho việc tải lại dữ liệu:
+
+```js
+const { publications } = await sub.history({ limit: 100 });
+```
+
+Sau khi Centrifugo khởi động lại, history chỉ gồm các tin được gửi từ lúc đó. Lời gọi `history` phải có `limit`. Khi không có `limit`, Centrifugo chỉ trả epoch và offset của kênh, không trả tin nào. Tin trong history mang cùng mã `id` với tin đã nhận, nên ứng dụng bỏ tin trùng theo mã này. Chỉ client đang nghe kênh mới đọc được history của kênh đó.
+
 ### API của server và Admin web
 
 API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở cổng này. Lời gọi API của server cần header `X-API-Key` với giá trị `CENTRIFUGO_API_KEY` trong file `.env`. Ví dụ, lệnh sau xem thông tin các node của Centrifugo:

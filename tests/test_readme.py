@@ -45,6 +45,9 @@ HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
 OPERATON = (files("saigonos") / "stack" / "config" / "operaton" / "production.yml").read_text(
     encoding="utf-8"
 )
+CENTRIFUGO = (files("saigonos") / "stack" / "config" / "centrifugo" / "config.yaml").read_text(
+    encoding="utf-8"
+)
 
 
 def section(title):
@@ -241,3 +244,15 @@ def test_readme_states_job_settings_of_operaton():
 
     assert f"{wait // 1000} giây một lần" in PROSE
     assert f"từ {begin} đến {end} giờ Việt Nam" in PROSE
+
+
+def test_readme_states_history_of_centrifugo():
+    sizes = re.findall(r"^ +history_size: (\d+)$", CENTRIFUGO, re.MULTILINE)
+    ttls = re.findall(r"^ +history_ttl: (\d+)s$", CENTRIFUGO, re.MULTILINE)
+    size, minutes = sizes[0], int(ttls[0]) // 60
+
+    assert len(sizes) == len(ttls) == 3
+    assert len(set(sizes)) == len(set(ttls)) == 1
+    assert f"giữ tối đa {size} tin gần nhất trong {minutes} phút" in PROSE
+    assert f"lỡ quá {size} tin, kết nối lại sau quá {minutes} phút" in PROSE
+    assert f"sub.history({{ limit: {size} }})" in README
