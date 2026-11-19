@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh, history và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -345,6 +345,16 @@ Bảng `core.outbox` theo mẫu của Centrifugo. Consumer `outbox` của Centri
 - Với lỗi tạm thời, Centrifugo thử lại tin bị lỗi sau tối đa 5 giây. Các tin sau phải chờ tin này.
 
 Các kiểm thử gửi tin nằm trong file `tests/integration/test_realtime.py`. Client nghe kênh bằng lệnh `subscribe` của API của server, nên kiểm thử không phụ thuộc quy tắc nghe kênh của từng namespace. Kiểm thử `test_row_and_message_written_together_reach_listener_within_one_second` gửi ba tin liên tiếp và chờ mỗi tin tối đa 1 giây. Khi trigger `notify` bị xóa hoặc tên kênh NOTIFY lệch, tin chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
+
+### History
+
+Mỗi namespace có bốn thiết lập `history_size`, `history_ttl`, `force_recovery` và `allow_history_for_subscriber`. Khi sửa history, cần tuân theo các quy tắc sau:
+
+- Ba namespace dùng cùng `history_size` và `history_ttl`. README ghi hai giá trị này. Kiểm thử `test_readme_states_history_of_centrifugo` báo lỗi khi README và file cấu hình lệch nhau.
+- Không dùng `allow_history_for_client`. Thiết lập này cho mọi client đọc history mà không cần nghe kênh, nên lộ tin của kênh `user:#<sub>` và `role:`. Thiết lập `allow_history_for_subscriber` chỉ cho client đang nghe kênh đọc history, nên quyền đọc history đi theo quyền nghe kênh.
+- History nằm trong bộ nhớ của Centrifugo và mất khi Centrifugo khởi động lại. Khi 1.000 kênh đều đầy 100 tin khoảng 200 byte, Centrifugo dùng thêm khoảng 130 MiB RAM. Phần này được trả lại sau `history_ttl`.
+
+Kiểm thử `test_messages_written_while_centrifugo_is_stopped_reach_client_after_restart` dừng Centrifugo đúng 60 giây, nên `make integration` lâu thêm khoảng 1 phút. JSON của Centrifugo bỏ các trường có giá trị false, ví dụ `recovered`. Do đó, kiểm thử đọc các trường này với giá trị mặc định là false.
 
 ## Phát hành phiên bản mới
 
