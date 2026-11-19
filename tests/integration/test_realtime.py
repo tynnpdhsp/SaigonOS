@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import base64
+import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -53,6 +55,17 @@ INVALID_CHANNELS = {
     "qua-dai": "public:" + "a" * 249,
 }
 PUBLISHERS = ["public", "anon", "authenticated", "authenticator", "core_service", "centrifugo"]
+PERMISSION_DENIED = {"code": 103, "message": "permission denied"}
+UNKNOWN_CHANNEL = {"code": 102, "message": "unknown channel"}
+TOKEN_EXPIRED = {"code": 109, "message": "token expired"}
+NO_ROLE = {"detail": "Người gọi không có realm role của kênh này"}
+OUTSIDE_CHANNELS = {
+    "khong-namespace": ("thu", PERMISSION_DENIED),
+    "namespace-khac": ("khac:thu", UNKNOWN_CHANNEL),
+    "user-thieu-dau-thang": ("user:thu", PERMISSION_DENIED),
+    "role-khong-token": ("role:admin", PERMISSION_DENIED),
+}
+FORGED_CHANNEL_TOKENS = ["ky-bang-khoa-khac", "khong-ky", "access-token", "sua-kenh"]
 TABLE_PRIVILEGES = """
 SELECT c.oid::regclass::text, p.privilege
 FROM pg_class AS c,
@@ -67,6 +80,16 @@ ORDER BY 1, 2
 def decode(token, part=1):
     segment = token.split(".")[part]
     return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+
+
+def encode(data):
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
+
+
+def signed(claims, key):
+    content = f"{encode({'alg': 'HS256', 'typ': 'JWT'})}.{encode(claims)}"
+    signature = hmac.new(key.encode(), content.encode(), hashlib.sha256).digest()
+    return f"{content}.{base64.urlsafe_b64encode(signature).rstrip(b'=').decode()}"
 
 
 def wait_for(condition, timeout=60):
@@ -170,6 +193,38 @@ def publication(message):
 def in_outbox(stack, message_id):
     query = f"SELECT count(*) FROM core.outbox WHERE payload -> 'tags' ->> 'id' = '{message_id}'"
     return int(stack.sql(query)[0][0])
+
+
+@contextmanager
+def connected_as(stack, user):
+    with stack.realtime() as client:
+        assert connected(client.connect(stack.token(user)))
+        yield client
+
+
+def subscribe(client, channel, token=None):
+    body = {"channel": channel} if token is None else {"channel": channel, "token": token}
+    return client.command("subscribe", body)
+
+
+def error_of(reply):
+    return reply.get("error") if isinstance(reply, dict) else reply
+
+
+def request_channel_token(stack, user, channel):
+    url = f"{stack.url}/core/realtime/token"
+    return stack.call("POST", url, token=stack.token(user), body={"channel": channel})
+
+
+def channel_token(stack, user, channel):
+    reply = request_channel_token(stack, user, channel)
+    assert reply.status == 200, reply.body
+    return json.loads(reply.body)["token"]
+
+
+def role_member(stack):
+    role = f"thu-{secrets.token_hex(4)}"
+    return stack.new_user(role=role), f"role:{role}"
 
 
 @contextmanager
@@ -536,3 +591,128 @@ def test_role_centrifugo_only_reads_and_deletes_outbox(stack):
         options = ["--username=centrifugo", f"--dbname={database}", "--command=SELECT 1"]
         refused = stack.exec("postgres", "psql", *options)
         assert f'permission denied for database "{database}"' in refused.stderr
+
+
+def test_any_user_can_listen_to_public_channel(stack, user):
+    channel = f"public:thu-{secrets.token_hex(4)}"
+
+    with connected_as(stack, user) as client:
+        reply = subscribe(client, channel)
+        message_id = publish(stack, channel, {"lan": 1})
+        message = received(client, 1)
+
+    assert reply["subscribe"] == {}
+    assert publication(message) == (channel, {"lan": 1}, {"id": message_id})
+
+
+def test_user_listens_only_to_own_channel(stack, user):
+    other = stack.new_user()
+    own, foreign = f"user:#{user.id}", f"user:#{other.id}"
+
+    with connected_as(stack, user) as client:
+        refused = subscribe(client, foreign)
+        accepted = subscribe(client, own)
+        publish(stack, foreign, {"cho": "nguoi-khac"})
+        message_id = publish(stack, own, {"cho": "minh"})
+        message = received(client, 1)
+
+    assert error_of(refused) == PERMISSION_DENIED
+    assert accepted["subscribe"] == {}
+    assert publication(message) == (own, {"cho": "minh"}, {"id": message_id})
+
+
+def test_member_of_role_listens_with_channel_token_from_core(stack):
+    member, channel = role_member(stack)
+
+    token = channel_token(stack, member, channel)
+    with connected_as(stack, member) as client:
+        without_token = subscribe(client, channel)
+        reply = subscribe(client, channel, token)
+        message_id = publish(stack, channel, {"lan": 1})
+        message = received(client, 1)
+
+    assert error_of(without_token) == PERMISSION_DENIED
+    assert reply["subscribe"]["expires"] is True
+    assert 0 < reply["subscribe"]["ttl"] <= 60
+    assert publication(message) == (channel, {"lan": 1}, {"id": message_id})
+
+
+def test_user_without_role_gets_no_channel_token_and_cannot_listen(stack, user):
+    _, channel = role_member(stack)
+
+    refused = request_channel_token(stack, user, channel)
+    with connected_as(stack, user) as client:
+        reply = subscribe(client, channel)
+
+    assert (refused.status, json.loads(refused.body)) == (403, NO_ROLE)
+    assert error_of(reply) == PERMISSION_DENIED
+
+
+def test_channel_token_can_be_refreshed_before_it_expires(stack):
+    member, channel = role_member(stack)
+
+    with connected_as(stack, member) as client:
+        assert "subscribe" in subscribe(client, channel, channel_token(stack, member, channel))
+        refreshed = client.command(
+            "sub_refresh", {"channel": channel, "token": channel_token(stack, member, channel)}
+        )
+
+    assert refreshed["sub_refresh"]["expires"] is True
+    assert 0 < refreshed["sub_refresh"]["ttl"] <= 60
+
+
+@pytest.mark.parametrize("kind", FORGED_CHANNEL_TOKENS)
+def test_forged_channel_token_is_refused(stack, kind):
+    member, own_channel = role_member(stack)
+    _, channel = role_member(stack)
+    claims = {"sub": member.id, "channel": channel, "exp": int(time.time()) + 60}
+    header, payload, signature = channel_token(stack, member, own_channel).split(".")
+    changed = decode(f"{header}.{payload}") | {"channel": channel}
+    tokens = {
+        "ky-bang-khoa-khac": signed(claims, secrets.token_hex(16)),
+        "khong-ky": f"{encode({'alg': 'none', 'typ': 'JWT'})}.{encode(claims)}.",
+        "access-token": stack.token(member),
+        "sua-kenh": f"{header}.{encode(changed)}.{signature}",
+    }
+
+    with connected_as(stack, member) as client:
+        reply = subscribe(client, channel, tokens[kind])
+
+    assert error_of(reply) == PERMISSION_DENIED
+
+
+def test_expired_channel_token_is_refused(stack):
+    member, channel = role_member(stack)
+    claims = {"sub": member.id, "channel": channel, "exp": int(time.time()) - 1}
+
+    with connected_as(stack, member) as client:
+        reply = subscribe(client, channel, signed(claims, stack.env["CENTRIFUGO_SUBSCRIPTION_KEY"]))
+
+    assert error_of(reply) == TOKEN_EXPIRED
+
+
+def test_channel_token_of_other_channel_closes_connection(stack):
+    member, channel = role_member(stack)
+    _, other_channel = role_member(stack)
+
+    with connected_as(stack, member) as client:
+        reply = subscribe(client, other_channel, channel_token(stack, member, channel))
+
+    assert reply == INVALID_TOKEN
+
+
+def test_channel_token_of_other_user_closes_connection(stack, user):
+    member, channel = role_member(stack)
+
+    with connected_as(stack, user) as client:
+        reply = subscribe(client, channel, channel_token(stack, member, channel))
+
+    assert reply == INVALID_TOKEN
+
+
+@pytest.mark.parametrize(
+    ("channel", "error"), OUTSIDE_CHANNELS.values(), ids=OUTSIDE_CHANNELS.keys()
+)
+def test_channel_without_permission_is_refused(stack, user, channel, error):
+    with connected_as(stack, user) as client:
+        assert error_of(subscribe(client, channel)) == error
