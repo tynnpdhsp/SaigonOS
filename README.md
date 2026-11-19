@@ -895,6 +895,42 @@ Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong cá
 | `3501` | Lệnh connect không có access token |
 | `3507` | Access token không mang mã người dùng |
 
+### Gửi tin từ cơ sở dữ liệu
+
+Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh. Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`.
+
+Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới các client đang nghe kênh rồi xóa tin khỏi bảng. Khi transaction bị hủy, tin cũng bị hủy. Do đó, client chỉ nhận tin về dữ liệu đã được lưu. Các tin của cùng một transaction tới client theo đúng thứ tự gọi hàm.
+
+Tên kênh có một trong ba dạng sau:
+
+| Kênh | Người nhận |
+|---|---|
+| `public:<tên>` | Mọi người dùng đã đăng nhập |
+| `user:#<sub>` | Người dùng có mã `<sub>`, tức claim `sub` trong access token |
+| `role:<realm role>` | Những người dùng có realm role `<realm role>` |
+
+Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
+
+Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Hiện tại, chỉ role `workflow` có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình. Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
+
+```sql
+CREATE FUNCTION ung_dung.bao_da_xu_ly(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE ung_dung.yeu_cau SET trang_thai = 'da_xu_ly' WHERE ma = bien ->> 'ma_yeu_cau';
+    PERFORM core.publish(
+        'user:#' || (bien ->> 'initiator'),
+        jsonb_build_object('ma_yeu_cau', bien ->> 'ma_yeu_cau', 'trang_thai', 'da_xu_ly')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.bao_da_xu_ly(jsonb) TO workflow;
+```
+
+Centrifugo gửi mã của tin trong trường `tags` của tin, với khóa `id`. Ví dụ: `{"id": "1276d3b3-fd8f-43e0-9649-b5ef7743accf"}`. Trong một số trường hợp hiếm, client nhận một tin hai lần. Ví dụ, Centrifugo dừng đột ngột sau khi gửi tin và trước khi xóa tin khỏi bảng. Khi chạy lại, Centrifugo gửi lại tin này. Do đó, client dùng mã của tin để bỏ tin trùng.
+
 ### API của server và Admin web
 
 API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở cổng này. Lời gọi API của server cần header `X-API-Key` với giá trị `CENTRIFUGO_API_KEY` trong file `.env`. Ví dụ, lệnh sau xem thông tin các node của Centrifugo:
