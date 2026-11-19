@@ -322,6 +322,19 @@ Khi sửa cấu hình hoặc route của Centrifugo, cần tuân theo các quy t
 
 Kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.py`. Client WebSocket của kiểm thử là lớp `Realtime` trong `tests/integration/conftest.py`, được viết bằng thư viện chuẩn của Python. Kiểm thử `test_expired_access_token_is_refused` dùng một client có thời hạn access token 1 giây, nên không phải chờ 60 giây. Kiểm thử `test_access_token_of_other_issuer_is_refused` tạm đặt Frontend URL của realm `saigonos` để Keycloak cấp access token có issuer khác, rồi xóa thiết lập này. Kiểm thử `test_access_token_without_user_is_refused` dùng một client chỉ có client scope `roles`. Kiểm thử `test_websocket_of_centrifugo_works_through_caddy` trong `test_caddy.py` kết nối qua HTTPS của Caddy.
 
+### Gửi tin qua bảng outbox
+
+Bảng `core.outbox` theo mẫu của Centrifugo. Consumer `outbox` của Centrifugo khóa partition bằng advisory lock của PostgreSQL, đọc các dòng theo thứ tự `id`, gửi từng tin rồi xóa các dòng đã gửi. Khi cập nhật bảng hoặc consumer, cần tuân theo các quy tắc sau:
+
+- Role `centrifugo` chỉ có quyền `SELECT` và `DELETE` trên bảng `core.outbox`. Centrifugo không cần quyền nào khác. Không cấp thêm quyền cho role này.
+- Trigger `notify` của bảng gửi NOTIFY tới kênh `core_outbox` khi có dòng mới. Giá trị `partition_notification_channel` trong file cấu hình phải trùng tên kênh này. Nếu hai tên lệch nhau, Centrifugo chỉ đọc bảng 5 giây một lần theo `partition_poll_interval`.
+- Chuỗi kết nối của consumer chứa mật khẩu, nên được đặt bằng biến `CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN` trong file `compose.yaml`. Tên biến chứa tên consumer viết hoa. Khi đổi tên consumer, cần đổi cả tên biến.
+- Centrifugo dừng ngay khi không kết nối được cơ sở dữ liệu lúc khởi động. Do đó, service `centrifugo` chờ service `migrate` chạy xong. Service `migrate` chờ service `databases` tạo role `centrifugo`.
+- Với lỗi không thể thử lại, ví dụ kênh thuộc namespace chưa khai báo, Centrifugo ghi log rồi bỏ tin. Do đó, khi thêm namespace, cần khai báo namespace trong `channel.namespaces` và thêm vào biểu thức kiểm tra kênh của hàm `core.publish`.
+- Với lỗi tạm thời, Centrifugo thử lại tin bị lỗi sau tối đa 5 giây. Các tin sau phải chờ tin này.
+
+Các kiểm thử gửi tin nằm trong file `tests/integration/test_realtime.py`. Client nghe kênh bằng lệnh `subscribe` của API của server, nên kiểm thử không phụ thuộc quy tắc nghe kênh của từng namespace. Kiểm thử `test_row_and_message_written_together_reach_listener_within_one_second` gửi ba tin liên tiếp và chờ mỗi tin tối đa 1 giây. Khi trigger `notify` bị xóa hoặc tên kênh NOTIFY lệch, tin chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
+
 ## Phát hành phiên bản mới
 
 Phần này dành cho maintainer của repo.
