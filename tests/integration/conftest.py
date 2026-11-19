@@ -191,7 +191,13 @@ def free_port():
 
 
 def free_ports():
-    options = ("--http-port", "--admin-port", "--keycloak-port", "--seaweedfs-port")
+    options = (
+        "--http-port",
+        "--admin-port",
+        "--keycloak-port",
+        "--seaweedfs-port",
+        "--centrifugo-port",
+    )
     return [value for option in options for value in (option, str(free_port()))]
 
 
