@@ -11,13 +11,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from saigonos_core import __version__, files, processes, tasks
+from saigonos_core import __version__, files, processes, realtime, tasks
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
+from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.scans import Scans
 from saigonos_core.steps import Steps
 from saigonos_core.storage import Storage
@@ -44,6 +45,7 @@ class Settings:
     download_key: str
     operaton_url: str
     operaton_password: str
+    subscription_key: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -60,6 +62,7 @@ class Settings:
             os.environ["DOWNLOAD_KEY"],
             os.environ["OPERATON_URL"],
             os.environ["OPERATON_PASSWORD"],
+            os.environ["SUBSCRIPTION_KEY"],
         )
 
 
@@ -146,9 +149,11 @@ def create_app(
     app.state.operaton = operaton
     app.state.processes = definitions
     app.state.steps = steps
+    app.state.subscription_tokens = SubscriptionTokens(settings.subscription_key)
     app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
     app.include_router(files.router)
     app.include_router(processes.router)
     app.include_router(tasks.router)
+    app.include_router(realtime.router)
     return app

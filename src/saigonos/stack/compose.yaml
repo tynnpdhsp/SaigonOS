@@ -335,6 +335,7 @@ services:
       CLAMAV_PORT: "3310"
       OPERATON_URL: http://operaton:8080/operaton/engine-rest
       OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+      SUBSCRIPTION_KEY: ${CENTRIFUGO_SUBSCRIPTION_KEY:?}
     networks:
       - default
       - storage

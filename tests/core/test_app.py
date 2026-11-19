@@ -11,6 +11,7 @@ import saigonos_core
 from saigonos_core.clamav import ClamAV
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.main import ME, create_app
+from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.storage import Storage
 
 LOGIN_NEEDED = "Lời gọi này cần access token của người dùng đã đăng nhập"
@@ -231,6 +232,7 @@ def test_settings_come_from_environment(monkeypatch, settings):
         "DOWNLOAD_KEY": "khoa-khac",
         "OPERATON_URL": "http://may-khac:8080/operaton/engine-rest",
         "OPERATON_PASSWORD": "mat-khau-khac",
+        "SUBSCRIPTION_KEY": "khoa-ky-token-kenh-khac-cua-centrifugo",
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
@@ -245,8 +247,12 @@ def test_settings_come_from_environment(monkeypatch, settings):
         download_key="khoa-khac",
         operaton_url="http://may-khac:8080/operaton/engine-rest",
         operaton_password="mat-khau-khac",
+        subscription_key="khoa-ky-token-kenh-khac-cua-centrifugo",
     )
     assert app.state.downloads == DownloadLinks("khoa-khac")
+    assert app.state.subscription_tokens == SubscriptionTokens(
+        "khoa-ky-token-kenh-khac-cua-centrifugo"
+    )
     assert app.state.tokens.issuer == settings.issuer
     assert app.state.tokens.keys.uri == settings.jwks_url
     assert app.state.storage == Storage(
