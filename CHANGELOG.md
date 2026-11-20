@@ -9,10 +9,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thêm
 
-- Service `centrifugo` gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway và gửi access token của Keycloak trong lệnh connect. Centrifugo kiểm tra chữ ký, issuer, thời hạn và audience của access token. Kết nối không có access token, kết nối bằng ID token và kết nối bằng access token không mang mã người dùng đều bị từ chối. Centrifugo chỉ nhận kết nối WebSocket từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống.
+- Service `centrifugo` gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway và gửi access token của Keycloak trong lệnh connect. Centrifugo kiểm tra chữ ký, issuer, thời hạn và audience của access token. Kết nối không có access token, kết nối bằng ID token và kết nối bằng access token không mang mã người dùng đều bị từ chối. Centrifugo chỉ nhận kết nối WebSocket từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, kể cả khi địa chỉ truy cập là một địa chỉ IPv6.
 - Khi dừng, Centrifugo báo cho các client kết nối lại rồi thoát trong khoảng 1 giây.
 - API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở hai địa chỉ này. Lệnh `saigonos init` có thêm tùy chọn `--centrifugo-port` để đổi cổng này.
-- Lệnh `saigonos init` thêm các giá trị `SAIGONOS_CENTRIFUGO_PORT`, `CENTRIFUGO_API_KEY`, `CENTRIFUGO_ADMIN_PASSWORD`, `CENTRIFUGO_ADMIN_SECRET`, `CENTRIFUGO_DB_PASSWORD` và `CENTRIFUGO_SUBSCRIPTION_KEY` vào file `.env`.
+- Lệnh `saigonos init` thêm các giá trị `SAIGONOS_CENTRIFUGO_PORT`, `CENTRIFUGO_ALLOWED_ORIGIN`, `CENTRIFUGO_API_KEY`, `CENTRIFUGO_ADMIN_PASSWORD`, `CENTRIFUGO_ADMIN_SECRET`, `CENTRIFUGO_DB_PASSWORD` và `CENTRIFUGO_SUBSCRIPTION_KEY` vào file `.env`. Dòng `CENTRIFUGO_ALLOWED_ORIGIN` được ghi lại từ địa chỉ truy cập mỗi lần chạy lệnh.
 - Hàm `core.publish(channel, data)` của cơ sở dữ liệu gửi một tin tới một kênh của Centrifugo. Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới client rồi xóa tin khỏi bảng. Khi transaction bị hủy, không có tin nào được gửi.
 - Hàm `core.publish` chỉ nhận kênh có dạng `public:<tên>`, `user:#<sub>` hoặc `role:<realm role>`. Mỗi tin mang một mã riêng trong tag `id` để client bỏ tin trùng. Chỉ role `workflow` gọi được hàm, nên hàm được dùng trong bước máy làm của quy trình.
 - Mọi người dùng đã đăng nhập nghe được kênh `public:<tên>`. Chỉ người dùng có mã `<sub>` nghe được kênh `user:#<sub>`. Kênh `role:<realm role>` cần token kênh. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
@@ -38,7 +38,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thay đổi
 
 - Ví dụ cấu hình Nginx trong README chuyển tiếp kết nối WebSocket. Máy chủ đã có reverse proxy cần thêm khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` như trong ví dụ.
-- Lệnh `saigonos init` bỏ cổng mặc định khỏi địa chỉ truy cập. Ví dụ, `https://dx.example.com:443` được ghi thành `https://dx.example.com`. Trình duyệt gửi địa chỉ của trang không kèm cổng mặc định, nên Centrifugo cần địa chỉ ở dạng này để nhận kết nối.
+- Lệnh `saigonos init` bỏ cổng mặc định khỏi địa chỉ truy cập. Ví dụ, `https://dx.example.com:443` được ghi thành `https://dx.example.com`. Trình duyệt gửi địa chỉ của trang không kèm cổng mặc định, nên Centrifugo cần địa chỉ ở dạng này để nhận kết nối. Địa chỉ IPv6 và cổng cũng được ghi theo dạng mà trình duyệt gửi. Ví dụ, `http://[2001:0DB8:0:0:0:0:0:1]:09080` được ghi thành `http://[2001:db8::1]:9080`.
 
 ### Sửa
 
