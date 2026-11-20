@@ -30,6 +30,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
+- [Thông báo](#thông-báo)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -1011,6 +1012,76 @@ curl -X POST -H "X-API-Key: $(grep CENTRIFUGO_API_KEY ~/saigonos/.env | cut -d= 
 ```
 
 Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết nối và gọi thử API của server. Mật khẩu đăng nhập là giá trị `CENTRIFUGO_ADMIN_PASSWORD` trong file `.env`.
+
+## Thông báo
+
+Thông báo trong ứng dụng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
+
+### Gửi thông báo
+
+Hàm `core.notify(recipient, dedup_key, title, body, link)` của cơ sở dữ liệu ghi một thông báo rồi gửi thông báo đó tới kênh `user:#<recipient>`. Hàm trả về mã của thông báo, có kiểu `uuid`. Các tham số của hàm như sau:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `recipient` | Mã người nhận, tức claim `sub` trong access token của người nhận |
+| `dedup_key` | Khóa chống trùng, dài từ 1 đến 255 ký tự |
+| `title` | Tiêu đề, dài tối đa 200 ký tự. Tiêu đề không được để trống và không chứa ký tự điều khiển, ví dụ dấu xuống dòng |
+| `body` | Nội dung, dài tối đa 2000 ký tự. Tham số này có thể bỏ qua |
+| `link` | Đường dẫn tới một trang trong hệ thống, bắt đầu bằng một dấu `/` và dài tối đa 1000 ký tự. Ví dụ: `/yeu-cau/YC-001`. Tham số này có thể bỏ qua |
+
+Hàm báo lỗi khi một tham số không hợp lệ. Hàm từ chối đường dẫn tới web khác, ví dụ `https://...` hoặc `//...`, và đường dẫn `javascript:`. Do đó, ứng dụng hiển thị được đường dẫn của thông báo mà không cần kiểm tra lại.
+
+Thông báo và tin gửi Centrifugo được ghi trong cùng transaction với dữ liệu, như với hàm `core.publish` ở mục [Gửi tin từ cơ sở dữ liệu](#gửi-tin-từ-cơ-sở-dữ-liệu). Khi transaction bị hủy, thông báo và tin cũng bị hủy.
+
+Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
+
+Hiện tại, chỉ role `workflow` có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
+
+```sql
+CREATE FUNCTION ung_dung.bao_tin_da_xu_ly(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM core.notify(
+        recipient => bien ->> 'initiator',
+        dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':da-xu-ly',
+        title => 'Yêu cầu ' || (bien ->> 'ma_yeu_cau') || ' đã được xử lý',
+        link => '/yeu-cau/' || (bien ->> 'ma_yeu_cau')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.bao_tin_da_xu_ly(jsonb) TO workflow;
+```
+
+### Đọc thông báo
+
+Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `id` | Mã của thông báo |
+| `title`, `body`, `link` | Tiêu đề, nội dung và đường dẫn. Trường `body` và `link` có giá trị `null` khi hàm `core.notify` không nhận hai tham số này |
+| `created_at` | Thời điểm tạo |
+| `read_at` | Thời điểm người nhận đánh dấu đã đọc. Giá trị `null` nghĩa là chưa đọc |
+
+Lời gọi `POST /core/notifications/{id}/read` đánh dấu một thông báo là đã đọc và trả về thông báo đó. Khi thông báo đã được đọc trước đó, thời điểm đọc không đổi. Người dùng chỉ thấy và chỉ đánh dấu được thông báo gửi cho chính mình. Với thông báo của người khác, lời gọi nhận mã 404 như khi thông báo không tồn tại.
+
+### Nhận thông báo mới
+
+Khi có thông báo mới, kênh `user:#<sub>` của người nhận nhận một tin có dạng `{"notification": {...}}`. Đối tượng `notification` có các trường như ở mục [Đọc thông báo](#đọc-thông-báo), với `read_at` là `null`. Kênh này có thể nhận cả tin khác của ứng dụng. Do đó, ứng dụng nhận ra thông báo nhờ khóa `notification`. Ví dụ, tiếp theo ví dụ ở mục [Kết nối](#kết-nối):
+
+```js
+const sub = centrifuge.newSubscription("user:#" + keycloak.subject);
+sub.on("publication", (ctx) => {
+  if (ctx.data.notification) {
+    showNotification(ctx.data.notification);
+  }
+});
+sub.subscribe();
+```
+
+Trong ví dụ trên, `showNotification` là hàm của ứng dụng. Ứng dụng thường tải danh sách thông báo bằng lời gọi `GET /core/notifications` rồi nghe kênh. Một thông báo có thể vừa có trong danh sách vừa tới qua kênh. Do đó, ứng dụng bỏ thông báo trùng theo trường `id`.
 
 ## Cập nhật phiên bản
 

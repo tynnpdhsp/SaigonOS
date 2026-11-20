@@ -26,6 +26,7 @@ from saigonos.home import (
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.notifications import Notification
 from saigonos_core.processes import rules_of
 from saigonos_core.tasks import Task
 
@@ -176,6 +177,14 @@ def test_readme_lists_every_task_field():
     rows = re.findall(r"^\| (`[^|]+) \|", section("### Danh sách việc"), re.MULTILINE)
 
     assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
+
+
+def test_readme_lists_every_notification_field():
+    rows = re.findall(r"^\| (`[^|]+) \|", section("### Đọc thông báo"), re.MULTILINE)
+
+    assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(
+        Notification.model_fields
+    )
 
 
 def test_readme_lists_every_form_field_type():
