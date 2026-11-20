@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from email import message_from_string
 from email.policy import default
+from http.client import HTTPException
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -39,6 +40,14 @@ CLOSED_PATHS = [
     ("GET", "/realtime/connection/websocket;x"),
     ("GET", "/connection/websocket"),
 ]
+IPV6_URL = "http://[2001:db8::1]:9080"
+IPV6_ORIGINS = {
+    "dung-dia-chi": ("http://[2001:db8::1]:9080", 101),
+    "chu-hoa": ("http://[2001:DB8::1]:9080", 101),
+    "mot-ky-tu": ("http://1:9080", 403),
+    "dia-chi-khac": ("http://[2001:db8::2]:9080", 403),
+    "cong-khac": ("http://[2001:db8::1]:9081", 403),
+}
 WRITE = (
     "SET ROLE workflow; "
     "WITH added AS (INSERT INTO {table} (noi_dung) VALUES ({content}) RETURNING id) "
@@ -221,6 +230,25 @@ def connect(stack, token):
 
 def connected(reply):
     return isinstance(reply, dict) and "connect" in reply
+
+
+def websocket_status(stack, url, origin=None):
+    headers = {
+        "Upgrade": "websocket",
+        "Connection": "Upgrade",
+        "Sec-WebSocket-Key": base64.b64encode(secrets.token_bytes(16)).decode(),
+        "Sec-WebSocket-Version": "13",
+    }
+    if origin is not None:
+        headers["Origin"] = origin
+    return stack.call("GET", url, headers=headers).status
+
+
+def websocket_answers(stack, url):
+    try:
+        return websocket_status(stack, url) == 101
+    except (OSError, HTTPException):
+        return False
 
 
 def new_client(stack, **fields):
@@ -459,6 +487,25 @@ def requests_table(stack):
     return f"{schema}.yeu_cau"
 
 
+@pytest.fixture(scope="module")
+def ipv6_centrifugo(idle_stack):
+    created = idle_stack.saigonos("init", "--url", IPV6_URL)
+    assert created.returncode == 0, created.stdout + created.stderr
+    service = json.loads(idle_stack.compose("config", "--format", "json"))["services"]["centrifugo"]
+    allowed = service["environment"]["CENTRIFUGO_CLIENT_ALLOWED_ORIGINS"]
+    options = ["--rm", "--detach", "--publish", "127.0.0.1::8000"]
+    options += ["--env", f"CENTRIFUGO_CLIENT_ALLOWED_ORIGINS={allowed}"]
+    started = idle_stack.run_docker("run", *options, service["image"], "centrifugo")
+    container = started.stdout.strip()
+    try:
+        address = idle_stack.run_docker("port", container, "8000/tcp").stdout.split()[0]
+        url = f"http://{address}/connection/websocket"
+        wait_for(lambda: websocket_answers(idle_stack, url))
+        yield url
+    finally:
+        idle_stack.run_docker("rm", "--force", container, check=False)
+
+
 def test_doctor_reports_centrifugo(stack):
     result = stack.saigonos("doctor")
 
@@ -575,6 +622,11 @@ def test_page_of_other_site_cannot_open_connection(stack, user):
 
     with stack.realtime({}) as client:
         assert connected(client.connect(stack.token(user)))
+
+
+@pytest.mark.parametrize(("origin", "status"), IPV6_ORIGINS.values(), ids=IPV6_ORIGINS.keys())
+def test_centrifugo_accepts_only_page_at_ipv6_url(idle_stack, ipv6_centrifugo, origin, status):
+    assert websocket_status(idle_stack, ipv6_centrifugo, origin) == status
 
 
 def test_gateway_counts_connections_in_rate_limit(stack):

@@ -621,6 +621,11 @@ def stack(tmp_path_factory, request):
 
 
 @pytest.fixture(scope="module")
+def idle_stack(tmp_path_factory):
+    return Stack(tmp_path_factory.getbasetemp() / f"saigonos-idle-{secrets.token_hex(4)}")
+
+
+@pytest.fixture(scope="module")
 def caddy_stack(tmp_path_factory, request):
     stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-caddy-{secrets.token_hex(4)}")
     stack.home.mkdir()
