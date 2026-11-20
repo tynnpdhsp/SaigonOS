@@ -374,7 +374,7 @@ Các kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.
 
 Bảng `core.deliveries` và phiên bản mới của hàm `core.notify` được tạo trong file `0016_deliveries.sql`. Vòng lặp gửi tin nằm trong `saigonos_core/deliveries.py`. Client của Bot API nằm trong `saigonos_core/telegram.py` và dùng `http.client`, không thêm thư viện. Khi sửa phần này, cần tuân theo các quy tắc sau:
 
-- Bảng `core.deliveries` chỉ được thêm dòng qua hàm `core.notify`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên các cột trạng thái. Không cấp thêm quyền cho role nào.
+- Bảng `core.deliveries` chỉ được thêm dòng qua hàm `core.notify` và hàm `core.send_email`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên các cột trạng thái. Không cấp thêm quyền cho role nào.
 - Tiêu đề, nội dung và đường dẫn được chép vào bảng `core.deliveries`. Vòng lặp gửi tin không có người gọi, nên chính sách `recipient_only` của bảng `core.notifications` không cho vòng lặp đọc thông báo.
 - Dòng được chuyển sang `sending` và commit trước khi gọi Telegram. Không giữ khóa dòng trong lúc gọi Telegram. Nếu giữ khóa, transaction bị hủy khi service `core` chết, dòng trở về `pending` và tin được gửi lại dù Telegram có thể đã nhận tin.
 - Khi service `core` khởi động, các dòng còn ở `sending` chuyển sang `unknown`. Do đó, chỉ chạy một container của service `core`.
@@ -385,6 +385,20 @@ Bảng `core.deliveries` và phiên bản mới của hàm `core.notify` đượ
 - Trigger `notify` của bảng gửi NOTIFY tới kênh `core_deliveries` khi có dòng mới. Service `core` nghe kênh này bằng một kết nối riêng, mở bằng `Database.listen`. Khi không có NOTIFY, service đọc bảng 10 giây một lần.
 
 Bot API giả nằm trong file `tests/integration/fake_telegram.py`. Fixture `bot_api` chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `telegram-gia`, rồi ghi cấu hình Telegram trỏ tới container này vào file `.env`. Bot API giả trả lời theo kế hoạch mà kiểm thử gửi tới `/plan`, ví dụ mã 500, mã 429 kèm `retry_after`, ngắt kết nối hoặc trả lời sau 30 giây. Kiểm thử `test_telegram_message_is_skipped_while_telegram_is_not_configured` phải đứng trước các kiểm thử dùng fixture `bot_api`, vì fixture này bật Telegram cho cả bộ thử. Kiểm thử `test_notification_reaches_telegram_group_once_within_two_seconds` gửi hai tin liên tiếp. Khi trigger `notify` bị xóa, tin thứ hai chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
+
+### Gửi email
+
+Hàm `core.send_email` và hàm `core.check_message` được tạo trong file `0017_email.sql`. Client SMTP nằm trong `saigonos_core/smtp.py` và dùng `smtplib`, không thêm thư viện. Khi sửa phần này, cần tuân theo các quy tắc sau:
+
+- Hàm `core.check_message` kiểm tra khóa chống trùng, tiêu đề, nội dung và đường dẫn cho cả `core.notify` và `core.send_email`. Quy tắc của các giá trị này chỉ được sửa ở hàm này.
+- Hàm `core.send_email` và `saigonos_core/smtp.py` kiểm tra địa chỉ email theo cùng một mẫu. Mẫu này là định nghĩa địa chỉ email hợp lệ của HTML và chỉ nhận ký tự ASCII. Do đó, máy chủ SMTP không cần hỗ trợ SMTPUTF8.
+- Nội dung email được mã hóa bằng quoted-printable hoặc base64 nhờ policy `cte_type="7bit"`, nên chỉ gồm ký tự ASCII. Do đó, máy chủ SMTP không cần hỗ trợ 8BITMIME.
+- Mỗi kênh có một vòng gửi `Deliveries` riêng, với cấu hình `Channel` trong `saigonos_core/deliveries.py`. Mọi câu truy vấn của vòng gửi lọc theo cột `channel`. Nhờ đó, lệnh chờ `retry_after` của Telegram không làm chậm email.
+- Luôn truyền `ssl.create_default_context()` cho `starttls()` và `SMTP_SSL`. Khi không nhận context, `smtplib` vẫn mã hóa kết nối nhưng không kiểm tra chứng chỉ.
+- Không bỏ qua STARTTLS khi máy chủ không hỗ trợ. Cấu hình có mật khẩu mà `SMTP_SECURITY` là `none` bị từ chối lúc khởi động.
+- Nội dung email được gửi bằng `docmd("DATA")`, `send()` và `getreply()`, không dùng `sendmail()`. Nhờ đó, client phân biệt được nội dung chưa gửi xong, được gửi lại, với câu trả lời bị mất sau khi đã gửi xong nội dung, cho kết quả `unknown`.
+
+Máy chủ SMTP giả nằm trong file `tests/integration/fake_smtp.py` và chỉ dùng thư viện chuẩn của Python. Unit test trong `tests/core/test_smtp.py` nạp file này theo đường dẫn và chạy máy chủ trong cùng tiến trình. Fixture `mail_server` của integration test chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `smtp-gia`. Hàm `make_certificates` dùng thư viện `cryptography` để tạo một CA thử và chứng chỉ của máy chủ giả. Chứng chỉ có đủ các extension mà Python 3.13 trở lên đòi hỏi khi kiểm tra chứng chỉ. Fixture ghi file `compose.override.yaml` để service `core` tin CA thử qua biến `SSL_CERT_FILE`. Kiểm thử `test_email_is_skipped_while_smtp_is_not_configured` phải đứng trước các kiểm thử dùng fixture `mail_server`. `smtplib` của Python 3.14 gửi `mail from:` và `rcpt to:` bằng chữ thường, nên máy chủ giả ghi lại hai lệnh này bằng chữ hoa.
 
 ## Phát hành phiên bản mới
 
