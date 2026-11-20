@@ -45,6 +45,7 @@ SECRET_KEYS = (
 )
 SECRET_ALPHABET = string.ascii_letters + string.digits
 SECRET_LENGTH = 32
+GLOB_SPECIALS = "*?\\[]{}"
 
 
 class Initialized(NamedTuple):
@@ -68,6 +69,10 @@ def local_url(port: str) -> str:
 
 def listen_address(host: str, port: str) -> str:
     return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def origin_pattern(url: str) -> str:
+    return "".join(f"\\{char}" if char in GLOB_SPECIALS else char for char in url)
 
 
 def read_env_lines(home: Path) -> list[str]:
@@ -211,6 +216,7 @@ def init_home(
     old_max_file_size = current.get("SAIGONOS_MAX_FILE_SIZE") or DEFAULT_MAX_FILE_SIZE
     values = {
         "SAIGONOS_URL": url,
+        "CENTRIFUGO_ALLOWED_ORIGIN": origin_pattern(url),
         "SAIGONOS_HTTP_HOST": new_http_host,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),

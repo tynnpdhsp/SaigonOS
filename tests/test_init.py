@@ -8,11 +8,12 @@ import pytest
 from click.testing import CliRunner
 
 from saigonos.cli import main
-from saigonos.home import BYTECODE_FOLDER, SECRET_KEYS, copy_tree
+from saigonos.home import BYTECODE_FOLDER, GLOB_SPECIALS, SECRET_KEYS, copy_tree, origin_pattern
 
 STACK = files("saigonos").joinpath("stack")
 SETTING_KEYS = [
     "SAIGONOS_URL",
+    "CENTRIFUGO_ALLOWED_ORIGIN",
     "SAIGONOS_HTTP_HOST",
     "SAIGONOS_HTTP_PORT",
     "SAIGONOS_ADMIN_PORT",
@@ -118,6 +119,7 @@ def test_init_writes_env_with_defaults_and_random_secrets(home):
     generated = [env[key] for key in SECRET_KEYS]
     assert list(env) == SETTING_KEYS
     assert env["SAIGONOS_URL"] == "http://localhost:9080"
+    assert env["CENTRIFUGO_ALLOWED_ORIGIN"] == "http://localhost:9080"
     assert env["SAIGONOS_HTTP_HOST"] == "127.0.0.1"
     assert env["SAIGONOS_HTTP_PORT"] == "9080"
     assert env["SAIGONOS_ADMIN_PORT"] == "9180"
@@ -190,6 +192,7 @@ def test_init_fills_only_missing_and_empty_values(home):
 @pytest.mark.parametrize(
     "line",
     [
+        "CENTRIFUGO_ALLOWED_ORIGIN=http://localhost:9080",
         "SAIGONOS_HTTP_HOST=127.0.0.1",
         "SAIGONOS_KEYCLOAK_PORT=9280",
         "SAIGONOS_SEAWEEDFS_PORT=9380",
@@ -405,6 +408,44 @@ def test_url_follows_http_port_until_set_explicitly(home):
     env = read_env(home)
     assert env["SAIGONOS_URL"] == "https://dx.example.com"
     assert env["SAIGONOS_HTTP_PORT"] == "8001"
+
+
+@pytest.mark.parametrize(
+    ("url", "pattern"),
+    [
+        ("https://dx-1.example.com:8443", "https://dx-1.example.com:8443"),
+        ("http://[2001:db8::1]:9080", r"http://\[2001:db8::1\]:9080"),
+        (f"http://a{GLOB_SPECIALS},!-b", r"http://a\*\?\\\[\]\{\},!-b"),
+    ],
+    ids=["ten-mien", "ipv6", "ky-tu-dac-biet"],
+)
+def test_origin_pattern_escapes_only_glob_characters(url, pattern):
+    assert origin_pattern(url) == pattern
+
+
+def test_allowed_origin_of_centrifugo_follows_url(home):
+    init("--home", home, "--http-port", 8000)
+    assert read_env(home)["CENTRIFUGO_ALLOWED_ORIGIN"] == "http://localhost:8000"
+
+    init("--home", home, "--url", "http://[2001:db8::1]:9080")
+    assert read_env(home)["CENTRIFUGO_ALLOWED_ORIGIN"] == r"http://\[2001:db8::1\]:9080"
+
+    init("--home", home)
+    assert read_env(home)["CENTRIFUGO_ALLOWED_ORIGIN"] == r"http://\[2001:db8::1\]:9080"
+
+
+def test_init_writes_allowed_origin_again_from_url_in_env(home):
+    init("--home", home)
+    env_file = home / ".env"
+    text = env_file.read_text(encoding="utf-8").replace(
+        "SAIGONOS_URL=http://localhost:9080", "SAIGONOS_URL=https://[::1]"
+    )
+    env_file.write_text(text.replace("ORIGIN=http://localhost:9080", "ORIGIN=*"), encoding="utf-8")
+
+    result = init("--home", home)
+
+    assert result.exit_code == 0
+    assert read_env(home)["CENTRIFUGO_ALLOWED_ORIGIN"] == r"https://\[::1\]"
 
 
 def test_http_host_is_kept_until_set_again(home):
