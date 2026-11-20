@@ -15,7 +15,7 @@ from saigonos_core import __version__, files, notifications, processes, realtime
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
-from saigonos_core.deliveries import Deliveries
+from saigonos_core.deliveries import TELEGRAM, Deliveries
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
@@ -122,8 +122,8 @@ def deliveries_of(settings: Settings, database: Database) -> Deliveries:
     try:
         telegram = configured(*telegram_settings)
     except TelegramSettingsError as error:
-        return Deliveries(database, settings.site_url, problem=str(error))
-    return Deliveries(database, settings.site_url, telegram)
+        return Deliveries(database, settings.site_url, TELEGRAM, problem=str(error))
+    return Deliveries(database, settings.site_url, TELEGRAM, telegram)
 
 
 def create_app(

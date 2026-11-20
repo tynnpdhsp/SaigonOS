@@ -3,16 +3,13 @@ import json
 import re
 import ssl
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
-from typing import Any, NamedTuple
+from typing import Any
 from urllib.parse import urlsplit
+
+from saigonos_core.outcome import FAILED, RETRY, SENT, UNKNOWN, WAIT, Outcome, describe
 
 DEFAULT_API_URL = "https://api.telegram.org"
 TIMEOUT = 10
-SENT = "sent"
-RETRY = "retry"
-WAIT = "wait"
-FAILED = "failed"
-UNKNOWN = "unknown"
 TOKEN = re.compile(r"[0-9]+:[A-Za-z0-9_-]+")
 CHAT = re.compile(r"-?[0-9]+|@[A-Za-z0-9_]+")
 TOPIC = re.compile(r"[1-9][0-9]{0,15}")
@@ -20,12 +17,6 @@ TOPIC = re.compile(r"[1-9][0-9]{0,15}")
 
 class TelegramSettingsError(Exception):
     pass
-
-
-class Outcome(NamedTuple):
-    result: str
-    detail: str
-    wait: int = 0
 
 
 def utf16_length(text: str) -> int:
@@ -84,10 +75,6 @@ def outcome_of(status: int, content: bytes) -> Outcome:
             )
         return Outcome(FAILED, detail)
     return Outcome(UNKNOWN, detail)
-
-
-def describe(error: Exception) -> str:
-    return str(error) or type(error).__name__
 
 
 class Telegram:

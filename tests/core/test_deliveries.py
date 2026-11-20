@@ -7,11 +7,10 @@ from contextlib import asynccontextmanager, suppress
 import pytest
 
 from saigonos_core.deliveries import (
-    CHANNEL,
     DUE,
     MAX_ATTEMPTS,
     NEXT,
-    NOT_CONFIGURED,
+    NOTIFY_CHANNEL,
     POLL,
     RECORD,
     RECOVER,
@@ -19,12 +18,13 @@ from saigonos_core.deliveries import (
     SENDING,
     SHORTEST_WAIT,
     SKIP,
-    STOPPED,
+    TELEGRAM,
     Deliveries,
     Step,
     next_step,
 )
-from saigonos_core.telegram import FAILED, RETRY, SENT, UNKNOWN, WAIT, Outcome, message_of
+from saigonos_core.outcome import FAILED, RETRY, SENT, UNKNOWN, WAIT, Outcome
+from saigonos_core.telegram import message_of
 
 SITE = "https://dx.example.com"
 START = 1000.0
@@ -72,31 +72,33 @@ class FakeConnection:
         if query in self.database.failures:
             raise self.database.failures.pop(query)
 
-    def pending(self):
-        return [row for row in self.database.rows.values() if row["status"] == "pending"]
+    def rows_of(self, channel, status):
+        rows = self.database.rows.values()
+        return [row for row in rows if row["channel"] == channel and row["status"] == status]
 
-    async def fetch(self, query, reason):
+    async def fetch(self, query, channel, reason):
         self.run(query)
         status = {RECOVER: ("sending", "unknown"), SKIP: ("pending", "skipped")}
         before, after = status[query]
-        changed = [row for row in self.database.rows.values() if row["status"] == before]
+        changed = self.rows_of(channel, before)
         for row in changed:
             row |= {"status": after, "finished": True, "error": reason}
         return [{"id": row["id"]} for row in changed]
 
-    async def fetchrow(self, query):
+    async def fetchrow(self, query, channel):
         self.run(query)
         assert query == NEXT
-        due = [row for row in self.pending() if row["next_attempt_at"] <= self.database.clock()]
+        now = self.database.clock()
+        due = [row for row in self.rows_of(channel, "pending") if row["next_attempt_at"] <= now]
         if not due:
             return None
         row = min(due, key=lambda row: row["id"])
         return {name: row[name] for name in ("id", "title", "body", "link", "failures")}
 
-    async def fetchval(self, query):
+    async def fetchval(self, query, channel):
         self.run(query)
         assert query == DUE
-        times = [row["next_attempt_at"] for row in self.pending()]
+        times = [row["next_attempt_at"] for row in self.rows_of(channel, "pending")]
         return min(times) - self.database.clock() if times else None
 
     async def execute(self, query, delivery_id, *values):
@@ -125,6 +127,7 @@ class FakeDatabase:
         delivery_id = len(self.rows) + 1
         self.rows[delivery_id] = {
             "id": delivery_id,
+            "channel": TELEGRAM.name,
             "title": f"Tin {delivery_id}",
             "body": None,
             "link": None,
@@ -176,7 +179,7 @@ def telegram():
 
 @pytest.fixture
 def worker(database, telegram, clock):
-    return Deliveries(database, SITE, telegram, clock=clock)
+    return Deliveries(database, SITE, TELEGRAM, telegram, clock=clock)
 
 
 def work(worker):
@@ -242,6 +245,25 @@ def test_deliveries_are_sent_oldest_first(worker, database, telegram):
 
     assert [message["text"] for message in telegram.messages] == ["Tin 1", "Tin 2", "Tin 3"]
     assert {row["status"] for row in database.rows.values()} == {"sent"}
+
+
+def test_worker_sends_recovers_and_skips_only_deliveries_of_its_channel(database, telegram, clock):
+    others = [database.add(channel="email"), database.add(channel="email", status="sending")]
+    mine = database.add()
+
+    work(Deliveries(database, SITE, TELEGRAM, telegram, clock=clock))
+    later = database.add()
+    work(Deliveries(database, SITE, TELEGRAM, clock=clock))
+
+    assert [row["status"] for row in others] == ["pending", "sending"]
+    assert (mine["status"], later["status"]) == ("sent", "skipped")
+    assert [message["text"] for message in telegram.messages] == ["Tin 3"]
+
+
+def test_delivery_of_other_channel_does_not_shorten_wait(worker, database, clock):
+    database.add(channel="email", next_attempt_at=clock.now + 1)
+
+    assert asyncio.run(worker.due()) == POLL
 
 
 def test_failed_send_is_retried_later_and_fails_after_last_attempt(
@@ -340,20 +362,24 @@ def test_worker_sleeps_until_next_delivery_is_due(worker, database, clock, due_i
 
 
 def test_without_telegram_pending_deliveries_are_skipped(database, clock, caplog):
-    worker = Deliveries(database, SITE, clock=clock)
+    worker = Deliveries(database, SITE, TELEGRAM, clock=clock)
     rows = [database.add(), database.add()]
 
     wait = work(worker)
 
     assert wait == POLL
-    assert [(row["status"], row["error"]) for row in rows] == [("skipped", NOT_CONFIGURED)] * 2
+    assert [(row["status"], row["error"]) for row in rows] == [
+        ("skipped", TELEGRAM.not_configured)
+    ] * 2
     assert messages_of(caplog) == ["Chưa cấu hình Telegram nên tin Telegram 1, 2 không được gửi"]
 
 
 def test_invalid_settings_are_logged_at_start_and_kept_with_skipped_deliveries(
     database, clock, caplog
 ):
-    worker = Deliveries(database, SITE, problem="thiếu TELEGRAM_CHAT_ID", clock=clock, poll=0.01)
+    worker = Deliveries(
+        database, SITE, TELEGRAM, problem="thiếu TELEGRAM_CHAT_ID", clock=clock, poll=0.01
+    )
     row = database.add()
 
     async def main():
@@ -375,7 +401,7 @@ def test_deliveries_left_sending_become_unknown_once_at_start(worker, database, 
     work(worker)
     work(worker)
 
-    assert [(row["status"], row["error"]) for row in rows] == [("unknown", STOPPED)] * 2
+    assert [(row["status"], row["error"]) for row in rows] == [("unknown", TELEGRAM.stopped)] * 2
     assert database.queries.count(RECOVER) == 1
     assert telegram.messages == []
     assert messages_of(caplog) == [
@@ -390,13 +416,13 @@ def test_listener_is_opened_once_and_again_after_it_closes(worker, database):
     database.listeners[0].closed = True
     work(worker)
 
-    assert [listener.channel for listener in database.listeners] == [CHANNEL, CHANNEL]
+    assert [listener.channel for listener in database.listeners] == [NOTIFY_CHANNEL, NOTIFY_CHANNEL]
     database.listeners[-1].callback()
     assert worker.wake.is_set()
 
 
 def test_notification_wakes_worker_before_poll(database, telegram, clock):
-    worker = Deliveries(database, SITE, telegram, clock=clock, poll=60)
+    worker = Deliveries(database, SITE, TELEGRAM, telegram, clock=clock, poll=60)
 
     async def main():
         async with running(worker):
@@ -422,7 +448,7 @@ def test_outcome_is_recorded_after_database_comes_back(worker, database, telegra
 
 
 def test_send_in_progress_is_recorded_when_worker_stops(database, telegram, clock):
-    worker = Deliveries(database, SITE, telegram, clock=clock)
+    worker = Deliveries(database, SITE, TELEGRAM, telegram, clock=clock)
     row = database.add()
     started, release = threading.Event(), threading.Event()
 
@@ -450,7 +476,7 @@ def test_send_in_progress_is_recorded_when_worker_stops(database, telegram, cloc
 
 
 def test_worker_keeps_going_after_database_error(database, telegram, clock, caplog):
-    worker = Deliveries(database, SITE, telegram, clock=clock, poll=0.01)
+    worker = Deliveries(database, SITE, TELEGRAM, telegram, clock=clock, poll=0.01)
     database.failures[RECOVER] = ConnectionRefusedError("Không kết nối được PostgreSQL")
     row = database.add()
 

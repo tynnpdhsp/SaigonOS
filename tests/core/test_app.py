@@ -298,7 +298,7 @@ def test_settings_come_from_environment(environment, settings):
     assert app.state.steps.worker == f"saigonos-core-{socket.gethostname()}"
     assert app.state.deliveries.database is database
     assert app.state.deliveries.site_url == "https://dx-khac.example.com"
-    assert (app.state.deliveries.telegram, app.state.deliveries.problem) == (None, None)
+    assert (app.state.deliveries.sender, app.state.deliveries.problem) == (None, None)
     assert app.servers == [{"url": settings.public_url}]
 
 
@@ -309,7 +309,7 @@ def test_telegram_settings_come_from_environment_without_spaces(environment, mon
 
     app = create_app(database=FakeDatabase())
 
-    telegram = app.state.deliveries.telegram
+    telegram = app.state.deliveries.sender
     assert app.state.settings.telegram_api_url == "http://bot-api:8081"
     assert (app.state.settings.telegram_bot_token, app.state.settings.telegram_topic_id) == (
         TELEGRAM_TOKEN,
@@ -332,7 +332,7 @@ def test_empty_api_url_falls_back_to_telegram(environment, monkeypatch):
     app = create_app(database=FakeDatabase())
 
     assert app.state.settings.telegram_api_url == "https://api.telegram.org"
-    assert app.state.deliveries.telegram.host == "api.telegram.org"
+    assert app.state.deliveries.sender.host == "api.telegram.org"
 
 
 def test_invalid_telegram_settings_turn_telegram_off_and_keep_core_running(
@@ -342,5 +342,5 @@ def test_invalid_telegram_settings_turn_telegram_off_and_keep_core_running(
 
     app = create_app(database=FakeDatabase())
 
-    assert app.state.deliveries.telegram is None
+    assert app.state.deliveries.sender is None
     assert app.state.deliveries.problem == "thiếu TELEGRAM_CHAT_ID"

@@ -7,14 +7,9 @@ from threading import Thread
 
 import pytest
 
+from saigonos_core.outcome import FAILED, RETRY, SENT, UNKNOWN, WAIT, Outcome
 from saigonos_core.telegram import (
     DEFAULT_API_URL,
-    FAILED,
-    RETRY,
-    SENT,
-    UNKNOWN,
-    WAIT,
-    Outcome,
     Telegram,
     TelegramSettingsError,
     configured,
