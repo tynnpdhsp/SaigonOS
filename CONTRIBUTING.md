@@ -43,7 +43,7 @@ Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó c�
 make integration
 ```
 
-Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh, history và Admin web. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh, history và Admin web. File này cũng kiểm tra thông báo cho người dùng và việc gửi tin Telegram tới một Bot API giả. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -367,6 +367,22 @@ Bảng `core.notifications` và hàm `core.notify` được tạo trong file `00
 - Không bỏ kiểm tra đường dẫn của hàm `core.notify`. Ứng dụng dựa vào kiểm tra này để hiển thị đường dẫn mà không kiểm tra lại. Trình duyệt bỏ dấu tab và dấu xuống dòng trong địa chỉ. Ví dụ, đường dẫn gồm dấu `/`, một dấu tab và `/web-khac.example` trở thành `//web-khac.example`, tức một địa chỉ của web khác. Do đó, hàm từ chối mọi ký tự điều khiển trong đường dẫn.
 
 Các kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.py`. Kiểm thử `test_notify_waits_for_other_transaction_with_same_key` giữ một transaction đã gọi `core.notify` trong 2 giây bằng `pg_sleep`, rồi gọi lại với cùng khóa từ một kết nối khác.
+
+### Gửi tin Telegram
+
+Bảng `core.deliveries` và phiên bản mới của hàm `core.notify` được tạo trong file `0016_deliveries.sql`. Vòng lặp gửi tin nằm trong `saigonos_core/deliveries.py`. Client của Bot API nằm trong `saigonos_core/telegram.py` và dùng `http.client`, không thêm thư viện. Khi sửa phần này, cần tuân theo các quy tắc sau:
+
+- Bảng `core.deliveries` chỉ được thêm dòng qua hàm `core.notify`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên các cột trạng thái. Không cấp thêm quyền cho role nào.
+- Tiêu đề, nội dung và đường dẫn được chép vào bảng `core.deliveries`. Vòng lặp gửi tin không có người gọi, nên chính sách `recipient_only` của bảng `core.notifications` không cho vòng lặp đọc thông báo.
+- Dòng được chuyển sang `sending` và commit trước khi gọi Telegram. Không giữ khóa dòng trong lúc gọi Telegram. Nếu giữ khóa, transaction bị hủy khi service `core` chết, dòng trở về `pending` và tin được gửi lại dù Telegram có thể đã nhận tin.
+- Khi service `core` khởi động, các dòng còn ở `sending` chuyển sang `unknown`. Do đó, chỉ chạy một container của service `core`.
+- Lỗi xảy ra trước khi gửi xong lời gọi, ví dụ không kết nối được hoặc lỗi TLS, được gửi lại. Lỗi xảy ra sau khi đã gửi xong lời gọi cho kết quả `unknown`. Không gửi lại tin `unknown`.
+- Khi service `core` dừng trong lúc gửi, vòng lặp chờ Telegram trả lời rồi ghi kết quả, nhờ `asyncio.shield`. Khi lời gọi `run_in_threadpool` bị hủy thẳng, thread vẫn gửi tin nhưng kết quả bị mất.
+- Token của bot nằm trong đường dẫn của lời gọi. Không ghi đường dẫn hoặc token vào log. Token được kiểm tra dạng `<số>:<chuỗi>` lúc khởi động, nên `http.client` không báo lỗi `InvalidURL` chứa đường dẫn.
+- Cấu hình Telegram sai không làm service `core` dừng. Service ghi lý do vào log và chuyển tin sang `skipped`.
+- Trigger `notify` của bảng gửi NOTIFY tới kênh `core_deliveries` khi có dòng mới. Service `core` nghe kênh này bằng một kết nối riêng, mở bằng `Database.listen`. Khi không có NOTIFY, service đọc bảng 10 giây một lần.
+
+Bot API giả nằm trong file `tests/integration/fake_telegram.py`. Fixture `bot_api` chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `telegram-gia`, rồi ghi cấu hình Telegram trỏ tới container này vào file `.env`. Bot API giả trả lời theo kế hoạch mà kiểm thử gửi tới `/plan`, ví dụ mã 500, mã 429 kèm `retry_after`, ngắt kết nối hoặc trả lời sau 30 giây. Kiểm thử `test_telegram_message_is_skipped_while_telegram_is_not_configured` phải đứng trước các kiểm thử dùng fixture `bot_api`, vì fixture này bật Telegram cho cả bộ thử. Kiểm thử `test_notification_reaches_telegram_group_once_within_two_seconds` gửi hai tin liên tiếp. Khi trigger `notify` bị xóa, tin thứ hai chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
 
 ## Phát hành phiên bản mới
 
