@@ -8,6 +8,8 @@ import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime
+from urllib.parse import urlencode
 
 import pytest
 
@@ -69,6 +71,60 @@ FORGED_CHANNEL_TOKENS = ["ky-bang-khoa-khac", "khong-ky", "access-token", "sua-k
 NAMESPACES = ["public", "user", "role"]
 HISTORY_SIZE = 100
 OUTAGE = 60
+RECIPIENT = "nguoi-a"
+KEY = "thu"
+TITLE = "Thông báo thử"
+NOTIFY = "core.notify(text, text, text, text, text)"
+NOT_FOUND = {"detail": "Không tìm thấy thông báo"}
+BAD_LINKS = {
+    "javascript": "javascript:alert(1)",
+    "web-khac": "https://web-khac.example/dang-nhap",
+    "khong-giao-thuc": "//web-khac.example",
+    "gach-nguoc": "/" + chr(92) + "web-khac.example",
+    "co-tab": "/" + chr(9) + "/web-khac.example",
+    "tuong-doi": "yeu-cau/YC-001",
+    "rong": "",
+    "qua-dai": "/" + "a" * 1000,
+}
+GOOD_LINKS = {
+    "goc": "/",
+    "co-query-va-fragment": "/yeu-cau/YC-001?tab=lich-su#cuoi",
+    "dai-nhat": "/" + "a" * 999,
+}
+INVALID_NOTIFICATIONS = {
+    "nguoi-nhan-null": ((None, KEY, TITLE), "Người nhận NULL không hợp lệ"),
+    "nguoi-nhan-rong": (("", KEY, TITLE), "Người nhận '' không hợp lệ"),
+    "nguoi-nhan-co-khoang-trang": (("nguoi a", KEY, TITLE), "Người nhận 'nguoi a' không hợp lệ"),
+    "nguoi-nhan-la-kenh": (
+        ("user:#nguoi-a", KEY, TITLE),
+        "Người nhận 'user:#nguoi-a' không hợp lệ",
+    ),
+    "nguoi-nhan-co-dau": (("người-a", KEY, TITLE), "Người nhận 'người-a' không hợp lệ"),
+    "nguoi-nhan-qua-dai": (("a" * 250, KEY, TITLE), "Người nhận '" + "a" * 250 + "' không hợp lệ"),
+    "khoa-null": ((RECIPIENT, None, TITLE), "Khóa chống trùng không hợp lệ"),
+    "khoa-rong": ((RECIPIENT, "", TITLE), "Khóa chống trùng không hợp lệ"),
+    "khoa-qua-dai": ((RECIPIENT, "k" * 256, TITLE), "Khóa chống trùng không hợp lệ"),
+    "tieu-de-null": ((RECIPIENT, KEY, None), "Tiêu đề không hợp lệ"),
+    "tieu-de-chi-co-khoang-trang": ((RECIPIENT, KEY, " " + chr(9) + " "), "Tiêu đề không hợp lệ"),
+    "tieu-de-xuong-dong": ((RECIPIENT, KEY, "Dòng 1" + chr(10) + "Dòng 2"), "Tiêu đề không hợp lệ"),
+    "tieu-de-qua-dai": ((RECIPIENT, KEY, "t" * 201), "Tiêu đề không hợp lệ"),
+    "noi-dung-qua-dai": ((RECIPIENT, KEY, TITLE, "n" * 2001), "Nội dung dài quá 2000 ký tự"),
+}
+NOTIFICATION_PRIVILEGES = """
+SELECT r.rolname, p.privilege
+FROM pg_roles AS r,
+    unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'])
+        AS p (privilege)
+WHERE NOT r.rolsuper AND r.rolname !~ '^pg_'
+AND has_table_privilege(r.oid, 'core.notifications', p.privilege)
+UNION ALL
+SELECT r.rolname, 'UPDATE (' || a.attname || ')'
+FROM pg_roles AS r, pg_attribute AS a
+WHERE a.attrelid = 'core.notifications'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+AND NOT r.rolsuper AND r.rolname !~ '^pg_'
+AND has_column_privilege(r.oid, a.attrelid, a.attnum, 'UPDATE')
+ORDER BY 1, 2
+"""
 TABLE_PRIVILEGES = """
 SELECT c.oid::regclass::text, p.privilege
 FROM pg_class AS c,
@@ -279,6 +335,58 @@ def listening(stack, user, channels):
             pushed = client.receive()["push"]
             assert (pushed["channel"], "subscribe" in pushed) == (channel, True)
         yield client
+
+
+@contextmanager
+def inbox(stack, user):
+    with connected_as(stack, user) as client:
+        assert "subscribe" in subscribe(client, f"user:#{user.id}")
+        yield client
+
+
+def arguments_of(values):
+    return ", ".join(literal(value) for value in values)
+
+
+def notify(stack, *values):
+    return stack.sql(f"SET ROLE workflow; SELECT core.notify({arguments_of(values)})")[-1][0]
+
+
+def refused_notification(stack, values):
+    return psql(stack, f"SET ROLE workflow; SELECT core.notify({arguments_of(values)})")
+
+
+def notifications_of(stack, user, **page):
+    query = f"?{urlencode(page)}" if page else ""
+    reply = stack.call("GET", f"{stack.url}/core/notifications{query}", token=stack.token(user))
+    assert reply.status == 200, reply.body
+    return json.loads(reply.body)
+
+
+def mark_read(stack, user, notification_id):
+    url = f"{stack.url}/core/notifications/{notification_id}/read"
+    return stack.call("POST", url, token=stack.token(user))
+
+
+def quoted(value):
+    text = value.replace("'", "''")
+    if chr(92) in value:
+        return "E'" + text.replace(chr(92), chr(92) * 2) + "'"
+    return f"'{text}'"
+
+
+def as_caller(stack, role, subject, query):
+    claims = literal(json.dumps({"sub": subject}))
+    prefix = f"SELECT set_config('request.jwt.claims', {claims}, false) IS NULL; SET ROLE {role}; "
+    return stack.sql(prefix + query)[-1]
+
+
+def audit_of(stack, notification_id):
+    return stack.sql(
+        "SELECT operation, actor, db_role FROM core.audit_log "
+        "WHERE table_name = 'notifications' "
+        f"AND coalesce(new_row, old_row) ->> 'id' = {literal(notification_id)} ORDER BY id"
+    )
 
 
 @pytest.fixture
@@ -858,3 +966,237 @@ def test_only_subscribed_client_reads_history(stack, user):
     assert [error_of(reply) for reply in refused] == [PERMISSION_DENIED] * len(channels)
     assert error_of(recovering) == PERMISSION_DENIED
     assert [data for data, _ in contents(allowed["history"]["publications"])] == [{"lan": 1}]
+
+
+def test_notification_reaches_recipient_within_one_second_as_listed(stack, user):
+    title, body, link = "Yêu cầu YC-001 đã được xử lý", "Máy 12 đã được thay cáp", "/yeu-cau/YC-001"
+
+    with inbox(stack, user) as client:
+        notification_id = notify(stack, user.id, "yeu-cau:YC-001:da-xu-ly", title, body, link)
+        message = received(client, 1)
+    [listed] = notifications_of(stack, user)
+
+    assert message is not None, "Thông báo không tới trong 1 giây"
+    channel, data, tags = publication(message)
+    pushed = data["notification"]
+    assert (channel, set(data), set(tags)) == (f"user:#{user.id}", {"notification"}, {"id"})
+    assert listed == {
+        "id": notification_id,
+        "title": title,
+        "body": body,
+        "link": link,
+        "created_at": listed["created_at"],
+        "read_at": None,
+    }
+    assert pushed | {"created_at": None} == listed | {"created_at": None}
+    assert datetime.fromisoformat(pushed["created_at"]) == datetime.fromisoformat(
+        listed["created_at"]
+    )
+
+
+def test_recipient_marks_notification_as_read_once(stack, user):
+    notification_id = notify(stack, user.id, KEY, TITLE)
+
+    first = mark_read(stack, user, notification_id)
+    again = mark_read(stack, user, notification_id)
+    [listed] = notifications_of(stack, user)
+
+    read = json.loads(first.body)
+    assert (first.status, again.status) == (200, 200)
+    assert read["id"] == notification_id
+    assert read["read_at"] is not None
+    assert json.loads(again.body) == read == listed
+    assert audit_of(stack, notification_id) == [
+        ["INSERT", "", "workflow"],
+        ["UPDATE", user.id, "core_service"],
+    ]
+
+
+def test_other_user_neither_sees_nor_marks_notification(stack, user):
+    other = stack.new_user()
+    notification_id = notify(stack, user.id, KEY, TITLE)
+
+    seen = notifications_of(stack, other)
+    refused = mark_read(stack, other, notification_id)
+    [listed] = notifications_of(stack, user)
+
+    assert seen == []
+    assert (refused.status, json.loads(refused.body)) == (404, NOT_FOUND)
+    assert listed["read_at"] is None
+
+
+def test_same_key_gives_one_notification_and_one_message(stack, user):
+    key = "yeu-cau:YC-002:da-xu-ly"
+
+    with inbox(stack, user) as client:
+        first = notify(stack, user.id, key, "Lần đầu")
+        pushed = received(client, 1)
+        again = notify(stack, user.id, key, "Lần hai", "Nội dung khác", "/khac")
+        extra = received(client, 2)
+    listed = notifications_of(stack, user)
+
+    assert again == first
+    assert publication(pushed)[1]["notification"]["id"] == first
+    assert extra is None
+    assert [(item["id"], item["title"], item["body"]) for item in listed] == [
+        (first, "Lần đầu", None)
+    ]
+
+
+def test_same_key_for_other_recipient_gives_own_notification(stack, user):
+    other = stack.new_user()
+    key = "yeu-cau:YC-003:da-xu-ly"
+
+    ids = [notify(stack, recipient.id, key, TITLE) for recipient in (user, other)]
+
+    assert ids[0] != ids[1]
+    assert [item["id"] for item in notifications_of(stack, user)] == [ids[0]]
+    assert [item["id"] for item in notifications_of(stack, other)] == [ids[1]]
+
+
+@pytest.mark.parametrize("ending", ["COMMIT", "ROLLBACK"], ids=["commit", "rollback"])
+def test_notify_waits_for_other_transaction_with_same_key(stack, user, ending):
+    key = f"dua-{secrets.token_hex(4)}"
+    held = (
+        f"BEGIN; SET ROLE workflow; SELECT core.notify({arguments_of([user.id, key, 'Lần đầu'])}); "
+        f"SELECT pg_sleep(2); {ending}"
+    )
+    sleeping = (
+        "SELECT count(*) FROM pg_stat_activity "
+        f"WHERE wait_event = 'PgSleep' AND query LIKE {literal('%' + key + '%')}"
+    )
+
+    with inbox(stack, user) as client, ThreadPoolExecutor(1) as pool:
+        holder = pool.submit(psql, stack, held)
+        wait_for(lambda: stack.sql(sleeping) == [["1"]], timeout=10)
+        second = notify(stack, user.id, key, "Lần hai")
+        pushed = publication(received(client, 5))[1]["notification"]
+        extra = received(client, 2)
+        first = re.search(r"^[0-9a-f-]{36}$", holder.result().stdout, re.MULTILINE)[0]
+    listed = notifications_of(stack, user)
+
+    kept = (first, "Lần đầu") if ending == "COMMIT" else (second, "Lần hai")
+    assert (second == first) == (ending == "COMMIT")
+    assert (pushed["id"], pushed["title"]) == kept
+    assert extra is None
+    assert [(item["id"], item["title"]) for item in listed] == [kept]
+
+
+def test_rolled_back_notification_is_neither_saved_nor_sent(stack, user):
+    key = f"huy-{secrets.token_hex(4)}"
+    channel = f"user:#{user.id}"
+    undone = f"SELECT core.notify({arguments_of([user.id, key, TITLE])}); SELECT 1 / 0"
+
+    with inbox(stack, user) as client:
+        failed = psql(stack, f"SET ROLE workflow; {undone}")
+        marker = publish(stack, channel, {"moc": True})
+        message = received(client, 5)
+    saved = stack.sql(f"SELECT count(*) FROM core.notifications WHERE dedup_key = {literal(key)}")
+
+    assert "division by zero" in failed.stderr
+    assert publication(message) == (channel, {"moc": True}, {"id": marker})
+    assert saved == [["0"]]
+
+
+def test_list_gives_newest_notifications_first_page_by_page(stack, user):
+    ids = [notify(stack, user.id, f"trang-{number}", f"Thông báo {number}") for number in range(3)]
+
+    first_page = notifications_of(stack, user, limit=2)
+    second_page = notifications_of(stack, user, offset=2, limit=2)
+
+    assert [item["id"] for item in first_page + second_page] == ids[::-1]
+
+
+@pytest.mark.parametrize(
+    ("values", "message"), INVALID_NOTIFICATIONS.values(), ids=INVALID_NOTIFICATIONS.keys()
+)
+def test_notify_refuses_invalid_values(stack, values, message):
+    refused = refused_notification(stack, values)
+
+    assert refused.returncode != 0
+    assert f"ERROR:  {message}\n" in refused.stderr
+
+
+@pytest.mark.parametrize("link", BAD_LINKS.values(), ids=BAD_LINKS.keys())
+def test_notify_refuses_link_outside_system(stack, link):
+    refused = refused_notification(stack, (RECIPIENT, KEY, TITLE, None, link))
+
+    assert refused.returncode != 0
+    assert f"ERROR:  Đường dẫn {quoted(link)} không hợp lệ\n" in refused.stderr
+
+
+@pytest.mark.parametrize("link", GOOD_LINKS.values(), ids=GOOD_LINKS.keys())
+def test_notify_accepts_link_inside_system(stack, user, link):
+    notification_id = notify(stack, user.id, KEY, TITLE, None, link)
+
+    [listed] = notifications_of(stack, user)
+
+    assert (listed["id"], listed["link"]) == (notification_id, link)
+
+
+def test_notify_accepts_longest_values(stack):
+    values = [
+        secrets.token_hex(4) + "a" * 241,
+        "k" * 255,
+        "t" * 200,
+        "Dòng 1" + chr(10) + "n" * 1993,
+    ]
+
+    notification_id = notify(stack, *values)
+    stored = stack.sql(
+        "SELECT recipient = {}, dedup_key = {}, title = {}, body = {} "
+        "FROM core.notifications WHERE id = {}".format(*map(literal, [*values, notification_id]))
+    )
+
+    assert [len(value) for value in values] == [249, 255, 200, 2000]
+    assert stored == [["t", "t", "t", "t"]]
+
+
+def test_only_role_workflow_can_notify(stack):
+    roles = ", ".join(literal(role) for role in [*PUBLISHERS, "workflow"])
+    query = (
+        f"SELECT role, has_function_privilege(role, {literal(NOTIFY)}, 'EXECUTE') "
+        f"FROM unnest(ARRAY[{roles}]) AS role"
+    )
+
+    allowed = dict(stack.sql(query))
+    refused = psql(
+        stack,
+        f"SET ROLE authenticated; SELECT core.notify({arguments_of([RECIPIENT, KEY, TITLE])})",
+    )
+
+    assert allowed == {**dict.fromkeys(PUBLISHERS, "f"), "workflow": "t"}
+    assert "permission denied for function notify" in refused.stderr
+
+
+def test_only_core_service_may_change_read_time_of_notifications(stack):
+    assert stack.sql(NOTIFICATION_PRIVILEGES) == [
+        ["authenticated", "SELECT"],
+        ["core_service", "SELECT"],
+        ["core_service", "UPDATE (read_at)"],
+    ]
+
+
+def test_row_security_limits_roles_to_notifications_of_caller(stack):
+    first, second = (f"nguoi-{secrets.token_hex(4)}" for _ in range(2))
+    for recipient in (first, second):
+        notify(stack, recipient, KEY, TITLE)
+    both = f"recipient IN ({literal(first)}, {literal(second)})"
+
+    seen = as_caller(
+        stack,
+        "authenticated",
+        first,
+        f"SELECT string_agg(recipient, ',') FROM core.notifications WHERE {both}",
+    )
+    marked = as_caller(
+        stack,
+        "core_service",
+        first,
+        "WITH marked AS (UPDATE core.notifications SET read_at = now() "
+        f"WHERE {both} RETURNING recipient) SELECT string_agg(recipient, ',') FROM marked",
+    )
+    unread = stack.sql(f"SELECT recipient FROM core.notifications WHERE {both} AND read_at IS NULL")
+
+    assert seen == marked == [first]
+    assert unread == [[second]]
