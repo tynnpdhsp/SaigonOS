@@ -138,6 +138,7 @@ BOT_API = "telegram-gia"
 STOPPED_WHILE_SENDING = (
     "Service core dừng khi đang gửi tin nên không biết tin đã tới Telegram hay chưa"
 )
+STATE = "{{.RestartCount}} {{.State.Health.Status}}"
 TABLE_PRIVILEGES = """
 SELECT c.oid::regclass::text, p.privilege
 FROM pg_class AS c,
@@ -1412,7 +1413,10 @@ def test_message_being_sent_when_core_dies_is_not_sent_again(stack, user, bot):
     telegram_notify(stack, user.id, key)
     bot.received(1)
     sending = deliveries_of(stack, key)
-    stack.kill(stack.container("core"))
+    container = stack.container("core")
+    restarts = int(stack.inspect(container, "{{.RestartCount}}"))
+    stack.kill(container)
+    wait_for(lambda: stack.inspect(container, STATE) == f"{restarts + 1} healthy", 120)
     stack.wait_until_answers("/core/health")
     wait_for_status(stack, key, "unknown")
     time.sleep(2)
