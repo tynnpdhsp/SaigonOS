@@ -139,6 +139,36 @@ STOPPED_WHILE_SENDING = (
     "Service core dừng khi đang gửi tin nên không biết tin đã tới Telegram hay chưa"
 )
 STATE = "{{.RestartCount}} {{.State.Health.Status}}"
+SEND_EMAIL = "core.send_email(text, text, text, text, text)"
+CHECK_MESSAGE = "core.check_message(text, text, text, text)"
+ADDRESS = "nguyen.van.a@example.com"
+OTHER_ADDRESS = "tran.thi.b@example.com"
+BAD_ADDRESSES = {
+    "null": None,
+    "rong": "",
+    "thieu-a-cong": "nguyen.van.a",
+    "thieu-ten-mien": "nguyen.van.a@",
+    "thieu-ten": "@example.com",
+    "co-khoang-trang": "nguyen van a@example.com",
+    "co-dau": "người@example.com",
+    "ten-mien-hai-dau-cham": "a@example..com",
+    "ten-mien-dau-gach": "a@-example.com",
+    "chen-header": "a@example.com" + chr(10) + "Bcc: b@example.com",
+    "hai-dia-chi": "a@example.com,b@example.com",
+    "ngoac-nhon": "<a@example.com>",
+    "qua-dai": "a" * 243 + "@example.com",
+}
+GOOD_ADDRESSES = {
+    "thuong": ADDRESS,
+    "dau-nhay-va-cong": "o'brien+yeu-cau@sub.example.com",
+    "may-noi-bo": "quan-tri@localhost",
+    "dai-nhat": "a" * 242 + "@example.com",
+}
+INVALID_EMAILS = {
+    name: ((ADDRESS, *values[1:]), message)
+    for name, (values, message) in INVALID_NOTIFICATIONS.items()
+    if not name.startswith("nguoi-nhan")
+}
 TABLE_PRIVILEGES = """
 SELECT c.oid::regclass::text, p.privilege
 FROM pg_class AS c,
@@ -1462,3 +1492,121 @@ def test_notification_without_telegram_and_rolled_back_one_send_nothing(stack, u
     assert [request["body"]["text"] for request in bot.requests()] == ["Tin mốc"]
     assert len(requests) == 1
     assert deliveries_of(stack, plain) == deliveries_of(stack, undone) == []
+
+
+def send_email(stack, *values):
+    return stack.sql(f"SET ROLE workflow; SELECT core.send_email({arguments_of(values)})")[-1][0]
+
+
+def refused_email(stack, values):
+    return psql(stack, f"SET ROLE workflow; SELECT core.send_email({arguments_of(values)})")
+
+
+def emails_of(stack, key):
+    return stack.sql(
+        "SELECT id, address, title, coalesce(body, ''), coalesce(link, '') FROM core.deliveries "
+        f"WHERE channel = 'email' AND dedup_key = {literal(key)} ORDER BY id"
+    )
+
+
+@pytest.mark.parametrize("address", BAD_ADDRESSES.values(), ids=BAD_ADDRESSES.keys())
+def test_send_email_refuses_invalid_address(stack, address):
+    refused = refused_email(stack, (address, KEY, TITLE))
+
+    shown = "NULL" if address is None else quoted(address)
+    assert refused.returncode != 0
+    assert f"ERROR:  Địa chỉ email {shown} không hợp lệ\n" in refused.stderr
+
+
+@pytest.mark.parametrize("address", GOOD_ADDRESSES.values(), ids=GOOD_ADDRESSES.keys())
+def test_send_email_accepts_valid_address(stack, address):
+    key = event_key("dia-chi")
+
+    delivery_id = send_email(stack, address, key, TITLE)
+
+    assert emails_of(stack, key) == [[delivery_id, address, TITLE, "", ""]]
+
+
+@pytest.mark.parametrize(("values", "message"), INVALID_EMAILS.values(), ids=INVALID_EMAILS.keys())
+def test_send_email_refuses_invalid_values_like_notify(stack, values, message):
+    refused = refused_email(stack, values)
+
+    assert refused.returncode != 0
+    assert f"ERROR:  {message}\n" in refused.stderr
+
+
+@pytest.mark.parametrize("link", BAD_LINKS.values(), ids=BAD_LINKS.keys())
+def test_send_email_refuses_link_outside_system(stack, link):
+    refused = refused_email(stack, (ADDRESS, KEY, TITLE, None, link))
+
+    assert refused.returncode != 0
+    assert f"ERROR:  Đường dẫn {quoted(link)} không hợp lệ\n" in refused.stderr
+
+
+def test_email_is_queued_once_for_each_address_and_key(stack):
+    key = event_key("da-nhan")
+    title, body, link = "Đã nhận yêu cầu YC-001", "Cảm ơn bạn đã gửi yêu cầu", "/tra-cuu/YC-001"
+
+    first = send_email(stack, ADDRESS, key, title, body, link)
+    again = send_email(stack, ADDRESS, key, "Tiêu đề khác")
+    other = send_email(stack, OTHER_ADDRESS, key, title)
+
+    assert first == again != other
+    assert emails_of(stack, key) == [
+        [first, ADDRESS, title, body, link],
+        [other, OTHER_ADDRESS, title, "", ""],
+    ]
+
+
+def test_email_and_telegram_message_with_same_key_are_both_queued(stack, user):
+    key = event_key("hai-kenh")
+
+    telegram_notify(stack, user.id, key)
+    send_email(stack, ADDRESS, key, TITLE)
+    channels = stack.sql(
+        f"SELECT channel FROM core.deliveries WHERE dedup_key = {literal(key)} ORDER BY id"
+    )
+
+    assert channels == [["telegram"], ["email"]]
+
+
+def test_rolled_back_email_is_not_queued(stack):
+    key = event_key("huy")
+
+    failed = psql(
+        stack,
+        f"SET ROLE workflow; SELECT core.send_email({arguments_of([ADDRESS, key, TITLE])}); "
+        "SELECT 1 / 0",
+    )
+
+    assert "division by zero" in failed.stderr
+    assert emails_of(stack, key) == []
+
+
+def test_only_role_workflow_can_send_email(stack):
+    roles = ", ".join(literal(role) for role in [*PUBLISHERS, "workflow"])
+    query = (
+        f"SELECT role, has_function_privilege(role, {literal(SEND_EMAIL)}, 'EXECUTE'), "
+        f"has_function_privilege(role, {literal(CHECK_MESSAGE)}, 'EXECUTE') "
+        f"FROM unnest(ARRAY[{roles}]) AS role"
+    )
+
+    allowed = {role: tuple(rights) for role, *rights in stack.sql(query)}
+    refused = psql(
+        stack,
+        f"SET ROLE authenticated; SELECT core.send_email({arguments_of([ADDRESS, KEY, TITLE])})",
+    )
+
+    assert allowed == {**dict.fromkeys(PUBLISHERS, ("f", "f")), "workflow": ("t", "f")}
+    assert "permission denied for function send_email" in refused.stderr
+
+
+@pytest.mark.parametrize(("channel", "address"), [("email", None), ("telegram", ADDRESS)])
+def test_only_email_delivery_has_address(stack, channel, address):
+    refused = psql(
+        stack,
+        "INSERT INTO core.deliveries (channel, dedup_key, title, address) "
+        f"VALUES ({literal(channel)}, {literal(event_key('dia-chi'))}, 't', {literal(address)})",
+    )
+
+    assert 'violates check constraint "deliveries_address"' in refused.stderr
