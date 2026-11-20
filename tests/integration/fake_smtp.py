@@ -40,7 +40,8 @@ class Mailbox:
     def start(self):
         with self.lock:
             step = self.plan.pop(0) if self.plan else {}
-            session = {"commands": [], "tls": False, "user": None, "content": None, "at": None}
+            session = {"commands": [], "tls": False, "user": None, "content": None}
+            session |= {"started": time.time(), "at": None}
             self.sessions.append(session)
         return step, session
 
@@ -91,7 +92,9 @@ class Handler(socketserver.StreamRequestHandler):
                 return
             command = line.decode("ascii").rstrip("\r\n")
             verb = command.split(" ", 1)[0].upper()
-            shown = "AUTH" if verb == "AUTH" else verb + command[len(verb) :]
+            head, colon, rest = command.partition(":")
+            shown = head.upper() + colon + rest if verb in ("MAIL", "RCPT") else command
+            shown = "AUTH" if verb == "AUTH" else verb + shown[len(verb) :]
             self.session["commands"].append([shown, self.tls])
             if verb in ("EHLO", "HELO"):
                 self.hello(mailbox)

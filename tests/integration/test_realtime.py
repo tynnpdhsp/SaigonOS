@@ -9,9 +9,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
+from email import message_from_string
+from email.policy import default
 from pathlib import Path
 from urllib.parse import urlencode
 
+import fake_smtp
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -164,6 +167,10 @@ GOOD_ADDRESSES = {
     "may-noi-bo": "quan-tri@localhost",
     "dai-nhat": "a" * 242 + "@example.com",
 }
+SMTP_HOST = "smtp-gia"
+SMTP_USER = "thong-bao@example.com"
+SMTP_PASSWORD = "mat-khau-ung-dung-gia"
+SMTP_NAME = "Phòng Kỹ thuật"
 INVALID_EMAILS = {
     name: ((ADDRESS, *values[1:]), message)
     for name, (values, message) in INVALID_NOTIFICATIONS.items()
@@ -1610,3 +1617,202 @@ def test_only_email_delivery_has_address(stack, channel, address):
     )
 
     assert 'violates check constraint "deliveries_address"' in refused.stderr
+
+
+def test_email_is_skipped_while_smtp_is_not_configured(stack):
+    key = event_key("khong-cau-hinh-smtp")
+
+    send_email(stack, ADDRESS, key, TITLE)
+    wait_for_status(stack, key, "skipped", timeout=15)
+
+    assert deliveries_of(stack, key) == [["skipped", "0", "", "Chưa cấu hình SMTP"]]
+    assert "Chưa cấu hình SMTP nên email" in stack.logs("core")
+
+
+class MailServer:
+    def __init__(self, stack, url):
+        self.stack = stack
+        self.url = url
+
+    def plan(self, *steps):
+        reply = self.stack.call("POST", f"{self.url}/plan", body=list(steps))
+        assert reply.status == 200, reply.body
+
+    def sessions(self):
+        reply = self.stack.call("GET", f"{self.url}/sessions")
+        assert reply.status == 200, reply.body
+        return json.loads(reply.body)
+
+    def ready(self):
+        try:
+            return isinstance(self.sessions(), list)
+        except OSError:
+            return False
+
+    def delivered(self):
+        return [session for session in self.sessions() if session["content"] is not None]
+
+    def received(self, count, timeout=20):
+        wait_for(lambda: len(self.delivered()) >= count, timeout)
+        return self.delivered()
+
+
+def commands_of(session):
+    return [command for command, _ in session["commands"]]
+
+
+@pytest.fixture(scope="module")
+def mail_server(stack):
+    folder = stack.home / SMTP_HOST
+    folder.mkdir(mode=0o755, exist_ok=True)
+    fake_smtp.make_certificates(folder, SMTP_HOST)
+    name = f"{stack.home.name}-smtp"
+    script = Path(__file__).with_name("fake_smtp.py")
+    image = stack.inspect(stack.container("core"), "{{.Config.Image}}")
+    options = ["--detach", "--rm", "--name", name, "--network", stack.network("default")]
+    options += ["--network-alias", SMTP_HOST, "--publish", "127.0.0.1::8025"]
+    options += ["--volume", f"{script}:/fake_smtp.py:ro", "--volume", f"{folder}:/smtp-gia:ro"]
+    arguments = [SMTP_USER, SMTP_PASSWORD, "/smtp-gia/cert.pem", "/smtp-gia/key.pem"]
+    stack.run_docker("run", *options, image, "python", "/fake_smtp.py", *arguments)
+    override = stack.home / "compose.override.yaml"
+    try:
+        address = stack.run_docker("port", name, "8025").stdout.split()[0]
+        server = MailServer(stack, f"http://{address}")
+        wait_for(server.ready, timeout=30)
+        override.write_text(
+            "services:\n  core:\n    environment:\n      SSL_CERT_FILE: /smtp-gia/ca.pem\n"
+            f"    volumes:\n      - ./{SMTP_HOST}/ca.pem:/smtp-gia/ca.pem:ro\n",
+            encoding="utf-8",
+        )
+        settings = {
+            "SMTP_HOST": SMTP_HOST,
+            "SMTP_PORT": str(fake_smtp.SMTP_PORT),
+            "SMTP_USERNAME": SMTP_USER,
+            "SMTP_PASSWORD": SMTP_PASSWORD,
+            "SMTP_FROM": SMTP_USER,
+            "SMTP_FROM_NAME": SMTP_NAME,
+        }
+        with (stack.home / ".env").open("a", encoding="utf-8") as env:
+            env.writelines(f"{key}={value}\n" for key, value in settings.items())
+        started = stack.up()
+        assert started.returncode == 0, started.stderr
+        yield server
+    finally:
+        override.unlink(missing_ok=True)
+        stack.run_docker("rm", "--force", name, check=False)
+
+
+@pytest.fixture
+def mail(mail_server):
+    mail_server.plan()
+    return mail_server
+
+
+def test_email_reaches_server_through_starttls_within_two_seconds(stack, mail):
+    title, body, link = "Đã nhận yêu cầu YC-001", "Cảm ơn bạn đã gửi yêu cầu", "/tra-cuu/YC-001"
+    delays = []
+
+    for count, key in enumerate([event_key("truoc"), event_key("da-nhan")], start=1):
+        started = time.time()
+        send_email(stack, ADDRESS, key, title, body, link)
+        session = mail.received(count)[-1]
+        delays.append(session["at"] - started)
+        wait_for_status(stack, key, "sent")
+    time.sleep(2)
+
+    sent = message_from_string(session["content"], policy=default)
+    [sender] = sent["From"].addresses
+    assert all(delay < 2 for delay in delays), delays
+    assert [command.split(" ")[0] for command in commands_of(session)] == [
+        "EHLO",
+        "STARTTLS",
+        "EHLO",
+        "AUTH",
+        "MAIL",
+        "RCPT",
+        "DATA",
+        "QUIT",
+    ]
+    assert [secure for _, secure in session["commands"]][3:] == [True] * 5
+    assert session["user"] == SMTP_USER
+    assert commands_of(session)[4:6] == [f"MAIL FROM:<{SMTP_USER}>", f"RCPT TO:<{ADDRESS}>"]
+    assert (sender.display_name, sender.addr_spec) == (SMTP_NAME, SMTP_USER)
+    assert (str(sent["To"]), str(sent["Subject"])) == (ADDRESS, title)
+    assert sent.get_content().splitlines() == [body, "", f"{stack.url}{link}"]
+    assert deliveries_of(stack, key) == [["sent", "0", sent["Message-ID"], ""]]
+    assert len(mail.sessions()) == 2
+
+
+def test_temporary_error_is_retried_after_five_seconds_and_recipient_gets_one_email(stack, mail):
+    key = event_key("loi-451")
+    mail.plan({"rcpt": "451 4.3.0 Try again later"})
+
+    send_email(stack, ADDRESS, key, TITLE)
+    wait_for_status(stack, key, "sent")
+    time.sleep(2)
+
+    first, second = mail.sessions()
+    reason = "Máy chủ SMTP trả về mã 451 cho lệnh RCPT TO: 4.3.0 Try again later"
+    assert (first["content"], second["content"] is not None) == (None, True)
+    assert 5 <= second["started"] - first["started"] < 7
+    assert deliveries_of(stack, key)[0][:2] == ["sent", "1"]
+    assert f"{reason}. Email sẽ được gửi lại sau 5 giây" in stack.logs("core")
+
+
+def test_email_refused_by_server_fails_at_once_and_is_logged(stack, mail):
+    key = event_key("khong-co-hop-thu")
+    mail.plan({"rcpt": "550 5.1.1 The email account does not exist"})
+
+    send_email(stack, ADDRESS, key, TITLE)
+    wait_for_status(stack, key, "failed")
+    time.sleep(2)
+
+    reason = "Máy chủ SMTP trả về mã 550 cho lệnh RCPT TO: 5.1.1 The email account does not exist"
+    assert len(mail.sessions()) == 1
+    assert deliveries_of(stack, key) == [["failed", "1", "", reason]]
+    assert f"sau 1 lần thử: {reason}" in stack.logs("core")
+
+
+def test_lost_reply_after_content_is_marked_unknown_and_not_sent_again(stack, mail):
+    key = event_key("mat-ket-noi-smtp")
+    mail.plan({"content": "drop"})
+
+    send_email(stack, ADDRESS, key, TITLE)
+    wait_for_status(stack, key, "unknown")
+    time.sleep(2)
+
+    reason = "Mất kết nối khi chờ máy chủ SMTP trả lời: Connection unexpectedly closed"
+    [session] = mail.sessions()
+    assert session["content"] is not None
+    assert deliveries_of(stack, key) == [["unknown", "0", "", reason]]
+    assert "Email không được gửi lại để tránh gửi trùng" in stack.logs("core")
+
+
+def test_server_without_starttls_never_gets_password(stack, mail):
+    key = event_key("khong-starttls")
+    mail.plan({"no_starttls": True})
+
+    send_email(stack, ADDRESS, key, TITLE)
+    wait_for_status(stack, key, "failed")
+
+    [session] = mail.sessions()
+    assert [command.split(" ")[0] for command in commands_of(session)] == ["EHLO"]
+    assert deliveries_of(stack, key) == [["failed", "1", "", "Máy chủ SMTP không hỗ trợ STARTTLS"]]
+
+
+def test_each_address_gets_one_email_for_each_key(stack, mail):
+    key = event_key("hai-nguoi")
+
+    for address in (ADDRESS, ADDRESS, OTHER_ADDRESS):
+        send_email(stack, address, key, TITLE)
+    marker = event_key("moc")
+    send_email(stack, ADDRESS, marker, "Email mốc")
+    sessions = mail.received(3)
+    wait_for_status(stack, marker, "sent")
+    time.sleep(1)
+
+    recipients = [commands_of(session)[5] for session in mail.sessions()]
+    assert recipients == [f"RCPT TO:<{address}>" for address in (ADDRESS, OTHER_ADDRESS, ADDRESS)]
+    assert str(message_from_string(sessions[-1]["content"], policy=default)["Subject"]) == (
+        "Email mốc"
+    )
