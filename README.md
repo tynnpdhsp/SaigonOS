@@ -301,7 +301,7 @@ Các mã lỗi của hai lời gọi:
 
 ## Cấu hình
 
-Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo được giữ nguyên.
+Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram).
 
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -1019,7 +1019,7 @@ Thông báo cho người dùng được lưu trong bảng `core.notifications` c
 
 ### Gửi thông báo
 
-Hàm `core.notify(recipient, dedup_key, title, body, link)` của cơ sở dữ liệu ghi một thông báo rồi gửi thông báo đó tới kênh `user:#<recipient>`. Hàm trả về mã của thông báo, có kiểu `uuid`. Các tham số của hàm như sau:
+Hàm `core.notify(recipient, dedup_key, title, body, link, telegram)` của cơ sở dữ liệu ghi một thông báo rồi gửi thông báo đó tới kênh `user:#<recipient>`. Hàm trả về mã của thông báo, có kiểu `uuid`. Các tham số của hàm như sau:
 
 | Tham số | Ý nghĩa |
 |---|---|
@@ -1028,6 +1028,7 @@ Hàm `core.notify(recipient, dedup_key, title, body, link)` của cơ sở dữ 
 | `title` | Tiêu đề, dài tối đa 200 ký tự. Tiêu đề không được để trống và không chứa ký tự điều khiển, ví dụ dấu xuống dòng |
 | `body` | Nội dung, dài tối đa 2000 ký tự. Tham số này có thể bỏ qua |
 | `link` | Đường dẫn tới một trang trong hệ thống, bắt đầu bằng một dấu `/` và dài tối đa 1000 ký tự. Ví dụ: `/yeu-cau/YC-001`. Tham số này có thể bỏ qua |
+| `telegram` | Khi có giá trị `true`, thông báo còn được gửi tới nhóm Telegram như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram). Mặc định là `false` |
 
 Hàm báo lỗi khi một tham số không hợp lệ. Hàm từ chối đường dẫn tới web khác, ví dụ `https://...` hoặc `//...`, và đường dẫn `javascript:`. Do đó, ứng dụng hiển thị được đường dẫn của thông báo mà không cần kiểm tra lại.
 
@@ -1082,6 +1083,81 @@ sub.subscribe();
 ```
 
 Trong ví dụ trên, `showNotification` là hàm của ứng dụng. Ứng dụng thường tải danh sách thông báo bằng lời gọi `GET /core/notifications` rồi nghe kênh. Một thông báo có thể vừa có trong danh sách vừa tới qua kênh. Do đó, ứng dụng bỏ thông báo trùng theo trường `id`.
+
+### Gửi thông báo qua Telegram
+
+Khi hàm `core.notify` nhận tham số `telegram => true`, thông báo còn được gửi tới một nhóm Telegram qua Bot API. Tin Telegram gồm tiêu đề in đậm, nội dung và địa chỉ đầy đủ của đường dẫn, ví dụ `https://dx.example.com/yeu-cau/YC-001`. Tin được gửi tới nhóm, không gửi riêng cho người nhận. Do đó, mỗi khóa chống trùng chỉ có một tin Telegram, kể cả khi sự việc được báo cho nhiều người. Ví dụ, trong hàm của một bước máy làm:
+
+```sql
+PERFORM core.notify(
+    recipient => bien ->> 'nguoi_xu_ly',
+    dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':moi',
+    title => 'Có yêu cầu mới ' || (bien ->> 'ma_yeu_cau'),
+    link => '/yeu-cau/' || (bien ->> 'ma_yeu_cau'),
+    telegram => true
+);
+```
+
+Để bật Telegram:
+
+1. Tạo bot bằng [BotFather](https://t.me/BotFather) với lệnh `/newbot`. BotFather trả về token của bot, có dạng `123456789:AA...`.
+2. Thêm bot vào nhóm nhận thông báo. Sau đó, gửi lệnh `/start@<tên bot>` trong nhóm. Khi nhóm có chủ đề (topic), gửi lệnh này trong chủ đề cần nhận tin.
+3. Mở địa chỉ `https://api.telegram.org/bot<token>/getUpdates` bằng trình duyệt. Mã nhóm là giá trị `chat.id`, ví dụ `-1001234567890`. Mã chủ đề là giá trị `message_thread_id`. Telegram chỉ giữ các giá trị này trong 24 giờ.
+4. Thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`.
+
+```
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_CHAT_ID=-1001234567890
+TELEGRAM_TOPIC_ID=2
+```
+
+Khi bật chủ đề cho nhóm, Telegram chuyển nhóm thành supergroup và mã nhóm thay đổi. Do đó, lấy mã nhóm sau khi bật chủ đề. Các giá trị Telegram trong file `.env` như sau:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token của bot |
+| `TELEGRAM_CHAT_ID` | Mã nhóm, hoặc tên công khai của nhóm dạng `@ten_nhom` |
+| `TELEGRAM_TOPIC_ID` | Mã chủ đề. Khi bỏ trống, tin được gửi vào nhóm, hoặc vào chủ đề General khi nhóm có chủ đề |
+| `TELEGRAM_API_URL` | Địa chỉ của Bot API, mặc định là `https://api.telegram.org`. Chỉ đổi giá trị này khi dùng Bot API server riêng |
+
+Để thử cấu hình, chạy lệnh sau trong thư mục làm việc. Nhóm nhận tin sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-telegram-2`.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.notify('kiem-tra', 'kiem-tra-telegram-1', 'Tin thử của SaigonOS', telegram => true)"
+```
+
+Mỗi tin Telegram là một dòng của bảng `core.deliveries`. Dòng này được ghi trong cùng transaction với thông báo. Khi transaction được commit, service `core` gửi tin ngay. Cột `status` cho biết trạng thái của tin:
+
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `pending` | Tin đang chờ gửi hoặc chờ gửi lại |
+| `sending` | Service `core` đang gửi tin |
+| `sent` | Telegram đã nhận tin. Cột `sent_id` ghi mã của tin trong nhóm |
+| `failed` | Không gửi được tin. Cột `error` ghi lý do |
+| `unknown` | Không biết Telegram đã nhận tin hay chưa |
+| `skipped` | Tin không được gửi vì chưa cấu hình Telegram hoặc cấu hình chưa đúng |
+
+Ví dụ, lệnh sau xem 10 tin gần nhất:
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SELECT id, status, failures, error FROM core.deliveries ORDER BY id DESC LIMIT 10"
+```
+
+Khi gửi lỗi, service `core` xử lý như sau:
+
+- Không kết nối được Telegram hoặc Telegram trả về mã 5xx: tin được gửi lại sau 5 giây, 30 giây, 2 phút và 10 phút. Sau 5 lần gửi lỗi, tin chuyển sang `failed`.
+- Telegram trả về mã 429: service `core` chờ đúng số giây trong `retry_after` rồi mới gửi tiếp. Các tin khác cũng chờ trong thời gian này. Lần chờ này không tính là một lần gửi lỗi.
+- Telegram trả về mã 4xx khác, ví dụ token sai hoặc bot không ở trong nhóm: tin chuyển sang `failed` ngay.
+
+Mỗi lần gửi lỗi được ghi vào log của service `core`, kèm lý do mà Telegram trả về. Lệnh `docker compose logs core` trong thư mục làm việc dùng để xem log này.
+
+Bot API không có cách chống gửi trùng. Do đó, service `core` chuyển tin sang `sending` trước khi gửi, và tin đã `sent` không được gửi lại. Có hai trường hợp không biết Telegram đã nhận tin hay chưa. Trường hợp thứ nhất là lời gọi đã được gửi đi nhưng mất kết nối trước khi Telegram trả lời. Trường hợp thứ hai là service `core` bị dừng đột ngột trong lúc gửi. Khi đó, tin chuyển sang `unknown` và không được gửi lại, để nhóm không nhận hai tin giống nhau. Thông báo trong ứng dụng không bị ảnh hưởng. Quản trị viên kiểm tra nhóm. Nếu tin chưa tới, lệnh sau đưa tin về `pending`, với `<id>` là giá trị cột `id` của tin. Tin được gửi lại trong vòng 10 giây.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "UPDATE core.deliveries SET status = 'pending' WHERE id = <id> AND status = 'unknown'"
+```
+
+Khi file `.env` không có `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID`, tin Telegram chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc token không đúng dạng, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi Telegram được cấu hình sau đó.
 
 ## Cập nhật phiên bản
 

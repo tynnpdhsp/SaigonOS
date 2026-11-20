@@ -23,6 +23,7 @@ from saigonos.home import (
     DEFAULT_SEAWEEDFS_PORT,
     LARGEST_FILE_SIZE,
 )
+from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
@@ -47,6 +48,11 @@ OPERATON = (files("saigonos") / "stack" / "config" / "operaton" / "production.ym
     encoding="utf-8"
 )
 CENTRIFUGO = (files("saigonos") / "stack" / "config" / "centrifugo" / "config.yaml").read_text(
+    encoding="utf-8"
+)
+STACK = files("saigonos") / "stack"
+COMPOSE = (STACK / "compose.yaml").read_text(encoding="utf-8")
+DELIVERIES = (STACK / "config" / "postgres" / "migrations" / "0016_deliveries.sql").read_text(
     encoding="utf-8"
 )
 
@@ -265,3 +271,30 @@ def test_readme_states_history_of_centrifugo():
     assert f"giữ tối đa {size} tin gần nhất trong {minutes} phút" in PROSE
     assert f"lỡ quá {size} tin, kết nối lại sau quá {minutes} phút" in PROSE
     assert f"sub.history({{ limit: {size} }})" in README
+
+
+def duration(seconds):
+    return f"{seconds // 60} phút" if seconds % 60 == 0 else f"{seconds} giây"
+
+
+def test_readme_lists_every_delivery_status():
+    rows = re.findall(r"^\| `([a-z]+)` \|", section("### Gửi thông báo qua Telegram"), re.MULTILINE)
+    statuses = re.search(r"status IN \(([^)]+)\)", DELIVERIES)[1]
+
+    assert rows == re.findall(r"'([a-z]+)'", statuses)
+
+
+def test_readme_lists_every_telegram_setting():
+    rows = re.findall(
+        r"^\| `(TELEGRAM_[A-Z_]+)` \|", section("### Gửi thông báo qua Telegram"), re.MULTILINE
+    )
+
+    assert sorted(rows) == sorted(re.findall(r"\$\{(TELEGRAM_[A-Z_]+):-", COMPOSE))
+
+
+def test_readme_states_retry_rules_of_telegram():
+    delays = [duration(seconds) for seconds in RETRY_DELAYS]
+
+    assert f"gửi lại sau {', '.join(delays[:-1])} và {delays[-1]}." in PROSE
+    assert f"Sau {MAX_ATTEMPTS} lần gửi lỗi, tin chuyển sang `failed`." in PROSE
+    assert f"Tin được gửi lại trong vòng {POLL} giây." in PROSE
