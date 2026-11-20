@@ -30,7 +30,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
-- [Thông báo](#thông-báo)
+- [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -1013,9 +1013,9 @@ curl -X POST -H "X-API-Key: $(grep CENTRIFUGO_API_KEY ~/saigonos/.env | cut -d= 
 
 Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết nối và gọi thử API của server. Mật khẩu đăng nhập là giá trị `CENTRIFUGO_ADMIN_PASSWORD` trong file `.env`.
 
-## Thông báo
+## Thông báo cho người dùng
 
-Thông báo trong ứng dụng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
+Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
 
 ### Gửi thông báo
 
