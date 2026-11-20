@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from saigonos_core import __version__, files, processes, realtime, tasks
+from saigonos_core import __version__, files, notifications, processes, realtime, tasks
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
@@ -156,4 +156,5 @@ def create_app(
     app.include_router(processes.router)
     app.include_router(tasks.router)
     app.include_router(realtime.router)
+    app.include_router(notifications.router)
     return app

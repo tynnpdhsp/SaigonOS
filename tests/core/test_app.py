@@ -205,7 +205,8 @@ def test_app_serves_no_page_that_loads_scripts_from_other_sites(client, path):
 
 
 @pytest.mark.parametrize(
-    ("method", "path"), [("GET", "/health/"), ("GET", "/me/"), ("POST", "/files/")]
+    ("method", "path"),
+    [("GET", "/health/"), ("GET", "/me/"), ("POST", "/files/"), ("GET", "/notifications/")],
 )
 def test_path_with_trailing_slash_is_not_redirected_outside_gateway_prefix(client, method, path):
     reply = client.request(method, path, follow_redirects=False)
