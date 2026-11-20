@@ -74,7 +74,7 @@ OUTAGE = 60
 RECIPIENT = "nguoi-a"
 KEY = "thu"
 TITLE = "Thông báo thử"
-NOTIFY = "core.notify(text, text, text, text, text)"
+NOTIFY = "core.notify(text, text, text, text, text, boolean)"
 NOT_FOUND = {"detail": "Không tìm thấy thông báo"}
 BAD_LINKS = {
     "javascript": "javascript:alert(1)",
