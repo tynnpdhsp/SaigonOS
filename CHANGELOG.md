@@ -36,6 +36,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Ví dụ cấu hình Nginx trong README chuyển tiếp kết nối WebSocket. Máy chủ đã có reverse proxy cần thêm khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` như trong ví dụ.
 - Lệnh `saigonos init` bỏ cổng mặc định khỏi địa chỉ truy cập. Ví dụ, `https://dx.example.com:443` được ghi thành `https://dx.example.com`. Trình duyệt gửi địa chỉ của trang không kèm cổng mặc định, nên Centrifugo cần địa chỉ ở dạng này để nhận kết nối.
 
+### Sửa
+
+- Sau khi một service khởi động lại, API Gateway trả lời bình thường ngay khi service chạy lại. Trước đây, trên máy chủ có DNS trả lỗi `name error`, API Gateway có thể trả mã 503 cho một phần lời gọi trong khoảng 30 giây sau khi service đã chạy lại.
+
 ## [0.4.0] - 2026-11-18
 
 ### Thêm
