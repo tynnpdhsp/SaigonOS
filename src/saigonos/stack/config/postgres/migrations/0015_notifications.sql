@@ -44,7 +44,9 @@ BEGIN
                 ERRCODE = 'invalid_parameter_value',
                 HINT = 'Khóa chống trùng dài từ 1 đến 255 ký tự';
     END IF;
-    IF title IS NULL OR title !~ '[^[:space:]]' OR title ~ '[[:cntrl:]]' OR length(title) > 200 THEN
+    -- Thêm các khoảng trắng mà [:space:] của musl bỏ qua để giống str.isspace() của Python
+    IF title IS NULL OR title !~ '[^[:space:]\u00a0\u1680\u2007\u202f]'
+        OR title ~ '[[:cntrl:]]' OR length(title) > 200 THEN
         RAISE EXCEPTION 'Tiêu đề không hợp lệ'
             USING
                 ERRCODE = 'invalid_parameter_value',

@@ -107,6 +107,10 @@ INVALID_NOTIFICATIONS = {
     "tieu-de-null": ((RECIPIENT, KEY, None), "Tiêu đề không hợp lệ"),
     "tieu-de-chi-co-khoang-trang": ((RECIPIENT, KEY, " " + chr(9) + " "), "Tiêu đề không hợp lệ"),
     "tieu-de-xuong-dong": ((RECIPIENT, KEY, "Dòng 1" + chr(10) + "Dòng 2"), "Tiêu đề không hợp lệ"),
+    "tieu-de-khoang-trang-khong-ngat": (
+        (RECIPIENT, KEY, chr(0xA0) + chr(0x2007) + chr(0x202F)),
+        "Tiêu đề không hợp lệ",
+    ),
     "tieu-de-qua-dai": ((RECIPIENT, KEY, "t" * 201), "Tiêu đề không hợp lệ"),
     "noi-dung-qua-dai": ((RECIPIENT, KEY, TITLE, "n" * 2001), "Nội dung dài quá 2000 ký tự"),
 }
