@@ -8,6 +8,7 @@ import pytest
 
 from saigonos_core.deliveries import (
     DUE,
+    EMAIL,
     MAX_ATTEMPTS,
     NEXT,
     NOTIFY_CHANNEL,
@@ -93,7 +94,8 @@ class FakeConnection:
         if not due:
             return None
         row = min(due, key=lambda row: row["id"])
-        return {name: row[name] for name in ("id", "title", "body", "link", "failures")}
+        fields = ("id", "address", "title", "body", "link", "failures")
+        return {name: row[name] for name in fields}
 
     async def fetchval(self, query, channel):
         self.run(query)
@@ -128,6 +130,7 @@ class FakeDatabase:
         self.rows[delivery_id] = {
             "id": delivery_id,
             "channel": TELEGRAM.name,
+            "address": None,
             "title": f"Tin {delivery_id}",
             "body": None,
             "link": None,
@@ -149,7 +152,7 @@ class FakeDatabase:
         return self.listeners[-1]
 
 
-class FakeTelegram:
+class FakeSender:
     def __init__(self):
         self.outcomes = []
         self.messages = []
@@ -174,7 +177,7 @@ def database(clock):
 
 @pytest.fixture
 def telegram():
-    return FakeTelegram()
+    return FakeSender()
 
 
 @pytest.fixture
@@ -488,4 +491,112 @@ def test_worker_keeps_going_after_database_error(database, telegram, clock, capl
 
     assert messages_of(caplog, logging.ERROR) == [
         "Gửi tin Telegram bị lỗi. Service sẽ thử lại sau 0.01 giây"
+    ]
+
+
+def email_row(database, **fields):
+    values = {"channel": EMAIL.name, "address": "nguyen.van.a@example.com"}
+    return database.add(**(values | fields))
+
+
+def test_email_goes_to_address_of_delivery_with_full_link(database, clock):
+    mailer = FakeSender()
+    row = email_row(database, title="Đã nhận yêu cầu YC-001", body="Cảm ơn", link="/tra-cuu/YC-001")
+
+    work(Deliveries(database, SITE, EMAIL, mailer, clock=clock))
+
+    [sent] = mailer.messages
+    assert (str(sent["To"]), str(sent["Subject"])) == (row["address"], "Đã nhận yêu cầu YC-001")
+    assert sent.get_content().splitlines() == ["Cảm ơn", "", f"{SITE}/tra-cuu/YC-001"]
+    assert (row["status"], row["sent_id"]) == ("sent", "1")
+
+
+def test_rate_limit_of_telegram_does_not_pause_email(database, telegram, clock):
+    mailer = FakeSender()
+    message, letter = database.add(), email_row(database)
+    telegram.outcomes = [Outcome(WAIT, "Telegram trả về mã 429: Too Many Requests", 30)]
+
+    paused = work(Deliveries(database, SITE, TELEGRAM, telegram, clock=clock))
+    work(Deliveries(database, SITE, EMAIL, mailer, clock=clock))
+
+    assert paused == 30
+    assert (message["status"], letter["status"]) == ("pending", "sent")
+    assert len(mailer.messages) == 1
+
+
+EMAIL_REPORTS = {
+    "gui-lai": (
+        Outcome(RETRY, "Máy chủ SMTP trả về mã 451"),
+        logging.WARNING,
+        "Chưa gửi được email 1: Máy chủ SMTP trả về mã 451. Email sẽ được gửi lại sau 5 giây",
+    ),
+    "khong-biet": (
+        Outcome(UNKNOWN, "Mất kết nối khi chờ máy chủ SMTP trả lời"),
+        logging.WARNING,
+        "Không biết email 1 đã tới máy chủ SMTP hay chưa: Mất kết nối khi chờ máy chủ SMTP trả "
+        "lời. Email không được gửi lại để tránh gửi trùng",
+    ),
+    "that-bai": (
+        Outcome(FAILED, "Máy chủ SMTP trả về mã 550"),
+        logging.ERROR,
+        "Không gửi được email 1 sau 1 lần thử: Máy chủ SMTP trả về mã 550",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("outcome", "level", "logged"), EMAIL_REPORTS.values(), ids=EMAIL_REPORTS.keys()
+)
+def test_email_outcomes_are_logged_as_email(database, clock, caplog, outcome, level, logged):
+    mailer = FakeSender()
+    mailer.outcomes = [outcome]
+    email_row(database)
+
+    work(Deliveries(database, SITE, EMAIL, mailer, clock=clock))
+
+    assert messages_of(caplog, level) == [logged]
+
+
+def test_without_smtp_pending_emails_are_skipped(database, clock, caplog):
+    rows = [email_row(database), email_row(database)]
+
+    work(Deliveries(database, SITE, EMAIL, clock=clock))
+
+    assert [(row["status"], row["error"]) for row in rows] == [
+        ("skipped", "Chưa cấu hình SMTP")
+    ] * 2
+    assert messages_of(caplog) == ["Chưa cấu hình SMTP nên email 1, 2 không được gửi"]
+
+
+def test_invalid_smtp_settings_are_logged_and_kept_with_skipped_emails(database, clock, caplog):
+    worker = Deliveries(database, SITE, EMAIL, problem="thiếu SMTP_FROM", clock=clock, poll=0.01)
+    row = email_row(database)
+
+    async def main():
+        async with running(worker):
+            await wait_for(lambda: row["status"] == "skipped")
+            await asyncio.sleep(0.05)
+
+    asyncio.run(main())
+
+    reason = "Cấu hình SMTP chưa đúng: thiếu SMTP_FROM"
+    assert row["error"] == reason
+    assert messages_of(caplog, logging.ERROR) == [f"{reason}. Email sẽ không được gửi"]
+
+
+def test_emails_left_sending_become_unknown_at_start(database, clock, caplog):
+    rows = [email_row(database, status="sending"), database.add(status="sending")]
+
+    work(Deliveries(database, SITE, EMAIL, FakeSender(), clock=clock))
+
+    assert [(row["status"], row["error"]) for row in rows] == [
+        ("unknown", EMAIL.stopped),
+        ("sending", None),
+    ]
+    assert EMAIL.stopped == (
+        "Service core dừng khi đang gửi email nên không biết email đã tới máy chủ SMTP hay chưa"
+    )
+    assert messages_of(caplog) == [
+        "Email 1 đang được gửi khi service core dừng. Không biết các email này đã tới máy chủ "
+        "SMTP hay chưa nên chúng không được gửi lại"
     ]

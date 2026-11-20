@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -15,15 +16,18 @@ from saigonos_core import __version__, files, notifications, processes, realtime
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
-from saigonos_core.deliveries import TELEGRAM, Deliveries
+from saigonos_core.deliveries import EMAIL, TELEGRAM, Channel, Deliveries
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
 from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.scans import Scans
+from saigonos_core.smtp import SmtpSettingsError
+from saigonos_core.smtp import configured as smtp_configured
 from saigonos_core.steps import Steps
 from saigonos_core.storage import Storage
-from saigonos_core.telegram import DEFAULT_API_URL, TelegramSettingsError, configured
+from saigonos_core.telegram import DEFAULT_API_URL, TelegramSettingsError
+from saigonos_core.telegram import configured as telegram_configured
 from saigonos_core.tokens import TokenVerifier
 
 DESCRIPTION = (
@@ -31,6 +35,19 @@ DESCRIPTION = (
     "cần access token do Keycloak cấp trong header Authorization."
 )
 ME = "SELECT core.uid() AS uid, core.unit() AS unit, current_role AS role"
+SMTP_VARIABLES = (
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SECURITY",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "SMTP_FROM",
+    "SMTP_FROM_NAME",
+)
+
+
+def optional(name: str) -> str:
+    return os.environ.get(name, "").strip()
 
 
 @dataclass(frozen=True)
@@ -53,6 +70,13 @@ class Settings:
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_topic_id: str = ""
+    smtp_host: str = ""
+    smtp_port: str = ""
+    smtp_security: str = ""
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_from_name: str = ""
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -71,10 +95,9 @@ class Settings:
             os.environ["OPERATON_PASSWORD"],
             os.environ["SUBSCRIPTION_KEY"],
             os.environ["SAIGONOS_URL"],
-            os.environ.get("TELEGRAM_API_URL", "").strip() or DEFAULT_API_URL,
-            os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
-            os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
-            os.environ.get("TELEGRAM_TOPIC_ID", "").strip(),
+            optional("TELEGRAM_API_URL") or DEFAULT_API_URL,
+            *map(optional, ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_TOPIC_ID")),
+            *map(optional, SMTP_VARIABLES),
         )
 
 
@@ -112,18 +135,40 @@ async def me(request: Request, user: User) -> Me:
     return Me(**row)
 
 
-def deliveries_of(settings: Settings, database: Database) -> Deliveries:
-    telegram_settings = (
+def worker_of(
+    settings: Settings,
+    database: Database,
+    channel: Channel,
+    configured: Callable[..., Any],
+    values: tuple[str, ...],
+) -> Deliveries:
+    try:
+        sender = configured(*values)
+    except (TelegramSettingsError, SmtpSettingsError) as error:
+        return Deliveries(database, settings.site_url, channel, problem=str(error))
+    return Deliveries(database, settings.site_url, channel, sender)
+
+
+def deliveries_of(settings: Settings, database: Database) -> tuple[Deliveries, ...]:
+    telegram = (
         settings.telegram_api_url,
         settings.telegram_bot_token,
         settings.telegram_chat_id,
         settings.telegram_topic_id,
     )
-    try:
-        telegram = configured(*telegram_settings)
-    except TelegramSettingsError as error:
-        return Deliveries(database, settings.site_url, TELEGRAM, problem=str(error))
-    return Deliveries(database, settings.site_url, TELEGRAM, telegram)
+    email = (
+        settings.smtp_host,
+        settings.smtp_port,
+        settings.smtp_security,
+        settings.smtp_username,
+        settings.smtp_password,
+        settings.smtp_from,
+        settings.smtp_from_name,
+    )
+    return (
+        worker_of(settings, database, TELEGRAM, telegram_configured, telegram),
+        worker_of(settings, database, EMAIL, smtp_configured, email),
+    )
 
 
 def create_app(
@@ -133,7 +178,7 @@ def create_app(
     scans: Scans | None = None,
     operaton: Operaton | None = None,
     steps: Steps | None = None,
-    deliveries: Deliveries | None = None,
+    deliveries: Sequence[Deliveries] | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -144,12 +189,12 @@ def create_app(
     operaton = operaton or Operaton(settings.operaton_url, settings.operaton_password)
     definitions = Processes(operaton)
     steps = steps or Steps(database, operaton, definitions)
-    deliveries = deliveries or deliveries_of(settings, database)
+    deliveries = tuple(deliveries or deliveries_of(settings, database))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.open()
-        workers = [asyncio.create_task(worker.run()) for worker in (scans, steps, deliveries)]
+        workers = [asyncio.create_task(worker.run()) for worker in (scans, steps, *deliveries)]
         yield
         for worker in workers:
             worker.cancel()

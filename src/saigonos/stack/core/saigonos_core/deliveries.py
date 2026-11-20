@@ -9,7 +9,7 @@ from typing import Any, NamedTuple, Protocol
 import asyncpg
 from starlette.concurrency import run_in_threadpool
 
-from saigonos_core import telegram
+from saigonos_core import smtp, telegram
 from saigonos_core.database import Database
 from saigonos_core.outcome import RETRY, SENT, UNKNOWN, WAIT, Outcome
 
@@ -29,7 +29,7 @@ WHERE channel = $1 AND status = 'pending'
 RETURNING id
 """
 NEXT = """
-SELECT id, title, body, link, failures FROM core.deliveries
+SELECT id, address, title, body, link, failures FROM core.deliveries
 WHERE channel = $1 AND status = 'pending' AND next_attempt_at <= now()
 ORDER BY id
 LIMIT 1
@@ -84,6 +84,10 @@ def telegram_message(row: Any, site_url: str) -> dict[str, Any]:
     return telegram.message_of(row["title"], row["body"], row["link"], site_url)
 
 
+def email_message(row: Any, site_url: str) -> Any:
+    return smtp.message_of(row["address"], row["title"], row["body"], row["link"], site_url)
+
+
 TELEGRAM = Channel(
     "telegram",
     "Telegram",
@@ -92,6 +96,15 @@ TELEGRAM = Channel(
     "nhóm",
     "Service core dừng khi đang gửi tin nên không biết tin đã tới Telegram hay chưa",
     telegram_message,
+)
+EMAIL = Channel(
+    "email",
+    "SMTP",
+    "email",
+    "email",
+    "máy chủ SMTP",
+    "Service core dừng khi đang gửi email nên không biết email đã tới máy chủ SMTP hay chưa",
+    email_message,
 )
 
 

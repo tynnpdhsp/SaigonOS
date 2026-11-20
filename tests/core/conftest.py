@@ -254,7 +254,7 @@ def steps():
 
 @pytest.fixture
 def deliveries():
-    return FakeWorker()
+    return FakeWorker(), FakeWorker()
 
 
 @pytest.fixture

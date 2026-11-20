@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 import saigonos_core
 from saigonos_core.clamav import ClamAV
+from saigonos_core.deliveries import EMAIL, TELEGRAM
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.main import ME, create_app
 from saigonos_core.realtime import SubscriptionTokens
@@ -99,9 +100,10 @@ def test_deliveries_run_only_while_app_runs(settings, database, scans, steps, de
 
     with TestClient(app) as client:
         client.get("/health")
-        running = deliveries.state
+        running = [worker.state for worker in deliveries]
 
-    assert (running, deliveries.state) == ("đang chạy", "đã dừng")
+    assert running == ["đang chạy"] * 2
+    assert [worker.state for worker in deliveries] == ["đã dừng"] * 2
 
 
 def test_health_follows_database(client, database):
@@ -236,6 +238,15 @@ TELEGRAM_VARIABLES = (
     "TELEGRAM_TOPIC_ID",
 )
 TELEGRAM_TOKEN = "123456789:AAH-khoa_cua-bot"
+SMTP_VARIABLES = (
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SECURITY",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "SMTP_FROM",
+    "SMTP_FROM_NAME",
+)
 
 
 @pytest.fixture
@@ -258,7 +269,7 @@ def environment(monkeypatch, settings):
     }
     for name, value in values.items():
         monkeypatch.setenv(name, value)
-    for name in TELEGRAM_VARIABLES:
+    for name in TELEGRAM_VARIABLES + SMTP_VARIABLES:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -296,9 +307,11 @@ def test_settings_come_from_environment(environment, settings):
     assert app.state.steps.operaton is app.state.operaton
     assert app.state.steps.processes is app.state.processes
     assert app.state.steps.worker == f"saigonos-core-{socket.gethostname()}"
-    assert app.state.deliveries.database is database
-    assert app.state.deliveries.site_url == "https://dx-khac.example.com"
-    assert (app.state.deliveries.sender, app.state.deliveries.problem) == (None, None)
+    assert [worker.channel for worker in app.state.deliveries] == [TELEGRAM, EMAIL]
+    for worker in app.state.deliveries:
+        assert worker.database is database
+        assert worker.site_url == "https://dx-khac.example.com"
+        assert (worker.sender, worker.problem) == (None, None)
     assert app.servers == [{"url": settings.public_url}]
 
 
@@ -309,7 +322,7 @@ def test_telegram_settings_come_from_environment_without_spaces(environment, mon
 
     app = create_app(database=FakeDatabase())
 
-    telegram = app.state.deliveries.sender
+    telegram = app.state.deliveries[0].sender
     assert app.state.settings.telegram_api_url == "http://bot-api:8081"
     assert (app.state.settings.telegram_bot_token, app.state.settings.telegram_topic_id) == (
         TELEGRAM_TOKEN,
@@ -321,7 +334,7 @@ def test_telegram_settings_come_from_environment_without_spaces(environment, mon
         f"/bot{TELEGRAM_TOKEN}/sendMessage",
     )
     assert (telegram.chat_id, telegram.topic_id) == (-1001234567890, 7)
-    assert app.state.deliveries.problem is None
+    assert app.state.deliveries[0].problem is None
 
 
 def test_empty_api_url_falls_back_to_telegram(environment, monkeypatch):
@@ -332,7 +345,7 @@ def test_empty_api_url_falls_back_to_telegram(environment, monkeypatch):
     app = create_app(database=FakeDatabase())
 
     assert app.state.settings.telegram_api_url == "https://api.telegram.org"
-    assert app.state.deliveries.sender.host == "api.telegram.org"
+    assert app.state.deliveries[0].sender.host == "api.telegram.org"
 
 
 def test_invalid_telegram_settings_turn_telegram_off_and_keep_core_running(
@@ -342,5 +355,37 @@ def test_invalid_telegram_settings_turn_telegram_off_and_keep_core_running(
 
     app = create_app(database=FakeDatabase())
 
-    assert app.state.deliveries.sender is None
-    assert app.state.deliveries.problem == "thiếu TELEGRAM_CHAT_ID"
+    telegram, email = app.state.deliveries
+    assert telegram.sender is None
+    assert telegram.problem == "thiếu TELEGRAM_CHAT_ID"
+    assert (email.sender, email.problem) == (None, None)
+
+
+def test_smtp_settings_come_from_environment_without_spaces(environment, monkeypatch):
+    values = [" smtp.gmail.com ", "", " starttls", "thong-bao@example.com ", " abcdefghijklmnop "]
+    values += [" thong-bao@example.com", " Phòng Kỹ thuật "]
+    for name, value in zip(SMTP_VARIABLES, values, strict=True):
+        monkeypatch.setenv(name, value)
+
+    app = create_app(database=FakeDatabase())
+
+    email = app.state.deliveries[1].sender
+    assert app.state.settings.smtp_host == "smtp.gmail.com"
+    assert (app.state.settings.smtp_password, app.state.settings.smtp_from_name) == (
+        "abcdefghijklmnop",
+        "Phòng Kỹ thuật",
+    )
+    assert (email.host, email.port, email.security) == ("smtp.gmail.com", 587, "starttls")
+    assert (email.username, email.password) == ("thong-bao@example.com", "abcdefghijklmnop")
+    assert (email.sender, email.name) == ("thong-bao@example.com", "Phòng Kỹ thuật")
+    assert app.state.deliveries[1].problem is None
+
+
+def test_invalid_smtp_settings_turn_email_off_and_keep_telegram(environment, monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+
+    app = create_app(database=FakeDatabase())
+
+    telegram, email = app.state.deliveries
+    assert (email.sender, email.problem) == (None, "thiếu SMTP_FROM")
+    assert (telegram.sender, telegram.problem) == (None, None)
