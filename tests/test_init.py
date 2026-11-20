@@ -251,6 +251,22 @@ def test_url_drops_only_default_port_of_its_scheme(home, url, saved):
     assert read_env(home)["SAIGONOS_URL"] == saved
 
 
+@pytest.mark.parametrize(
+    ("url", "saved"),
+    [
+        ("http://[2001:0DB8:0:0:0:0:0:0001]:9080", "http://[2001:db8::1]:9080"),
+        ("https://[0:0:0:0:0:0:0:1]", "https://[::1]"),
+        ("http://localhost:09080", "http://localhost:9080"),
+    ],
+    ids=["ipv6-day-du", "ipv6-loopback", "cong-co-so-0-o-dau"],
+)
+def test_url_is_written_as_browser_writes_origin(home, url, saved):
+    result = init("--home", home, "--url", url)
+
+    assert result.exit_code == 0
+    assert read_env(home)["SAIGONOS_URL"] == saved
+
+
 def test_max_file_size_is_kept_until_set_again(home):
     init("--home", home, "--max-file-size", 25)
     kept = read_env(home)["SAIGONOS_MAX_FILE_SIZE"]
@@ -631,6 +647,7 @@ def test_invalid_http_host_is_rejected(home, host):
         "http://dx.example.com:abc",
         "http://dx.example.com:0",
         "http://[::1",
+        "http://[v1.fe]",
     ],
 )
 def test_invalid_url_is_rejected(home, url):

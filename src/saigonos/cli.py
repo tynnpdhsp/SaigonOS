@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import shlex
-from ipaddress import ip_address
+from ipaddress import IPv6Address, ip_address
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 import click
 from click.core import ParameterSource
@@ -41,14 +41,20 @@ home_option = click.option(
 )
 
 
+def url_host(parts: SplitResult) -> str:
+    host = parts.hostname or ""
+    return f"[{IPv6Address(host).compressed}]" if parts.netloc.startswith("[") else host
+
+
 def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
     if value is None:
         return None
     try:
         parts = urlsplit(value)
+        host = url_host(parts)
         valid = (
             parts.scheme in {"http", "https"}
-            and bool(parts.hostname)
+            and bool(host)
             and parts.port != 0
             and "@" not in parts.netloc
             and parts.path in {"", "/"}
@@ -62,10 +68,8 @@ def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None)
             "địa chỉ phải có dạng http://tên-máy[:cổng] hoặc https://tên-máy[:cổng], "
             "không kèm đường dẫn."
         )
-    netloc = parts.netloc.lower()
-    if parts.port == DEFAULT_PORTS[parts.scheme]:
-        netloc = netloc.rsplit(":", 1)[0]
-    return f"{parts.scheme}://{netloc}"
+    port = "" if parts.port in {None, DEFAULT_PORTS[parts.scheme]} else f":{parts.port}"
+    return f"{parts.scheme}://{host}{port}"
 
 
 def normalize_host(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
