@@ -29,6 +29,7 @@ from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
 from saigonos_core.notifications import Notification
 from saigonos_core.processes import rules_of
+from saigonos_core.smtp import NONE, PORTS, STARTTLS, TLS
 from saigonos_core.tasks import Task
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
@@ -278,7 +279,7 @@ def duration(seconds):
 
 
 def test_readme_lists_every_delivery_status():
-    rows = re.findall(r"^\| `([a-z]+)` \|", section("### Gửi thông báo qua Telegram"), re.MULTILINE)
+    rows = re.findall(r"^\| `([a-z]+)` \|", section("### Hàng đợi gửi tin"), re.MULTILINE)
     statuses = re.search(r"status IN \(([^)]+)\)", DELIVERIES)[1]
 
     assert rows == re.findall(r"'([a-z]+)'", statuses)
@@ -290,6 +291,21 @@ def test_readme_lists_every_telegram_setting():
     )
 
     assert sorted(rows) == sorted(re.findall(r"\$\{(TELEGRAM_[A-Z_]+):-", COMPOSE))
+
+
+def test_readme_lists_every_smtp_setting():
+    cells = re.findall(r"^\| (`SMTP_[^|]*) \|", section("### Gửi email"), re.MULTILINE)
+    names = re.findall(r"`(SMTP_[A-Z_]+)`", " ".join(cells))
+
+    assert sorted(names) == sorted(re.findall(r"\$\{(SMTP_[A-Z_]+):-", COMPOSE))
+
+
+def test_readme_states_default_ports_of_smtp():
+    assert (
+        f"Mặc định là {PORTS[STARTTLS]}, hoặc {PORTS[TLS]} khi `SMTP_SECURITY` là `{TLS}`, "
+        f"hoặc {PORTS[NONE]} khi `SMTP_SECURITY` là `{NONE}`"
+    ) in README
+    assert f"Mặc định là `{TLS}` khi `SMTP_PORT` là {PORTS[TLS]}, và `{STARTTLS}`" in README
 
 
 def test_readme_states_retry_rules_of_telegram():

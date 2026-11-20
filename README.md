@@ -301,7 +301,7 @@ Các mã lỗi của hai lời gọi:
 
 ## Cấu hình
 
-Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram).
+Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram và SMTP được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram) và mục [Gửi email](#gửi-email).
 
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -1126,38 +1126,110 @@ Khi bật chủ đề cho nhóm, Telegram chuyển nhóm thành supergroup và m
 docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.notify('kiem-tra', 'kiem-tra-telegram-1', 'Tin thử của SaigonOS', telegram => true)"
 ```
 
-Mỗi tin Telegram là một dòng của bảng `core.deliveries`. Dòng này được ghi trong cùng transaction với thông báo. Khi transaction được commit, service `core` gửi tin ngay. Cột `status` cho biết trạng thái của tin:
+Trạng thái của tin, cách xử lý lỗi và cách gửi lại được trình bày ở mục [Hàng đợi gửi tin](#hàng-đợi-gửi-tin).
+
+### Gửi email
+
+Hàm `core.send_email(address, dedup_key, title, body, link)` của cơ sở dữ liệu ghi một email vào hàng đợi `core.deliveries`. Service `core` gửi email qua một máy chủ SMTP, ví dụ máy chủ của Gmail. Hàm trả về mã của email trong hàng đợi, có kiểu `bigint`. Các tham số của hàm như sau:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `address` | Địa chỉ email của người nhận, dài tối đa 254 ký tự. Địa chỉ không chứa chữ có dấu |
+| `dedup_key` | Khóa chống trùng, dài từ 1 đến 255 ký tự |
+| `title` | Tiêu đề của email, theo quy tắc của tham số `title` ở hàm `core.notify` |
+| `body` | Nội dung, dài tối đa 2000 ký tự. Tham số này có thể bỏ qua |
+| `link` | Đường dẫn tới một trang trong hệ thống, theo quy tắc của tham số `link` ở hàm `core.notify`. Tham số này có thể bỏ qua |
+
+Người nhận không cần có tài khoản trong hệ thống. Ví dụ, hàm sau của một bước máy làm gửi email xác nhận cho người gửi yêu cầu:
+
+```sql
+CREATE FUNCTION ung_dung.gui_email_da_nhan(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM core.send_email(
+        address => bien ->> 'email',
+        dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':da-nhan',
+        title => 'Đã nhận yêu cầu ' || (bien ->> 'ma_yeu_cau'),
+        body => 'Cảm ơn bạn đã gửi yêu cầu. Bạn có thể tra cứu yêu cầu tại đường dẫn sau.',
+        link => '/tra-cuu/' || (bien ->> 'ma_yeu_cau')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.gui_email_da_nhan(jsonb) TO workflow;
+```
+
+Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
+
+Email chỉ có phần văn bản thuần. Phần này gồm nội dung, hoặc tiêu đề khi không có nội dung, rồi tới địa chỉ đầy đủ của đường dẫn. Email có header `Auto-Submitted: auto-generated`, nên chức năng trả lời tự động của hộp thư người nhận không trả lời email này.
+
+Để bật email, thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`. Ví dụ với Gmail:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_USERNAME=thong-bao@gmail.com
+SMTP_PASSWORD=abcdefghijklmnop
+SMTP_FROM=thong-bao@gmail.com
+SMTP_FROM_NAME=Phòng Kỹ thuật
+```
+
+Gmail không nhận mật khẩu đăng nhập thường của tài khoản. Tài khoản cần bật xác minh 2 bước, rồi tạo mật khẩu ứng dụng tại trang [Mật khẩu ứng dụng](https://myaccount.google.com/apppasswords). Mật khẩu ứng dụng gồm 16 chữ cái, được viết liền, không có khoảng trắng. Các giá trị SMTP trong file `.env` như sau:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `SMTP_HOST` | Tên hoặc địa chỉ IP của máy chủ SMTP |
+| `SMTP_PORT` | Cổng của máy chủ SMTP. Mặc định là 587, hoặc 465 khi `SMTP_SECURITY` là `tls`, hoặc 25 khi `SMTP_SECURITY` là `none` |
+| `SMTP_SECURITY` | Cách mã hóa kết nối. Giá trị `starttls` mã hóa kết nối bằng lệnh STARTTLS. Giá trị `tls` mã hóa ngay từ đầu kết nối. Giá trị `none` không mã hóa và không cho dùng mật khẩu, chỉ dùng với máy chủ SMTP trong mạng nội bộ. Mặc định là `tls` khi `SMTP_PORT` là 465, và `starttls` với các cổng khác |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Tài khoản đăng nhập máy chủ SMTP. Bỏ trống hai giá trị này khi máy chủ không yêu cầu đăng nhập |
+| `SMTP_FROM` | Địa chỉ gửi. Với Gmail, đây là địa chỉ của tài khoản |
+| `SMTP_FROM_NAME` | Tên người gửi hiện trong hộp thư của người nhận. Giá trị này có thể bỏ trống |
+
+Service `core` luôn kiểm tra chứng chỉ của máy chủ SMTP. Khi `SMTP_SECURITY` là `starttls` mà máy chủ không hỗ trợ STARTTLS, email không được gửi. Do đó, mật khẩu không được gửi qua kết nối chưa mã hóa. Khi một giá trị trong file `.env` có dấu `$`, giá trị đó được đặt trong cặp dấu nháy đơn, ví dụ `SMTP_PASSWORD='ab$cd'`.
+
+Để thử cấu hình, chạy lệnh sau trong thư mục làm việc, với `<địa chỉ>` là một địa chỉ email của bạn. Email tới sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-email-2`.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.send_email('<địa chỉ>', 'kiem-tra-email-1', 'Email thử của SaigonOS')"
+```
+
+### Hàng đợi gửi tin
+
+Mỗi tin Telegram và mỗi email là một dòng của bảng `core.deliveries`. Dòng này được ghi trong cùng transaction với dữ liệu. Khi transaction được commit, service `core` gửi tin ngay. Telegram và email có vòng gửi riêng, nên lỗi của kênh này không làm chậm kênh kia. Cột `channel` cho biết kênh gửi, có giá trị `telegram` hoặc `email`. Cột `status` cho biết trạng thái của tin:
 
 | Trạng thái | Ý nghĩa |
 |---|---|
 | `pending` | Tin đang chờ gửi hoặc chờ gửi lại |
 | `sending` | Service `core` đang gửi tin |
-| `sent` | Telegram đã nhận tin. Cột `sent_id` ghi mã của tin trong nhóm |
+| `sent` | Telegram hoặc máy chủ SMTP đã nhận tin. Cột `sent_id` ghi mã của tin trong nhóm Telegram, hoặc `Message-ID` của email |
 | `failed` | Không gửi được tin. Cột `error` ghi lý do |
-| `unknown` | Không biết Telegram đã nhận tin hay chưa |
-| `skipped` | Tin không được gửi vì chưa cấu hình Telegram hoặc cấu hình chưa đúng |
+| `unknown` | Không biết Telegram hoặc máy chủ SMTP đã nhận tin hay chưa |
+| `skipped` | Tin không được gửi vì kênh gửi chưa được cấu hình hoặc cấu hình chưa đúng |
 
 Ví dụ, lệnh sau xem 10 tin gần nhất:
 
 ```bash
-docker compose exec postgres psql -U postgres -d saigonos -c "SELECT id, status, failures, error FROM core.deliveries ORDER BY id DESC LIMIT 10"
+docker compose exec postgres psql -U postgres -d saigonos -c "SELECT id, channel, status, failures, error FROM core.deliveries ORDER BY id DESC LIMIT 10"
 ```
 
 Khi gửi lỗi, service `core` xử lý như sau:
 
-- Không kết nối được Telegram hoặc Telegram trả về mã 5xx: tin được gửi lại sau 5 giây, 30 giây, 2 phút và 10 phút. Sau 5 lần gửi lỗi, tin chuyển sang `failed`.
-- Telegram trả về mã 429: service `core` chờ đúng số giây trong `retry_after` rồi mới gửi tiếp. Các tin khác cũng chờ trong thời gian này. Lần chờ này không tính là một lần gửi lỗi.
+- Không kết nối được Telegram hoặc máy chủ SMTP, Telegram trả về mã 5xx, hoặc máy chủ SMTP trả về mã 4xx: tin được gửi lại sau 5 giây, 30 giây, 2 phút và 10 phút. Sau 5 lần gửi lỗi, tin chuyển sang `failed`.
+- Telegram trả về mã 429: service `core` chờ đúng số giây trong `retry_after` rồi mới gửi tiếp. Các tin Telegram khác cũng chờ trong thời gian này. Lần chờ này không tính là một lần gửi lỗi.
 - Telegram trả về mã 4xx khác, ví dụ token sai hoặc bot không ở trong nhóm: tin chuyển sang `failed` ngay.
+- Máy chủ SMTP trả về mã 5xx, ví dụ sai mật khẩu hoặc địa chỉ người nhận không tồn tại: email chuyển sang `failed` ngay. Máy chủ không hỗ trợ STARTTLS cũng cho kết quả này.
 
-Mỗi lần gửi lỗi được ghi vào log của service `core`, kèm lý do mà Telegram trả về. Lệnh `docker compose logs core` trong thư mục làm việc dùng để xem log này.
+Mỗi lần gửi lỗi được ghi vào log của service `core`, kèm lý do mà Telegram hoặc máy chủ SMTP trả về. Lệnh `docker compose logs core` trong thư mục làm việc dùng để xem log này.
 
-Bot API không có cách chống gửi trùng. Do đó, service `core` chuyển tin sang `sending` trước khi gửi, và tin đã `sent` không được gửi lại. Có hai trường hợp không biết Telegram đã nhận tin hay chưa. Trường hợp thứ nhất là lời gọi đã được gửi đi nhưng mất kết nối trước khi Telegram trả lời. Trường hợp thứ hai là service `core` bị dừng đột ngột trong lúc gửi. Khi đó, tin chuyển sang `unknown` và không được gửi lại, để nhóm không nhận hai tin giống nhau. Thông báo trong ứng dụng không bị ảnh hưởng. Quản trị viên kiểm tra nhóm. Nếu tin chưa tới, lệnh sau đưa tin về `pending`, với `<id>` là giá trị cột `id` của tin. Tin được gửi lại trong vòng 10 giây.
+Bot API của Telegram và giao thức SMTP không có cách chống gửi trùng. Do đó, service `core` chuyển tin sang `sending` trước khi gửi, và tin đã `sent` không được gửi lại. Có hai trường hợp không biết tin đã tới nơi hay chưa. Trường hợp thứ nhất là lời gọi tới Telegram hoặc nội dung email đã được gửi đi, nhưng mất kết nối trước khi có câu trả lời. Trường hợp thứ hai là service `core` bị dừng đột ngột trong lúc gửi. Khi đó, tin chuyển sang `unknown` và không được gửi lại, để người nhận không nhận hai tin giống nhau. Thông báo trong ứng dụng không bị ảnh hưởng. Quản trị viên kiểm tra nhóm Telegram hoặc hỏi người nhận email. Nếu tin chưa tới, lệnh sau đưa tin về `pending`, với `<id>` là giá trị cột `id` của tin. Tin được gửi lại trong vòng 10 giây.
 
 ```bash
 docker compose exec postgres psql -U postgres -d saigonos -c "UPDATE core.deliveries SET status = 'pending' WHERE id = <id> AND status = 'unknown'"
 ```
 
-Khi file `.env` không có `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID`, tin Telegram chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc token không đúng dạng, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi Telegram được cấu hình sau đó.
+Khi file `.env` chưa có cấu hình Telegram hoặc SMTP, tin của kênh đó chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc thiếu `SMTP_FROM`, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi kênh được cấu hình sau đó.
+
+Bảng `core.deliveries` giữ địa chỉ email, tiêu đề và nội dung của tin sau khi gửi.
 
 ## Cập nhật phiên bản
 
