@@ -336,6 +336,11 @@ services:
       OPERATON_URL: http://operaton:8080/operaton/engine-rest
       OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
       SUBSCRIPTION_KEY: ${CENTRIFUGO_SUBSCRIPTION_KEY:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-https://api.telegram.org}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_TOPIC_ID: ${TELEGRAM_TOPIC_ID:-}
     networks:
       - default
       - storage

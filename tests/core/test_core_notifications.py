@@ -110,8 +110,8 @@ def notifications():
 
 
 @pytest.fixture
-def client(settings, notifications, scans, steps):
-    app = create_app(settings, notifications, scans=scans, steps=steps)
+def client(settings, notifications, scans, steps, deliveries):
+    app = create_app(settings, notifications, scans=scans, steps=steps, deliveries=deliveries)
     with TestClient(app) as client:
         yield client
 

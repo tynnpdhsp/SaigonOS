@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 import asyncpg
@@ -12,6 +12,7 @@ SET_CLAIMS = "SELECT set_config('request.jwt.claims', $1, true)"
 UNAVAILABLE = (OSError, TimeoutError, asyncpg.PostgresError, asyncpg.InterfaceError)
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 30
+SERVER_SETTINGS = {"application_name": "saigonos-core"}
 
 
 class Database:
@@ -26,11 +27,20 @@ class Database:
             statement_cache_size=0,
             timeout=CONNECT_TIMEOUT,
             command_timeout=COMMAND_TIMEOUT,
-            server_settings={"application_name": "saigonos-core"},
+            server_settings=SERVER_SETTINGS,
         )
 
     async def close(self) -> None:
         await self.pool.close()
+
+    async def listen(self, channel: str, callback: Callable[[], None]) -> asyncpg.Connection:
+        connection = await asyncpg.connect(timeout=CONNECT_TIMEOUT, server_settings=SERVER_SETTINGS)
+        try:
+            await connection.add_listener(channel, lambda *_: callback())
+        except BaseException:
+            connection.terminate()
+            raise
+        return connection
 
     async def available(self) -> bool:
         try:

@@ -15,6 +15,7 @@ from saigonos_core import __version__, files, notifications, processes, realtime
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
+from saigonos_core.deliveries import Deliveries
 from saigonos_core.downloads import DownloadLinks
 from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
@@ -22,6 +23,7 @@ from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.scans import Scans
 from saigonos_core.steps import Steps
 from saigonos_core.storage import Storage
+from saigonos_core.telegram import DEFAULT_API_URL, TelegramSettingsError, configured
 from saigonos_core.tokens import TokenVerifier
 
 DESCRIPTION = (
@@ -46,6 +48,11 @@ class Settings:
     operaton_url: str
     operaton_password: str
     subscription_key: str
+    site_url: str
+    telegram_api_url: str = DEFAULT_API_URL
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_topic_id: str = ""
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -63,6 +70,11 @@ class Settings:
             os.environ["OPERATON_URL"],
             os.environ["OPERATON_PASSWORD"],
             os.environ["SUBSCRIPTION_KEY"],
+            os.environ["SAIGONOS_URL"],
+            os.environ.get("TELEGRAM_API_URL", "").strip() or DEFAULT_API_URL,
+            os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
+            os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
+            os.environ.get("TELEGRAM_TOPIC_ID", "").strip(),
         )
 
 
@@ -100,6 +112,20 @@ async def me(request: Request, user: User) -> Me:
     return Me(**row)
 
 
+def deliveries_of(settings: Settings, database: Database) -> Deliveries:
+    telegram_settings = (
+        settings.telegram_api_url,
+        settings.telegram_bot_token,
+        settings.telegram_chat_id,
+        settings.telegram_topic_id,
+    )
+    try:
+        telegram = configured(*telegram_settings)
+    except TelegramSettingsError as error:
+        return Deliveries(database, settings.site_url, problem=str(error))
+    return Deliveries(database, settings.site_url, telegram)
+
+
 def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
@@ -107,6 +133,7 @@ def create_app(
     scans: Scans | None = None,
     operaton: Operaton | None = None,
     steps: Steps | None = None,
+    deliveries: Deliveries | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -117,11 +144,12 @@ def create_app(
     operaton = operaton or Operaton(settings.operaton_url, settings.operaton_password)
     definitions = Processes(operaton)
     steps = steps or Steps(database, operaton, definitions)
+    deliveries = deliveries or deliveries_of(settings, database)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.open()
-        workers = [asyncio.create_task(scans.run()), asyncio.create_task(steps.run())]
+        workers = [asyncio.create_task(worker.run()) for worker in (scans, steps, deliveries)]
         yield
         for worker in workers:
             worker.cancel()
@@ -149,6 +177,7 @@ def create_app(
     app.state.operaton = operaton
     app.state.processes = definitions
     app.state.steps = steps
+    app.state.deliveries = deliveries
     app.state.subscription_tokens = SubscriptionTokens(settings.subscription_key)
     app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
