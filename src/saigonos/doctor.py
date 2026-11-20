@@ -176,7 +176,10 @@ def realtime_state(url: str, status: int, accepted: bool, api: int) -> tuple[boo
             "Hãy kiểm tra header Upgrade và Connection của reverse proxy"
         )
     if status == 403:
-        return False, f"Centrifugo từ chối kết nối từ trang {url}, khác với SAIGONOS_URL đang dùng"
+        return False, (
+            f"Centrifugo từ chối kết nối từ trang {url}. "
+            "Hãy chạy lệnh saigonos init rồi saigonos up để Centrifugo nhận địa chỉ này"
+        )
     if status != 101:
         return False, f"lời gọi {REALTIME_PATH} nhận mã {status}, đúng ra là 101"
     if not accepted:

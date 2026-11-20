@@ -436,7 +436,8 @@ def test_realtime_state_accepts_websocket_and_closed_api():
             403,
             False,
             404,
-            f"Centrifugo từ chối kết nối từ trang {URL}, khác với SAIGONOS_URL đang dùng",
+            f"Centrifugo từ chối kết nối từ trang {URL}. "
+            "Hãy chạy lệnh saigonos init rồi saigonos up để Centrifugo nhận địa chỉ này",
         ),
         (502, False, 404, "lời gọi /realtime/connection/websocket nhận mã 502, đúng ra là 101"),
         (101, False, 404, "API Gateway không trả lời đúng giao thức WebSocket"),
