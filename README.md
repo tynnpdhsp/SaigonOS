@@ -869,6 +869,8 @@ Centrifugo chỉ nhận access token có audience `saigonos`. Mỗi khi hệ th�
 
 Khi mở WebSocket, trình duyệt gửi địa chỉ của trang trong header `Origin`. Centrifugo chỉ nhận kết nối từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Do đó, trang của một web khác không mở được kết nối bằng phiên đăng nhập của người dùng.
 
+Lệnh `saigonos init` ghi địa chỉ truy cập vào dòng `CENTRIFUGO_ALLOWED_ORIGIN` của file `.env`. Centrifugo đọc giá trị này như một mẫu glob, nên mỗi ký tự đặc biệt của mẫu glob được thêm dấu `\` ở trước. Ví dụ, địa chỉ `http://[2001:db8::1]:9080` được ghi thành `http://\[2001:db8::1\]:9080`. Lệnh `saigonos init` ghi lại dòng này mỗi lần chạy. Do đó, sau khi sửa dòng `SAIGONOS_URL` trong file `.env`, cần chạy lại lệnh `saigonos init` rồi `saigonos up`.
+
 Ví dụ, với thư viện [centrifuge-js](https://github.com/centrifugal/centrifuge-js) và [keycloak-js](https://www.npmjs.com/package/keycloak-js):
 
 ```js

@@ -22,6 +22,7 @@ from saigonos.home import (
     DEFAULT_MAX_FILE_SIZE,
     DEFAULT_SEAWEEDFS_PORT,
     LARGEST_FILE_SIZE,
+    origin_pattern,
 )
 from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
@@ -272,6 +273,12 @@ def test_readme_states_history_of_centrifugo():
     assert f"giữ tối đa {size} tin gần nhất trong {minutes} phút" in PROSE
     assert f"lỡ quá {size} tin, kết nối lại sau quá {minutes} phút" in PROSE
     assert f"sub.history({{ limit: {size} }})" in README
+
+
+def test_readme_example_of_allowed_origin_matches_init():
+    url = "http://[2001:db8::1]:9080"
+
+    assert f"địa chỉ `{url}` được ghi thành `{origin_pattern(url)}`" in PROSE
 
 
 def duration(seconds):
