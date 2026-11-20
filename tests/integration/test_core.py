@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 import time
+from pathlib import Path
 
 import jwt
 import pytest
@@ -23,6 +24,9 @@ SHORT_LIFESPAN = 5
 ADDRESS_WARMUP = 40
 ADDRESS_STREAK = 20
 ADDRESS_DEADLINE = 15
+DNS_DOWN = 3
+DNS_WATCH = 15
+DNS_GRACE = 3
 PIN = r"^([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+)"
 ALLOWED = "chỉ dành cho người đã đăng nhập"
 CALL = """
@@ -367,3 +371,45 @@ def test_gateway_follows_new_address_of_core_within_seconds(stack):
 
     assert after != before
     assert streak == ADDRESS_STREAK
+
+
+@pytest.fixture
+def name_error_dns(stack):
+    name = f"{stack.home.name}-dns"
+    script = Path(__file__).with_name("fake_dns.py")
+    image = stack.inspect(stack.container("core"), "{{.Config.Image}}")
+    options = ["--detach", "--rm", "--name", name, "--user", "root"]
+    options += ["--network", stack.network("default"), "--volume", f"{script}:/fake_dns.py:ro"]
+    stack.run_docker("run", *options, image, "python", "/fake_dns.py")
+    override = stack.home / "compose.override.yaml"
+    try:
+        address = stack.inspect(name, "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}")
+        override.write_text(
+            f"services:\n  apisix:\n    dns:\n      - {address}\n", encoding="utf-8"
+        )
+        started = stack.up()
+        assert started.returncode == 0, started.stderr
+        yield
+    finally:
+        override.unlink(missing_ok=True)
+        restored = stack.up()
+        stack.run_docker("rm", "--force", name, check=False)
+        assert restored.returncode == 0, restored.stderr
+
+
+def test_gateway_answers_within_seconds_after_stopped_core_starts_again(stack, name_error_dns):
+    container = stack.container("core")
+    assert stack.compose_result("stop", "core").returncode == 0
+    stopped = time.monotonic()
+    while time.monotonic() - stopped < DNS_DOWN:
+        stack.answers("/core/health")
+        time.sleep(0.05)
+    assert stack.compose_result("start", "core").returncode == 0
+    wait_for(lambda: stack.inspect(container, "{{.State.Health.Status}}") == "healthy", 120)
+    healthy = time.monotonic()
+    calls = []
+    while time.monotonic() - healthy < DNS_WATCH:
+        calls.append((time.monotonic() - healthy, stack.answers("/core/health")))
+        time.sleep(0.05)
+
+    assert [moment for moment, ok in calls if not ok and moment > DNS_GRACE] == []
