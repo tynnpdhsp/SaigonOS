@@ -356,6 +356,18 @@ Mỗi namespace có bốn thiết lập `history_size`, `history_ttl`, `force_re
 
 Kiểm thử `test_messages_written_while_centrifugo_is_stopped_reach_client_after_restart` dừng Centrifugo đúng 60 giây, nên `make integration` lâu thêm khoảng 1 phút. JSON của Centrifugo bỏ các trường có giá trị false, ví dụ `recovered`. Do đó, kiểm thử đọc các trường này với giá trị mặc định là false.
 
+## Thông báo cho người dùng
+
+Bảng `core.notifications` và hàm `core.notify` được tạo trong file `0015_notifications.sql`. Hai lời gọi đọc thông báo và đánh dấu đã đọc nằm trong `saigonos_core/notifications.py`. Khi sửa phần thông báo, cần tuân theo các quy tắc sau:
+
+- Bảng `core.notifications` chỉ được thêm dòng qua hàm `core.notify`. Không cấp quyền `INSERT` trên bảng cho role nào. Role `authenticated` chỉ có quyền `SELECT`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên cột `read_at`.
+- Chính sách `recipient_only` chỉ cho hai role trên thấy thông báo có người nhận trùng claim `sub` của người gọi. Các câu truy vấn của service `core` cũng lọc theo `core.uid()`. Nhờ đó, mỗi lớp tự chặn được thông báo của người khác. Lời gọi đánh dấu đã đọc chạy trong `Database.service_session(caller)`, nên audit log ghi đúng người gọi.
+- Tin gửi tới kênh `user:#<sub>` có dạng `{"notification": {...}}` với đúng các trường của model `Notification`. Khi thêm hoặc đổi trường, cần sửa cả hàm `core.notify` và bảng trường trong README. Kiểm thử `test_notification_reaches_recipient_within_one_second_as_listed` so tin này với kết quả của `GET /core/notifications`. Kiểm thử `test_readme_lists_every_notification_field` so bảng trường trong README với model.
+- Người nhận dài tối đa 249 ký tự, vì tên kênh `user:#<sub>` dài tối đa 255 ký tự.
+- Không bỏ kiểm tra đường dẫn của hàm `core.notify`. Ứng dụng dựa vào kiểm tra này để hiển thị đường dẫn mà không kiểm tra lại. Trình duyệt bỏ dấu tab và dấu xuống dòng trong địa chỉ. Ví dụ, đường dẫn gồm dấu `/`, một dấu tab và `/web-khac.example` trở thành `//web-khac.example`, tức một địa chỉ của web khác. Do đó, hàm từ chối mọi ký tự điều khiển trong đường dẫn.
+
+Các kiểm thử tích hợp nằm trong file `tests/integration/test_realtime.py`. Kiểm thử `test_notify_waits_for_other_transaction_with_same_key` giữ một transaction đã gọi `core.notify` trong 2 giây bằng `pg_sleep`, rồi gọi lại với cùng khóa từ một kết nối khác.
+
 ## Phát hành phiên bản mới
 
 Phần này dành cho maintainer của repo.
