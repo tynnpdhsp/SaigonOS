@@ -3,6 +3,8 @@ apisix:
   node_listen:
     - ${{SAIGONOS_HTTP_PORT}}
   dns_resolver_valid: 1
+  extra_lua_path: /usr/local/apisix/saigonos/?.lua
+  lua_module_hook: saigonos-dns
   trusted_addresses:
     - 127.0.0.0/8
     - 10.0.0.0/8
