@@ -100,7 +100,7 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install --no-deps .
-      - name: Chạy kiểm thử tích hợp trên bộ Docker Compose
+      - name: Chạy integration test trên bộ Docker Compose
         run: make integration
 
   required:
