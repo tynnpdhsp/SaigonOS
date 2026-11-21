@@ -37,3 +37,20 @@ def test_long_running_service_has_healthcheck_that_compose_2_can_wait_for(name):
     assert len(checks) == 1
     assert "NONE" not in checks[0]
     assert "disable: true" not in lines
+
+
+def test_apps_service_uses_build_of_core_and_runs_only_when_called():
+    apps, core = services()["apps"], services()["core"]
+
+    assert [line for line in apps if line.startswith("build:")] == ["build: ./core"]
+    assert [line for line in core if line.startswith("build:")] == ["build: ./core"]
+    assert 'profiles: ["apps"]' in apps
+    assert "- ./apps:/apps:ro" in apps
+
+
+def test_only_apps_service_gets_admin_secrets_for_installing_apps():
+    secrets = ("POSTGRES_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD")
+
+    for secret in secrets:
+        assert any(f"${{{secret}:?}}" in line for line in services()["apps"])
+        assert not any(secret in line for line in services()["core"])

@@ -213,6 +213,7 @@ services:
       PGUSER: authenticator
       PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
       PGRST_DB_SCHEMAS: api
+      PGRST_DB_PRE_CONFIG: core.pre_config
       PGRST_DB_ANON_ROLE: anon
       PGRST_DB_PRE_REQUEST: core.pre_request
       PGRST_DB_PREPARED_STATEMENTS: "false"
@@ -458,6 +459,24 @@ services:
       retries: 3
       start_period: 60s
       start_interval: 2s
+
+  apps:
+    build: ./core
+    pull_policy: build
+    profiles: ["apps"]
+    restart: "no"
+    entrypoint: ["python", "-m", "saigonos_core.apps"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: saigonos
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+    volumes:
+      - ./apps:/apps:ro
 
 volumes:
   postgres-data:

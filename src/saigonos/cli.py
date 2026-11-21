@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import os
 import shlex
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
@@ -8,9 +9,11 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
+from saigonos.apps import AppFolderError, app_name, keep_new, locked, put_in_place, restore_old
 from saigonos.audit import verify as verify_chain
 from saigonos.doctor import run_checks
 from saigonos.home import (
+    APPS_FOLDER,
     DEFAULT_ADMIN_PORT,
     DEFAULT_CENTRIFUGO_PORT,
     DEFAULT_HTTP_HOST,
@@ -30,6 +33,7 @@ DEFAULT_PORTS = {"http": 80, "https": 443}
 MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
 MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
 COLUMN_GAP = " " * 4
+CHECK_FOLDER = "/check"
 
 home_option = click.option(
     "--home",
@@ -256,6 +260,75 @@ def up(ctx: click.Context, home: Path) -> None:
 def down(ctx: click.Context, home: Path, volumes: bool) -> None:
     remove_disabled_services(home)
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
+
+
+def install(ctx: click.Context, home: Path, folder: Path) -> None:
+    try:
+        name = app_name(folder)
+    except (OSError, ValueError, AppFolderError) as error:
+        raise click.ClickException(f"Không đọc được bản khai của ứng dụng: {error}") from error
+    apps = home / APPS_FOLDER
+    with locked(home, lambda: click.echo("Đang chờ một lệnh saigonos apply khác chạy xong.")):
+        try:
+            put_in_place(folder, apps, name)
+        except (OSError, ValueError, AppFolderError) as error:
+            raise click.ClickException(f"Không chép được ứng dụng vào {apps}: {error}") from error
+        try:
+            code = compose.run(home, "run", "--rm", "apps", "apply", name)
+        except BaseException as error:
+            restore_old(apps, name)
+            if isinstance(error, compose.ComposeError):
+                raise click.ClickException(str(error)) from error
+            raise
+        if code != 0:
+            restore_old(apps, name)
+            ctx.exit(code)
+        keep_new(apps, name)
+
+
+@main.command(
+    short_help="Cài đặt một ứng dụng vào hệ thống.",
+    help=(
+        "Soát bản khai saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
+        "chép ứng dụng vào thư mục apps của thư mục làm việc rồi cài đặt ứng dụng "
+        "vào hệ thống đang chạy.\n\n"
+        "Khi cài đặt lỗi, thư mục apps giữ bản đã cài đặt thành công gần nhất."
+    ),
+)
+@home_option
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Chỉ soát ứng dụng, không cài đặt vào hệ thống. Hệ thống không cần đang chạy.",
+)
+@click.argument("folder", metavar="THƯ_MỤC", type=click.Path(resolve_path=True, path_type=Path))
+@click.pass_context
+def apply(ctx: click.Context, home: Path, check: bool, folder: Path) -> None:
+    if not folder.exists():
+        raise click.ClickException(f"Không tìm thấy thư mục {folder}.")
+    if not folder.is_dir():
+        raise click.ClickException(f"{folder} không phải thư mục.")
+    if ":" in str(folder):
+        raise click.ClickException(
+            f"Đường dẫn {folder} có dấu hai chấm, "
+            "nên Docker Compose không gắn được thư mục này vào container."
+        )
+    run_compose(
+        ctx,
+        home,
+        "run",
+        "--rm",
+        "--no-deps",
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+        "--volume",
+        f"{folder}:{CHECK_FOLDER}:ro",
+        "apps",
+        "check",
+        CHECK_FOLDER,
+    )
+    if not check:
+        install(ctx, home, folder)
 
 
 @main.command(help="Kiểm tra trạng thái các service và API Gateway.")

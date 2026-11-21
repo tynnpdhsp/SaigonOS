@@ -7,6 +7,19 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Bản khai ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai.
+- Lệnh `saigonos apply --check <thư mục>` soát bản khai và các thư mục của một ứng dụng mà không cần hệ thống đang chạy. Lệnh in mọi lỗi tìm thấy bằng tiếng Việt kèm vị trí trong bản khai, rồi kết thúc với mã thoát 1. Tên trùng tên mà lõi đã dùng, đường dẫn ra ngoài thư mục ứng dụng, symlink và file không đọc được đều bị báo lỗi.
+- Service `apps` dùng image của service `core` và chỉ chạy khi được gọi bằng `docker compose run`. Lệnh `docker compose run --rm apps check <tên>` soát ứng dụng trong thư mục `apps` của thư mục làm việc. Lệnh `saigonos init` tạo thư mục này.
+- Lệnh `saigonos apply <thư mục>` cài đặt ứng dụng vào hệ thống đang chạy. Lệnh soát ứng dụng, chép bản khai và các thư mục đã khai vào thư mục `apps/<tên>` của thư mục làm việc, rồi chạy `docker compose run --rm apps apply <tên>`. Khi cài đặt lỗi, thư mục `apps/<tên>` được trả về bản đã cài đặt thành công gần nhất.
+- Mỗi ứng dụng có schema và role riêng trong cơ sở dữ liệu, cùng tên với ứng dụng nhưng dấu gạch ngang đổi thành dấu gạch dưới. Các file SQL của ứng dụng chạy theo thứ tự tên bằng role này, không bằng superuser. Role chỉ đăng nhập được trong lúc cài đặt, với mật khẩu sinh mới mỗi lần. Mỗi file chạy trong một transaction và được ghi vào `core.migrations` với `scope` là tên ứng dụng. File đã chạy mà bị sửa thì lệnh cài đặt dừng.
+- Role của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, không đổi được sang role khác. File SQL của ứng dụng không dùng được `COMMIT` hay `ROLLBACK`. Hàm do ứng dụng tạo chưa được cấp cho `PUBLIC`.
+- Bảng `core.apps` ghi các ứng dụng đã cài đặt và có audit log. PostgREST đọc bảng này qua hàm `core.pre_config()` để phục vụ schema của ứng dụng tại `/api/`, với header `Accept-Profile` và `Content-Profile`. Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại.
+- Lệnh cài đặt tạo trên Keycloak các realm role của ứng dụng theo bản khai, kèm mô tả, và một public client trùng tên ứng dụng. Client chỉ dùng luồng Authorization Code với PKCE `S256` và chỉ chuyển hướng về địa chỉ `/apps/<tên>/`. Client tắt Full scope allowed, nên access token của ứng dụng chỉ mang realm role `authenticated` và các role của chính ứng dụng. Service `apps` giữ mật khẩu của tài khoản `admin` trong realm master, service `core` không có mật khẩu này.
+- Mỗi lần cài đặt, client và realm role của ứng dụng được đặt lại theo bản khai, kể cả khi đã bị sửa trong Admin Console. Khi Keycloak đã có client hoặc realm role trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu.
+- Lời gọi API vào schema của một ứng dụng chỉ nhận access token được cấp cho client của ứng dụng đó. Access token của client khác nhận mã 403. Lời gọi không có access token vẫn chạy với role `anon`.
+
 ## [0.5.0] - 2026-11-21
 
 ### Thêm
