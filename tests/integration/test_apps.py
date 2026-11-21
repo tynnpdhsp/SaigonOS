@@ -30,7 +30,7 @@ def apps_stack(idle_stack):
     created = idle_stack.saigonos("init")
     assert created.returncode == 0, created.stdout + created.stderr
     yield idle_stack
-    idle_stack.compose_result("--profile", "apps", "down", "--rmi", "local")
+    idle_stack.compose_result("--profile", "apps", "down", "--volumes", "--rmi", "local")
 
 
 def make_app(folder, **changes):
