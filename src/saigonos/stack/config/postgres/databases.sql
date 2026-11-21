@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 \getenv operaton_password OPERATON_DB_PASSWORD
+\getenv centrifugo_password CENTRIFUGO_DB_PASSWORD
 
 SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'operaton') AS missing_role \gset
 \if :missing_role
@@ -14,3 +15,9 @@ CREATE DATABASE operaton OWNER operaton;
 \endif
 
 REVOKE CONNECT ON DATABASE operaton FROM PUBLIC;
+
+SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'centrifugo') AS missing_centrifugo \gset
+\if :missing_centrifugo
+CREATE ROLE centrifugo LOGIN PASSWORD :'centrifugo_password';
+\echo Đã tạo role centrifugo
+\endif

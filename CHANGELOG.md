@@ -7,6 +7,45 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.5.0] - 2026-11-21
+
+### Thêm
+
+- Service `centrifugo` gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway và gửi access token của Keycloak trong lệnh connect. Centrifugo kiểm tra chữ ký, issuer, thời hạn và audience của access token. Kết nối không có access token, kết nối bằng ID token và kết nối bằng access token không mang mã người dùng đều bị từ chối. Centrifugo chỉ nhận kết nối WebSocket từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, kể cả khi địa chỉ truy cập là một địa chỉ IPv6.
+- Khi dừng, Centrifugo báo cho các client kết nối lại rồi thoát trong khoảng 1 giây.
+- API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở hai địa chỉ này. Lệnh `saigonos init` có thêm tùy chọn `--centrifugo-port` để đổi cổng này.
+- Lệnh `saigonos init` thêm các giá trị `SAIGONOS_CENTRIFUGO_PORT`, `CENTRIFUGO_ALLOWED_ORIGIN`, `CENTRIFUGO_API_KEY`, `CENTRIFUGO_ADMIN_PASSWORD`, `CENTRIFUGO_ADMIN_SECRET`, `CENTRIFUGO_DB_PASSWORD` và `CENTRIFUGO_SUBSCRIPTION_KEY` vào file `.env`. Dòng `CENTRIFUGO_ALLOWED_ORIGIN` được ghi lại từ địa chỉ truy cập mỗi lần chạy lệnh.
+- Hàm `core.publish(channel, data)` của cơ sở dữ liệu gửi một tin tới một kênh của Centrifugo. Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới client rồi xóa tin khỏi bảng. Khi transaction bị hủy, không có tin nào được gửi.
+- Hàm `core.publish` chỉ nhận kênh có dạng `public:<tên>`, `user:#<sub>` hoặc `role:<realm role>`. Mỗi tin mang một mã riêng trong tag `id` để client bỏ tin trùng. Chỉ role `workflow` gọi được hàm, nên hàm được dùng trong bước máy làm của quy trình.
+- Mọi người dùng đã đăng nhập nghe được kênh `public:<tên>`. Chỉ người dùng có mã `<sub>` nghe được kênh `user:#<sub>`. Kênh `role:<realm role>` cần token kênh. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
+- Lời gọi `POST /core/realtime/token` cấp token kênh cho kênh `role:<realm role>` khi người gọi có realm role này. Token kênh có hiệu lực 60 giây, hết hạn không muộn hơn access token của lời gọi và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
+- Mỗi kênh có history giữ tối đa 100 tin gần nhất trong 5 phút. Client mất kết nối rồi kết nối lại nhận lại các tin bị lỡ còn trong history, theo đúng thứ tự. Client đang nghe kênh đọc được history của kênh đó.
+- Tin ghi trong lúc Centrifugo dừng nằm lại trong bảng `core.outbox` và được gửi khi Centrifugo chạy lại. History mất khi Centrifugo khởi động lại, nên client kết nối lại nhận `recovered` là false và đọc được các tin này trong history.
+- Bảng `core.notifications` lưu thông báo trong ứng dụng. Hàm `core.notify(recipient, dedup_key, title, body, link)` ghi một thông báo rồi gửi thông báo tới kênh `user:#<sub>` của người nhận trong cùng transaction với dữ liệu. Chỉ role `workflow` gọi được hàm.
+- Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng. Khi hàm `core.notify` được gọi lại với cùng người nhận và cùng khóa, không có thông báo mới và không có tin mới, kể cả khi hai transaction gọi hàm cùng lúc.
+- Đường dẫn của thông báo phải trỏ tới một trang trong hệ thống và bắt đầu bằng một dấu `/`. Đường dẫn tới web khác và đường dẫn `javascript:` bị từ chối.
+- Lời gọi `GET /core/notifications` trả về thông báo của người gọi, thông báo mới nhất đứng đầu. Lời gọi `POST /core/notifications/{id}/read` đánh dấu thông báo đã đọc. Người dùng chỉ thấy và chỉ đánh dấu được thông báo gửi cho chính mình.
+- Hàm `core.notify` có thêm tham số `telegram`. Khi tham số này có giá trị `true`, thông báo còn được gửi tới một nhóm Telegram qua Bot API. Tin gồm tiêu đề in đậm, nội dung và địa chỉ đầy đủ của đường dẫn. Mỗi khóa chống trùng chỉ có một tin Telegram, kể cả khi sự việc được báo cho nhiều người.
+- Bảng `core.deliveries` là hàng đợi của tin Telegram. Tin được ghi trong cùng transaction với thông báo và được gửi ngay khi transaction được commit. Khi không kết nối được Telegram hoặc Telegram trả về mã 5xx, tin được gửi lại sau 5 giây, 30 giây, 2 phút và 10 phút. Khi Telegram trả về mã 429, service `core` chờ đúng số giây trong `retry_after`. Tin bị Telegram từ chối hoặc gửi lỗi 5 lần chuyển sang `failed` và được ghi vào log.
+- Tin đã gửi không được gửi lại. Khi không biết Telegram đã nhận tin hay chưa, ví dụ mất kết nối trước khi Telegram trả lời, tin chuyển sang `unknown` và không được gửi lại.
+- Cấu hình Telegram gồm `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_TOPIC_ID` và `TELEGRAM_API_URL`, được ghi trực tiếp vào file `.env`. Khi chưa cấu hình Telegram, tin Telegram được bỏ qua và hệ thống vẫn chạy bình thường.
+- Hàm `core.send_email(address, dedup_key, title, body, link)` ghi một email vào hàng đợi `core.deliveries` trong cùng transaction với dữ liệu. Service `core` gửi email qua SMTP ngay khi transaction được commit. Người nhận không cần có tài khoản trong hệ thống. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng. Chỉ role `workflow` gọi được hàm.
+- Email chỉ có phần văn bản thuần, gồm nội dung và địa chỉ đầy đủ của đường dẫn. Kết nối tới máy chủ SMTP được mã hóa bằng STARTTLS hoặc TLS, và chứng chỉ của máy chủ luôn được kiểm tra. Mật khẩu không được gửi qua kết nối chưa mã hóa.
+- Khi không kết nối được máy chủ SMTP hoặc máy chủ trả về mã 4xx, email được gửi lại như tin Telegram. Khi máy chủ trả về mã 5xx hoặc không hỗ trợ STARTTLS, email chuyển sang `failed`. Khi mất kết nối sau khi đã gửi nội dung, email chuyển sang `unknown` và không được gửi lại. Telegram và email có vòng gửi riêng, nên lỗi của kênh này không làm chậm kênh kia.
+- Cấu hình SMTP gồm `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` và `SMTP_FROM_NAME`, được ghi trực tiếp vào file `.env`. Khi chưa cấu hình SMTP, email được bỏ qua và hệ thống vẫn chạy bình thường.
+- Service `databases` tạo role `centrifugo` của cơ sở dữ liệu khi chưa có, kể cả với cơ sở dữ liệu được tạo từ phiên bản cũ. Role này chỉ đọc và xóa được các dòng của bảng `core.outbox`.
+- Service `realm` thêm audience `saigonos` vào access token của các client dùng client scope `roles`. Khi mapper này bị sửa hoặc bị xóa, service đặt lại như cũ.
+- Lệnh `saigonos doctor` mở thử một kết nối WebSocket tới Centrifugo qua API Gateway và kiểm tra API của Centrifugo bị chặn. Khi reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo cần kiểm tra header `Upgrade` và `Connection`.
+
+### Thay đổi
+
+- Ví dụ cấu hình Nginx trong README chuyển tiếp kết nối WebSocket. Máy chủ đã có reverse proxy cần thêm khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` như trong ví dụ.
+- Lệnh `saigonos init` bỏ cổng mặc định khỏi địa chỉ truy cập. Ví dụ, `https://dx.example.com:443` được ghi thành `https://dx.example.com`. Trình duyệt gửi địa chỉ của trang không kèm cổng mặc định, nên Centrifugo cần địa chỉ ở dạng này để nhận kết nối. Địa chỉ IPv6 và cổng cũng được ghi theo dạng mà trình duyệt gửi. Ví dụ, `http://[2001:0DB8:0:0:0:0:0:1]:09080` được ghi thành `http://[2001:db8::1]:9080`.
+
+### Sửa
+
+- Sau khi một service khởi động lại, API Gateway trả lời bình thường ngay khi service chạy lại. Trước đây, trên máy chủ có DNS trả lỗi `name error`, API Gateway có thể trả mã 503 cho một phần lời gọi trong khoảng 30 giây sau khi service đã chạy lại.
+
 ## [0.4.0] - 2026-11-18
 
 ### Thêm
@@ -152,7 +191,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.4.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0

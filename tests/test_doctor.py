@@ -11,7 +11,9 @@ from saigonos.doctor import (
     gateway_checks,
     login_state,
     operaton_state,
+    realtime_state,
     service_state,
+    websocket_accept,
 )
 
 CADDY_SERVICE = {"caddy": {"restart": "unless-stopped"}}
@@ -34,6 +36,7 @@ TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
 LOGIN_PAGE = f"{REALM_PATH}/protocol/openid-connect/auth"
 CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
 OPERATON_OK = "Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn"
+REALTIME_OK = "Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn"
 
 
 def discovery(issuer=f"{URL}{REALM_PATH}", token_endpoint=f"{URL}{TOKEN_PATH}"):
@@ -79,13 +82,14 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
 
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "BÌNH THƯỜNG    postgres     đang chạy",
-        "BÌNH THƯỜNG    routes       đã chạy xong",
-        "BÌNH THƯỜNG    jwks         đã chạy xong",
-        f"BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại {gateway.url}/auth",
-        "BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối",
-        "BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối",
-        f"BÌNH THƯỜNG    Operaton     {OPERATON_OK}",
+        "BÌNH THƯỜNG    postgres      đang chạy",
+        "BÌNH THƯỜNG    routes        đã chạy xong",
+        "BÌNH THƯỜNG    jwks          đã chạy xong",
+        f"BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại {gateway.url}/auth",
+        "BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối",
+        "BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối",
+        f"BÌNH THƯỜNG    Operaton      {OPERATON_OK}",
+        f"BÌNH THƯỜNG    Centrifugo    {REALTIME_OK}",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -101,9 +105,9 @@ def test_doctor_reports_each_failure_and_exits_with_1(home, cli, docker, gateway
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert "LỖI            postgres     chưa được tạo\n" in result.output
-    assert "BÌNH THƯỜNG    routes       đã chạy xong\n" in result.output
-    assert "LỖI            API          lời gọi không có access token nhận mã 401" in result.output
+    assert "LỖI            postgres      chưa được tạo\n" in result.output
+    assert "BÌNH THƯỜNG    routes        đã chạy xong\n" in result.output
+    assert "LỖI            API           lời gọi không có access token nhận mã 401" in result.output
     assert result.output.endswith("Có 2 mục lỗi.\n")
 
 
@@ -115,7 +119,7 @@ def test_doctor_reports_gateway_that_accepts_invalid_access_token(home, cli, doc
 
     assert result.exit_code == 1
     assert (
-        "LỖI            API          lời gọi có access token không hợp lệ nhận mã 200, "
+        "LỖI            API           lời gọi có access token không hợp lệ nhận mã 200, "
         "đúng ra là 401\n" in result.output
     )
     assert result.output.endswith("Có 1 mục lỗi.\n")
@@ -129,10 +133,11 @@ def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert f"LỖI            Đăng nhập    không kết nối được tới {closed_url}: " in result.output
-    assert f"LỖI            API          không kết nối được tới {closed_url}: " in result.output
-    assert f"LỖI            Core API     không kết nối được tới {closed_url}: " in result.output
-    assert result.output.endswith("Có 4 mục lỗi.\n")
+    assert f"LỖI            Đăng nhập     không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            API           không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            Core API      không kết nối được tới {closed_url}: " in result.output
+    assert f"LỖI            Centrifugo    không kết nối được tới {closed_url}: " in result.output
+    assert result.output.endswith("Có 5 mục lỗi.\n")
 
 
 def test_doctor_stops_when_compose_fails(home, cli, docker):
@@ -226,10 +231,10 @@ def test_doctor_reports_reverse_proxy_that_sends_wrong_address(home, cli, docker
 
     assert result.exit_code == 1
     assert (
-        f"LỖI            Đăng nhập    Keycloak nhận lời gọi qua địa chỉ {URL}:9080, "
+        f"LỖI            Đăng nhập     Keycloak nhận lời gọi qua địa chỉ {URL}:9080, "
         in result.output
     )
-    assert f"LỖI            Operaton     Operaton nhận lời gọi qua địa chỉ {URL}:9080, " in (
+    assert f"LỖI            Operaton      Operaton nhận lời gọi qua địa chỉ {URL}:9080, " in (
         result.output
     )
     assert result.output.endswith("Có 2 mục lỗi.\n")
@@ -283,14 +288,14 @@ def test_doctor_reports_core_service_that_fails_through_gateway(
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert f"LỖI            Core API     {detail}\n" in result.output
+    assert f"LỖI            Core API      {detail}\n" in result.output
     assert result.output.endswith("Có 1 mục lỗi.\n")
 
 
 def test_gateway_checks_use_tls_for_https_address(gateway):
     checks = gateway_checks(gateway.url.replace("http://", "https://"))
 
-    assert [check.ok for check in checks] == [False, False, False, False]
+    assert [check.ok for check in checks] == [False, False, False, False, False]
     assert all("không kết nối được" in check.detail for check in checks)
 
 
@@ -299,9 +304,9 @@ def test_doctor_trusts_root_certificate_of_caddy(caddy_home, cli, docker, truste
 
     result = cli("doctor", "--home", caddy_home)
 
-    assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
+    assert "BÌNH THƯỜNG    caddy         đang chạy\n" in result.output
     assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
-    assert trusted == ["chứng chỉ gốc\n"] * 4
+    assert trusted == ["chứng chỉ gốc\n"] * 5
 
 
 @pytest.mark.parametrize("reply", [{"output": ""}, {"error": "No such file\n", "code": 1}])
@@ -312,7 +317,7 @@ def test_doctor_trusts_only_system_certificates_without_root_certificate_of_cadd
 
     result = cli("doctor", "--home", caddy_home)
 
-    assert "BÌNH THƯỜNG    caddy        đang chạy\n" in result.output
+    assert "BÌNH THƯỜNG    caddy         đang chạy\n" in result.output
     assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
     assert trusted == []
 
@@ -405,5 +410,87 @@ def test_doctor_reports_operaton_that_fails_through_gateway(
     result = cli("doctor", "--home", home)
 
     assert result.exit_code == 1
-    assert f"LỖI            Operaton     {detail}\n" in result.output
+    assert f"LỖI            Operaton      {detail}\n" in result.output
     assert result.output.endswith("Có 1 mục lỗi.\n")
+
+
+def test_websocket_accept_follows_example_of_rfc_6455():
+    assert websocket_accept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+
+
+def test_realtime_state_accepts_websocket_and_closed_api():
+    assert realtime_state(URL, 101, True, 404) == (True, REALTIME_OK)
+
+
+@pytest.mark.parametrize(
+    ("status", "accepted", "api", "detail"),
+    [
+        (
+            400,
+            False,
+            404,
+            "Centrifugo không nhận được yêu cầu kết nối WebSocket. "
+            "Hãy kiểm tra header Upgrade và Connection của reverse proxy",
+        ),
+        (
+            403,
+            False,
+            404,
+            f"Centrifugo từ chối kết nối từ trang {URL}. "
+            "Hãy chạy lệnh saigonos init rồi saigonos up để Centrifugo nhận địa chỉ này",
+        ),
+        (502, False, 404, "lời gọi /realtime/connection/websocket nhận mã 502, đúng ra là 101"),
+        (101, False, 404, "API Gateway không trả lời đúng giao thức WebSocket"),
+        (101, True, 405, "API của Centrifugo nhận mã 405 qua API Gateway, đúng ra là 404"),
+    ],
+    ids=["thieu-upgrade", "origin-khac", "ma-502", "sai-accept", "api-mo"],
+)
+def test_realtime_state_rejects_other_answers(status, accepted, api, detail):
+    assert realtime_state(URL, status, accepted, api) == (False, detail)
+
+
+def test_doctor_opens_websocket_with_url_as_origin(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+
+    result = cli("doctor", "--home", home)
+
+    assert f"BÌNH THƯỜNG    Centrifugo    {REALTIME_OK}\n" in result.output
+    assert gateway.requests[-2:] == ["/realtime/connection/websocket", "/realtime/api"]
+
+
+@pytest.mark.parametrize(
+    ("change", "detail"),
+    [
+        (
+            {"upgrade": 400},
+            "Centrifugo không nhận được yêu cầu kết nối WebSocket. "
+            "Hãy kiểm tra header Upgrade và Connection của reverse proxy",
+        ),
+        ({"accept": False}, "API Gateway không trả lời đúng giao thức WebSocket"),
+    ],
+    ids=["reverse-proxy-bo-upgrade", "sai-accept"],
+)
+def test_doctor_reports_websocket_that_fails_through_gateway(
+    home, cli, docker, gateway, change, detail
+):
+    docker.services(SERVICES, HEALTHY)
+    for name, value in change.items():
+        setattr(gateway, name, value)
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert f"LỖI            Centrifugo    {detail}\n" in result.output
+    assert result.output.endswith("Có 1 mục lỗi.\n")
+
+
+def test_doctor_reports_api_of_centrifugo_open_through_gateway(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    gateway.routes["/realtime/api", False] = (405, b"")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert "LỖI            Centrifugo    API của Centrifugo nhận mã 405 qua API Gateway" in (
+        result.output
+    )

@@ -253,6 +253,11 @@ def steps():
 
 
 @pytest.fixture
+def deliveries():
+    return FakeWorker(), FakeWorker()
+
+
+@pytest.fixture
 def operaton():
     return FakeOperaton()
 
@@ -281,4 +286,6 @@ def settings(realm):
         download_key="khoa-ky-duong-dan-tai-ve",
         operaton_url="http://operaton:8080/operaton/engine-rest",
         operaton_password="mat-khau-tai-khoan-core",
+        subscription_key="khoa-ky-token-kenh-cua-centrifugo",
+        site_url="https://dx.example.com",
     )

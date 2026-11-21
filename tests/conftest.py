@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from saigonos.cli import main
+from saigonos.doctor import REALTIME_PATH, websocket_accept
 
 FAKE_DOCKER = """\
 #!/bin/sh
@@ -56,6 +57,8 @@ class Gateway:
         self.url = f"http://127.0.0.1:{server.server_port}"
         self.routes = {}
         self.requests = []
+        self.upgrade = 101
+        self.accept = True
         self.healthy()
 
     def healthy(self, seen_url=None):
@@ -109,6 +112,9 @@ def gateway():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             gateway.requests.append(self.path)
+            if self.path == REALTIME_PATH:
+                self.switch_protocols()
+                return
             route = (self.path, "Authorization" in self.headers)
             status, body, *headers = gateway.routes.get(route, (404, b""))
             self.send_response(status)
@@ -117,6 +123,23 @@ def gateway():
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def switch_protocols(self):
+            status = gateway.upgrade
+            if self.headers.get("Upgrade") != "websocket":
+                status = 400
+            elif self.headers.get("Origin") != gateway.url:
+                status = 403
+            self.send_response(status)
+            if status == 101:
+                key = self.headers.get("Sec-WebSocket-Key", "")
+                accept = websocket_accept(key) if gateway.accept else key
+                self.send_header("Upgrade", "websocket")
+                self.send_header("Connection", "Upgrade")
+                self.send_header("Sec-WebSocket-Accept", accept)
+            else:
+                self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def log_message(self, format, *args):
             pass

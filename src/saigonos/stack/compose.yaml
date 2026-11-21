@@ -91,6 +91,7 @@ services:
         target: 9180
     volumes:
       - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./config/apisix/saigonos-dns.lua:/usr/local/apisix/saigonos/saigonos-dns.lua:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7085 && printf 'GET /status/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
       interval: 30s
@@ -158,6 +159,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      databases:
+        condition: service_completed_successfully
     environment:
       PGHOST: postgres
       PGDATABASE: saigonos
@@ -183,6 +186,7 @@ services:
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
       OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
+      CENTRIFUGO_DB_PASSWORD: ${CENTRIFUGO_DB_PASSWORD:?}
     volumes:
       - ./config/postgres:/config:ro
     tmpfs:
@@ -332,6 +336,19 @@ services:
       CLAMAV_PORT: "3310"
       OPERATON_URL: http://operaton:8080/operaton/engine-rest
       OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
+      SUBSCRIPTION_KEY: ${CENTRIFUGO_SUBSCRIPTION_KEY:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-https://api.telegram.org}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_TOPIC_ID: ${TELEGRAM_TOPIC_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURITY: ${SMTP_SECURITY:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
     networks:
       - default
       - storage
@@ -387,6 +404,37 @@ services:
       - ./config/operaton:/config:ro
     entrypoint: ["sh", "-c"]
     command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/deploy-processes.lua /config/processes/*.bpmn"]
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6.10.3
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: ["centrifugo", "--config", "/centrifugo/config.yaml"]
+    environment:
+      CENTRIFUGO_CLIENT_TOKEN_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
+      CENTRIFUGO_CLIENT_SUBSCRIPTION_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_SUBSCRIPTION_KEY:?}
+      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGIN:?}
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?}
+      CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:?}
+      CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:?}
+      CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN: postgresql://centrifugo:${CENTRIFUGO_DB_PASSWORD:?}@postgres:5432/saigonos
+    ports:
+      - host_ip: 127.0.0.1
+        published: ${SAIGONOS_CENTRIFUGO_PORT:?}
+        target: 9000
+    volumes:
+      - ./config/centrifugo/config.yaml:/centrifugo/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
 
   caddy:
     image: caddy:2.11.9-alpine

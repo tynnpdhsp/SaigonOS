@@ -35,15 +35,15 @@ Lệnh này thực hiện các bước sau:
 
 Để tự động sửa định dạng mã, chạy `make format`.
 
-## Kiểm thử tích hợp
+## Integration test
 
-Kiểm thử tích hợp chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,4 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 3 GB RAM.
+Integration test chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,5 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 3 GB RAM.
 
 ```bash
 make integration
 ```
 
-Lệnh này chạy bảy nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn và việc đổi khóa ký. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
+Lệnh này chạy tám nhóm kiểm thử trong thư mục `tests/integration`. File `test_stack.py` dùng cấu hình mặc định. File `test_database.py` kiểm tra cơ sở dữ liệu, ví dụ service `migrate`, phân quyền từng dòng, role `anon` và audit log, với cấu hình mặc định. File `test_storage.py` kiểm tra SeaweedFS và ClamAV với cấu hình mặc định. File `test_core.py` kiểm tra service `core`, ví dụ access token giả, access token hết hạn, việc đổi khóa ký và việc API Gateway trả lời lại sau khi `core` khởi động lại. File `test_files.py` kiểm tra việc khai báo file, gửi nội dung, quét mã độc, chuyển file sạch sang bucket `clean` và tải file về. File `test_workflow.py` kiểm tra Operaton, ví dụ đăng nhập Cockpit bằng OTP, việc từ chối tài khoản không có realm role `admin`, các đường dẫn tới REST API của Operaton, việc bắt đầu quy trình và danh sách việc qua service `core`, hẹn giờ trên biên của việc và việc dọn lịch sử. File `test_realtime.py` kiểm tra Centrifugo, ví dụ kết nối WebSocket bằng access token, access token giả, access token hết hạn, ID token, quyền nghe kênh, history và Admin web. File này cũng kiểm tra thông báo cho người dùng và việc gửi tin Telegram tới một Bot API giả. File `test_caddy.py` bật Caddy với chứng chỉ do Caddy tự cấp. Với mỗi nhóm, lệnh thực hiện các bước sau:
 
 - Tạo một thư mục làm việc tạm bằng `saigonos init` với các cổng còn trống.
 - Khởi động hệ thống bằng `saigonos up`.
@@ -60,11 +60,11 @@ Kiểm thử `test_file_not_scanned_yet_cannot_be_downloaded` trong `test_files.
 
 Kiểm thử `test_deadline_passed_while_operaton_was_stopped_fires_once_it_starts` trong `test_workflow.py` dừng Operaton bằng `docker compose stop` cho tới khi một hẹn giờ quá hạn, rồi chạy lại Operaton. Hẹn giờ phải chạy ngay khi Operaton sẵn sàng. Kiểm thử `test_history_cleanup_removes_only_history_past_time_to_live` chạy việc dọn lịch sử ngay bằng REST API của Operaton thay cho việc chờ tới khung giờ ban đêm.
 
-Sau khi được tạo lại hoặc khởi động lại, một service có thể nhận địa chỉ IP mới. API Gateway cần khoảng 1 giây để nhận địa chỉ này. Do đó, kiểm thử dùng hàm `Stack.up()` thay cho lệnh `saigonos up`. Hàm này chờ tới khi API Gateway trả lời ở `/auth`, `/api/` và `/core/health`. Sau khi kill hoặc khởi động lại một service, kiểm thử gọi `Stack.wait_until_answers()` trước khi gọi API qua API Gateway. Kiểm thử `test_gateway_follows_new_address_of_core_within_seconds` trong `test_core.py` đổi địa chỉ IP của service `core` và kiểm tra API Gateway nhận địa chỉ mới trong vài giây.
+Sau khi được tạo lại hoặc khởi động lại, một service có thể nhận địa chỉ IP mới. API Gateway cần khoảng 1 giây để nhận địa chỉ này. Do đó, kiểm thử dùng hàm `Stack.up()` thay cho lệnh `saigonos up`. Hàm này chờ tới khi API Gateway trả lời ở `/auth`, `/api/` và `/core/health`. Sau khi kill hoặc khởi động lại một service, kiểm thử gọi `Stack.wait_until_answers()` trước khi gọi API qua API Gateway. Trước đó, kiểm thử chờ container chạy lại và `healthy` bằng `docker inspect`, không gọi API Gateway trong lúc service đang dừng. Lý do là trong lúc service đang dừng, API Gateway trả mã 502 hoặc 503, và worker của APISIX còn giữ lỗi DNS thêm khoảng 1 giây. Kiểm thử `test_gateway_follows_new_address_of_core_within_seconds` trong `test_core.py` đổi địa chỉ IP của service `core` và kiểm tra API Gateway nhận địa chỉ mới trong vài giây.
 
 Nhóm kiểm thử Caddy tạo thêm hai mạng Docker tạm với dải địa chỉ `192.0.2.0/28` và `2001:db8:5a1:9::/64`. Lời gọi từ hai mạng này giả lập máy gọi từ Internet qua IPv4 và IPv6. Do đó, máy chạy kiểm thử cần hỗ trợ IPv6.
 
-Một lượt chạy mất khoảng 18 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
+Một lượt chạy mất khoảng 20 phút. Lệnh `make check` không chạy các kiểm thử này. CI chạy chúng ở job `integration` của mỗi pull request.
 
 ## Quy ước
 
@@ -99,6 +99,8 @@ Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công 
 Lệnh `make lint` báo lỗi khi một image trong `compose.yaml` chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
 
 Khi đổi phiên bản Operaton, kiểm tra lại file `src/saigonos/stack/config/operaton/sso-logout.js`. File này thay plugin đăng xuất của Operaton, vì plugin gốc của bản 2.2.1 không tìm thấy nút đăng xuất trong menu tài khoản. Kiểm thử `test_logout_button_ends_session_of_operaton` báo lỗi khi menu tài khoản không còn thẻ `a` có class `logout`.
+
+Khi đổi phiên bản APISIX, kiểm tra lại file `src/saigonos/stack/config/apisix/saigonos-dns.lua`. APISIX nạp file này qua thiết lập `lua_module_hook` trong `config.yaml`. File bọc hàm `new` của module `apisix.core.dns.client` để đặt `emptyTtl` 1 giây, vì thư viện DNS của APISIX mặc định giữ lỗi `name error` 30 giây. Không sửa thẳng module `resty.dns.client`, vì APISIX nạp lại module này mỗi lần tạo client DNS. Kiểm thử `test_gateway_answers_within_seconds_after_stopped_core_starts_again` trong `test_core.py` cho APISIX dùng DNS giả trong `tests/integration/fake_dns.py`, dừng `core` 3 giây rồi chạy lại. Kiểm thử báo lỗi khi API Gateway còn trả lỗi sau khi `core` đã `healthy` 3 giây.
 
 Mỗi service chạy lâu dài trong `compose.yaml` cần một healthcheck thật. Không tắt healthcheck bằng `disable: true`. Với service như vậy, lệnh `docker compose up --wait` của Docker Compose 2.x báo lỗi "has no healthcheck configured", dù Docker Compose 5 vẫn chạy được. Kiểm thử trong `tests/test_compose_file.py` kiểm tra quy tắc này.
 
@@ -235,15 +237,17 @@ Thiết lập mới của realm được thêm vào script `setup-realm.lua` tro
 - Chạy lại nhiều lần vẫn cho cùng một kết quả.
 - In một dòng cho mỗi thiết lập vừa thêm.
 
-Mỗi thiết lập mới cần một kiểm thử tích hợp. Kiểm thử xóa thiết lập khỏi realm, chạy `saigonos up` rồi kiểm tra thiết lập đã được thêm lại. Cách này giả lập một realm được tạo từ phiên bản cũ.
+Mỗi thiết lập mới cần một integration test. Kiểm thử xóa thiết lập khỏi realm, chạy `saigonos up` rồi kiểm tra thiết lập đã được thêm lại. Cách này giả lập một realm được tạo từ phiên bản cũ.
 
 Script cũng cập nhật realm master. Keycloak tự tạo realm này khi khởi động lần đầu, nên mọi thiết lập của realm master đều nằm trong script. Riêng Frontend URL của realm master luôn được đặt theo giá trị `SAIGONOS_KEYCLOAK_PORT` trong file `.env`, kể cả khi quản trị viên đã sửa giá trị này. Sau khi đổi Frontend URL, script đăng nhập lại. Access token cũ mang địa chỉ cũ trong claim `iss` nên bị Keycloak từ chối.
 
-API Gateway chặn mọi địa chỉ của realm master. Do đó, kiểm thử tích hợp gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
+API Gateway chặn mọi địa chỉ của realm master. Do đó, integration test gọi Admin REST API của Keycloak qua cổng `SAIGONOS_KEYCLOAK_PORT`, ví dụ bằng hàm `Stack.admin()` trong `tests/integration/conftest.py`.
 
 Client `operaton` và luồng đăng nhập riêng của client này cũng là ngoại lệ. Script kiểm tra từng bước của luồng đăng nhập ở mỗi lần chạy. Khi luồng khác với thiết kế, script tắt client, xóa luồng, tạo lại luồng rồi bật lại client. Do đó, không có lúc nào client dùng luồng đăng nhập chung của realm. Các thiết lập bảo mật của client cũng được đặt lại ở mỗi lần chạy.
 
 Bước từ chối trong luồng này dùng thông báo có khóa `saigonos-operaton-admin-only`, khai báo trong thiết lập `denyErrorMessage` của bước. Nội dung tiếng Việt và tiếng Anh của thông báo nằm trong Realm overrides của realm `saigonos`. Script chỉ thêm nội dung còn thiếu, nên nội dung mà quản trị viên đã sửa được giữ nguyên.
+
+Mapper `audience saigonos` của client scope `roles` cũng là ngoại lệ. Mapper này thêm audience `saigonos` vào access token, không thêm vào ID token. Centrifugo chỉ nhận access token có audience này. Khi mapper bị sửa hoặc bị xóa, script đặt lại mapper ở lần chạy sau.
 
 ## Service core
 
@@ -267,7 +271,7 @@ Khi sửa service `core`, cần tuân theo các quy tắc sau:
 - File được gửi về luôn kèm các header `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` và `Cache-Control: no-store`. Trước khi gửi, nội dung được so với mã băm SHA-256 đã ghi.
 - Trong `src/saigonos/stack/config/clamav/clamd.conf`, giá trị `MaxFileSize` phải lớn hơn `MaxScanSize`. Nếu không, ClamAV chỉ quét phần đầu của một file lớn bên trong file nén mà không báo. Kiểm thử trong `tests/test_clamd_conf.py` kiểm tra điều kiện này.
 
-Kiểm thử đơn vị của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Kiểm thử tích hợp nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
+Unit test của service nằm trong thư mục `tests/core` và chạy cùng lệnh `make check`. Integration test nằm trong hai file `tests/integration/test_core.py` và `tests/integration/test_files.py`. Kiểm thử `test_anon_cannot_reuse_query_plan_made_for_user` trong file `test_core.py` kiểm tra việc xóa query plan ở mỗi phiên.
 
 ## Operaton
 
@@ -302,9 +306,100 @@ Khi sửa cấu hình hoặc route của Operaton, cần tuân theo các quy t�
 - Hàm được coi là đã khai báo khi `proacl` có quyền `EXECUTE` cấp riêng cho role `workflow`. Không dùng `has_function_privilege`, vì hàm này tính cả quyền cấp cho `PUBLIC`.
 - Khi service `core` chết trong lúc chờ long polling, lời gọi đang chờ vẫn nằm trong Operaton tới hết 5 giây. Trong thời gian đó, Operaton có thể giao một việc cho lời gọi đã chết và khóa việc này 60 giây.
 
-Kiểm thử tích hợp nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway. Kiểm thử `test_bpmn_file_cannot_take_process_of_another_file` kiểm tra việc gỡ bản triển khai khai báo lại mã quy trình của file khác. Quy trình thử của các lời gọi qua service `core` nằm trong thư mục `tests/integration/processes`. Form của quy trình thử có đủ các kiểu trường và các ràng buộc mà service `core` kiểm tra. Các kiểm thử form gửi cả những giá trị mà Operaton tự nhận, ví dụ chuỗi `true` cho trường `boolean` và chuỗi có khoảng trắng ở hai đầu cho ràng buộc `minlength`. Kiểm thử `test_core_stops_calling_operaton_while_it_refuses_account_of_core` tạm khóa tài khoản `core` bằng một lần đăng nhập sai, rồi kiểm tra service `core` chỉ gọi Operaton một lần. Sau đó, kiểm thử khởi động lại service `core`. Các kiểm thử nhận việc hoặc hoàn thành việc cùng lúc tạm dừng container của Operaton bằng `docker compose pause`, gửi các lời gọi, rồi chạy lại container. Nhờ đó, các lời gọi đều qua bước kiểm tra của service `core` và tới Operaton cùng lúc.
+Integration test nằm trong file `tests/integration/test_workflow.py`. Kiểm thử `test_gateway_does_not_open_rest_of_operaton` gửi các đường dẫn vòng tới REST API của Operaton qua API Gateway. Kiểm thử `test_bpmn_file_cannot_take_process_of_another_file` kiểm tra việc gỡ bản triển khai khai báo lại mã quy trình của file khác. Quy trình thử của các lời gọi qua service `core` nằm trong thư mục `tests/integration/processes`. Form của quy trình thử có đủ các kiểu trường và các ràng buộc mà service `core` kiểm tra. Các kiểm thử form gửi cả những giá trị mà Operaton tự nhận, ví dụ chuỗi `true` cho trường `boolean` và chuỗi có khoảng trắng ở hai đầu cho ràng buộc `minlength`. Kiểm thử `test_core_stops_calling_operaton_while_it_refuses_account_of_core` tạm khóa tài khoản `core` bằng một lần đăng nhập sai, rồi kiểm tra service `core` chỉ gọi Operaton một lần. Sau đó, kiểm thử khởi động lại service `core`. Các kiểm thử nhận việc hoặc hoàn thành việc cùng lúc tạm dừng container của Operaton bằng `docker compose pause`, gửi các lời gọi, rồi chạy lại container. Nhờ đó, các lời gọi đều qua bước kiểm tra của service `core` và tới Operaton cùng lúc.
 
 Các hàm thử của bước máy làm nằm trong file `tests/integration/processes/yeu-cau-thu.sql`, được chạy như một migration của ứng dụng. Kiểm thử `test_function_runs_once_when_core_dies_before_reporting` giành khóa của việc bằng worker `kiem-thu` trong lúc hàm đang chạy, rồi giết tiến trình của service `core`. Sau đó, kiểm thử chờ hết thời gian long polling rồi mới mở khóa việc. Các kiểm thử làm Operaton tạm khóa tài khoản `core` thì khởi động lại service `core` khi kết thúc. Lý do là vòng lặp bước máy làm gặp lần khóa này và ngừng gọi Operaton trong 60 giây.
+
+## Centrifugo
+
+Cấu hình của Centrifugo nằm trong file `src/saigonos/stack/config/centrifugo/config.yaml`. Các mật khẩu và các giá trị phụ thuộc file `.env` được đặt bằng biến môi trường `CENTRIFUGO_*` trong file `compose.yaml`. Biến môi trường được ưu tiên hơn file cấu hình.
+
+Khi sửa cấu hình hoặc route của Centrifugo, cần tuân theo các quy tắc sau:
+
+- Route `realtime` của API Gateway chỉ khớp đúng đường dẫn `/realtime/connection/websocket` và luôn gửi tới đường dẫn `/connection/websocket` của Centrifugo. Không thêm route tới cổng nội bộ 9000. Cổng này phục vụ API của server, Admin web và `/health`.
+- Giữ thiết lập `client.token.audience`. Nếu bỏ thiết lập này, Centrifugo nhận cả ID token.
+- Giữ thiết lập `client.disallow_anonymous_connection_tokens`. Access token của client không dùng client scope `basic` không có claim `sub`. Nếu bỏ thiết lập này, Centrifugo coi kết nối bằng access token đó là kết nối ẩn danh.
+- Biến `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` lấy giá trị `CENTRIFUGO_ALLOWED_ORIGIN` mà lệnh `saigonos init` ghi vào file `.env`. Centrifugo so header `Origin` với giá trị này như một mẫu glob, nên hàm `origin_pattern` trong `src/saigonos/home.py` thêm dấu `\` trước mỗi ký tự trong `GLOB_SPECIALS`. Nếu thiếu bước này, địa chỉ IPv6 như `http://[2001:db8::1]:9080` trở thành một lớp ký tự. Khi đó, trang ở đúng địa chỉ này bị từ chối, còn Origin `http://1:9080` lại được nhận. Khi danh sách này rỗng, Centrifugo từ chối mọi kết nối có header `Origin`, kể cả từ chính địa chỉ của hệ thống. Không dùng giá trị `*`.
+- Khi đổi phiên bản Centrifugo, kiểm tra thư viện glob mà Centrifugo dùng để so header `Origin`. Phiên bản 6.10.3 dùng `github.com/gobwas/glob` v1.1.0. `GLOB_SPECIALS` phải gồm đủ các ký tự mà hàm `QuoteMeta` của thư viện này thêm dấu `\` ở trước.
+- Giữ thiết lập `usage_stats.disabled`. Nếu bỏ thiết lập này, Centrifugo gửi thống kê ẩn danh tới nhà phát triển lần đầu sau 24 đến 48 giờ mà không ghi log.
+
+Integration test nằm trong file `tests/integration/test_realtime.py`. Client WebSocket của kiểm thử là lớp `Realtime` trong `tests/integration/conftest.py`, được viết bằng thư viện chuẩn của Python. Kiểm thử `test_expired_access_token_is_refused` dùng một client có thời hạn access token 1 giây, nên không phải chờ 60 giây. Kiểm thử `test_access_token_of_other_issuer_is_refused` tạm đặt Frontend URL của realm `saigonos` để Keycloak cấp access token có issuer khác, rồi xóa thiết lập này. Kiểm thử `test_access_token_without_user_is_refused` dùng một client chỉ có client scope `roles`. Kiểm thử `test_websocket_of_centrifugo_works_through_caddy` trong `test_caddy.py` kết nối qua HTTPS của Caddy. Kiểm thử `test_centrifugo_accepts_only_page_at_ipv6_url` chạy `saigonos init` với một địa chỉ IPv6 trong một thư mục riêng, lấy giá trị của `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` qua `docker compose config`, rồi chạy một container Centrifugo riêng với giá trị này. Do đó, kiểm thử dùng đúng cách Docker Compose đọc file `.env` và đúng cách Centrifugo so mẫu glob.
+
+### Quyền nghe kênh
+
+Quyền nghe kênh được khai báo theo namespace trong `channel.namespaces`. Khi sửa namespace hoặc token kênh, cần tuân theo các quy tắc sau:
+
+- Namespace `public` có `allow_subscribe_for_client`. Namespace `user` chỉ có `allow_user_limited_channels`. Namespace `role` không có thiết lập nào, nên chỉ nghe được bằng token kênh. Không thêm `allow_subscribe_for_client` vào namespace `user` hoặc `role`.
+- Token kênh hợp lệ mở được đúng kênh ghi trong token ở mọi namespace đã khai báo, kể cả kênh `user:#<sub>` của người khác và kênh không có namespace. Do đó, lời gọi `POST /core/realtime/token` chỉ cấp token cho kênh `role:<realm role>` sau khi kiểm tra realm role của người gọi, và khóa `CENTRIFUGO_SUBSCRIPTION_KEY` không được dùng vào việc khác.
+- Giữ thiết lập `client.subscription_token.enabled`. Thiết lập này cho Centrifugo kiểm token kênh bằng khóa trong biến `CENTRIFUGO_CLIENT_SUBSCRIPTION_TOKEN_HMAC_SECRET_KEY`. Biến này và biến `SUBSCRIPTION_KEY` của service `core` cùng lấy giá trị `CENTRIFUGO_SUBSCRIPTION_KEY`. Nếu bỏ thiết lập này, Centrifugo kiểm token kênh bằng JWKS của Keycloak nên mọi token kênh bị từ chối.
+- Token kênh hết hạn không muộn hơn access token dùng để lấy token. Nhờ đó, người bị gỡ realm role không giữ được token kênh lâu hơn access token cũ. Centrifugo cho client thêm 25 giây để gửi token mới (`client.expired_sub_close_delay`) và kiểm hạn của kênh 27 giây một lần (`client.presence_update_interval`). Do đó, kênh không có token mới bị ngừng từ 25 đến 52 giây sau khi token hết hạn.
+
+Các kiểm thử quyền nghe kênh nằm trong file `tests/integration/test_realtime.py`. Client nghe kênh bằng lệnh subscribe của chính client. Kiểm thử `test_expired_channel_token_is_refused` ký token kênh bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` của bộ thử, nên không phải chờ token hết hạn.
+
+### Gửi tin qua bảng outbox
+
+Bảng `core.outbox` theo mẫu của Centrifugo. Consumer `outbox` của Centrifugo khóa partition bằng advisory lock của PostgreSQL, đọc các dòng theo thứ tự `id`, gửi từng tin rồi xóa các dòng đã gửi. Khi cập nhật bảng hoặc consumer, cần tuân theo các quy tắc sau:
+
+- Role `centrifugo` chỉ có quyền `SELECT` và `DELETE` trên bảng `core.outbox`. Centrifugo không cần quyền nào khác. Không cấp thêm quyền cho role này.
+- Trigger `notify` của bảng gửi NOTIFY tới kênh `core_outbox` khi có dòng mới. Giá trị `partition_notification_channel` trong file cấu hình phải trùng tên kênh này. Nếu hai tên lệch nhau, Centrifugo chỉ đọc bảng 5 giây một lần theo `partition_poll_interval`.
+- Chuỗi kết nối của consumer chứa mật khẩu, nên được đặt bằng biến `CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN` trong file `compose.yaml`. Tên biến chứa tên consumer viết hoa. Khi đổi tên consumer, cần đổi cả tên biến.
+- Centrifugo dừng ngay khi không kết nối được cơ sở dữ liệu lúc khởi động. Do đó, service `centrifugo` chờ service `migrate` chạy xong. Service `migrate` chờ service `databases` tạo role `centrifugo`.
+- Với lỗi không thể thử lại, ví dụ kênh thuộc namespace chưa khai báo, Centrifugo ghi log rồi bỏ tin. Do đó, khi thêm namespace, cần khai báo namespace trong `channel.namespaces` và thêm vào biểu thức kiểm tra kênh của hàm `core.publish`.
+- Với lỗi tạm thời, Centrifugo thử lại tin bị lỗi sau tối đa 5 giây. Các tin sau phải chờ tin này.
+
+Các kiểm thử gửi tin nằm trong file `tests/integration/test_realtime.py`. Client nghe kênh bằng lệnh `subscribe` của API của server, nên kiểm thử không phụ thuộc quy tắc nghe kênh của từng namespace. Kiểm thử `test_row_and_message_written_together_reach_listener_within_one_second` gửi ba tin liên tiếp và chờ mỗi tin tối đa 1 giây. Khi trigger `notify` bị xóa hoặc tên kênh NOTIFY lệch, tin chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
+
+### History
+
+Mỗi namespace có bốn thiết lập `history_size`, `history_ttl`, `force_recovery` và `allow_history_for_subscriber`. Khi sửa history, cần tuân theo các quy tắc sau:
+
+- Ba namespace dùng cùng `history_size` và `history_ttl`. README ghi hai giá trị này. Kiểm thử `test_readme_states_history_of_centrifugo` báo lỗi khi README và file cấu hình lệch nhau.
+- Không dùng `allow_history_for_client`. Thiết lập này cho mọi client đọc history mà không cần nghe kênh, nên lộ tin của kênh `user:#<sub>` và `role:`. Thiết lập `allow_history_for_subscriber` chỉ cho client đang nghe kênh đọc history, nên quyền đọc history đi theo quyền nghe kênh.
+- History nằm trong bộ nhớ của Centrifugo và mất khi Centrifugo khởi động lại. Khi 1.000 kênh đều đầy 100 tin khoảng 200 byte, Centrifugo dùng thêm khoảng 130 MiB RAM. Phần này được trả lại sau `history_ttl`.
+
+Kiểm thử `test_messages_written_while_centrifugo_is_stopped_reach_client_after_restart` dừng Centrifugo đúng 60 giây, nên `make integration` lâu thêm khoảng 1 phút. JSON của Centrifugo bỏ các trường có giá trị false, ví dụ `recovered`. Do đó, kiểm thử đọc các trường này với giá trị mặc định là false.
+
+## Thông báo cho người dùng
+
+Bảng `core.notifications` và hàm `core.notify` được tạo trong file `0015_notifications.sql`. Hai lời gọi đọc thông báo và đánh dấu đã đọc nằm trong `saigonos_core/notifications.py`. Khi sửa phần thông báo, cần tuân theo các quy tắc sau:
+
+- Bảng `core.notifications` chỉ được thêm dòng qua hàm `core.notify`. Không cấp quyền `INSERT` trên bảng cho role nào. Role `authenticated` chỉ có quyền `SELECT`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên cột `read_at`.
+- Chính sách `recipient_only` chỉ cho hai role trên thấy thông báo có người nhận trùng claim `sub` của người gọi. Các câu truy vấn của service `core` cũng lọc theo `core.uid()`. Nhờ đó, mỗi lớp tự chặn được thông báo của người khác. Lời gọi đánh dấu đã đọc chạy trong `Database.service_session(caller)`, nên audit log ghi đúng người gọi.
+- Tin gửi tới kênh `user:#<sub>` có dạng `{"notification": {...}}` với đúng các trường của model `Notification`. Khi thêm hoặc đổi trường, cần sửa cả hàm `core.notify` và bảng trường trong README. Kiểm thử `test_notification_reaches_recipient_within_one_second_as_listed` so tin này với kết quả của `GET /core/notifications`. Kiểm thử `test_readme_lists_every_notification_field` so bảng trường trong README với model.
+- Người nhận dài tối đa 249 ký tự, vì tên kênh `user:#<sub>` dài tối đa 255 ký tự.
+- Không bỏ kiểm tra đường dẫn của hàm `core.notify`. Ứng dụng dựa vào kiểm tra này để hiển thị đường dẫn mà không kiểm tra lại. Trình duyệt bỏ dấu tab và dấu xuống dòng trong địa chỉ. Ví dụ, đường dẫn gồm dấu `/`, một dấu tab và `/web-khac.example` trở thành `//web-khac.example`, tức một địa chỉ của web khác. Do đó, hàm từ chối mọi ký tự điều khiển trong đường dẫn.
+
+Các integration test nằm trong file `tests/integration/test_realtime.py`. Kiểm thử `test_notify_waits_for_other_transaction_with_same_key` giữ một transaction đã gọi `core.notify` trong 2 giây bằng `pg_sleep`, rồi gọi lại với cùng khóa từ một kết nối khác.
+
+### Gửi tin Telegram
+
+Bảng `core.deliveries` và phiên bản mới của hàm `core.notify` được tạo trong file `0016_deliveries.sql`. Vòng lặp gửi tin nằm trong `saigonos_core/deliveries.py`. Client của Bot API nằm trong `saigonos_core/telegram.py` và dùng `http.client`, không thêm thư viện. Khi sửa phần này, cần tuân theo các quy tắc sau:
+
+- Bảng `core.deliveries` chỉ được thêm dòng qua hàm `core.notify` và hàm `core.send_email`. Role `core_service` chỉ có quyền `SELECT` và quyền `UPDATE` trên các cột trạng thái. Không cấp thêm quyền cho role nào.
+- Tiêu đề, nội dung và đường dẫn được chép vào bảng `core.deliveries`. Vòng lặp gửi tin không có người gọi, nên chính sách `recipient_only` của bảng `core.notifications` không cho vòng lặp đọc thông báo.
+- Dòng được chuyển sang `sending` và commit trước khi gọi Telegram. Không giữ khóa dòng trong lúc gọi Telegram. Nếu giữ khóa, transaction bị hủy khi service `core` chết, dòng trở về `pending` và tin được gửi lại dù Telegram có thể đã nhận tin.
+- Khi service `core` khởi động, các dòng còn ở `sending` chuyển sang `unknown`. Do đó, chỉ chạy một container của service `core`.
+- Lỗi xảy ra trước khi gửi xong lời gọi, ví dụ không kết nối được hoặc lỗi TLS, được gửi lại. Lỗi xảy ra sau khi đã gửi xong lời gọi cho kết quả `unknown`. Không gửi lại tin `unknown`.
+- Khi service `core` dừng trong lúc gửi, vòng lặp chờ Telegram trả lời rồi ghi kết quả, nhờ `asyncio.shield`. Khi lời gọi `run_in_threadpool` bị hủy thẳng, thread vẫn gửi tin nhưng kết quả bị mất.
+- Token của bot nằm trong đường dẫn của lời gọi. Không ghi đường dẫn hoặc token vào log. Token được kiểm tra dạng `<số>:<chuỗi>` lúc khởi động, nên `http.client` không báo lỗi `InvalidURL` chứa đường dẫn.
+- Cấu hình Telegram sai không làm service `core` dừng. Service ghi lý do vào log và chuyển tin sang `skipped`.
+- Trigger `notify` của bảng gửi NOTIFY tới kênh `core_deliveries` khi có dòng mới. Service `core` nghe kênh này bằng một kết nối riêng, mở bằng `Database.listen`. Khi không có NOTIFY, service đọc bảng 10 giây một lần.
+
+Bot API giả nằm trong file `tests/integration/fake_telegram.py`. Fixture `bot_api` chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `telegram-gia`, rồi ghi cấu hình Telegram trỏ tới container này vào file `.env`. Bot API giả trả lời theo kế hoạch mà kiểm thử gửi tới `/plan`, ví dụ mã 500, mã 429 kèm `retry_after`, ngắt kết nối hoặc trả lời sau 30 giây. Kiểm thử `test_telegram_message_is_skipped_while_telegram_is_not_configured` phải đứng trước các kiểm thử dùng fixture `bot_api`, vì fixture này bật Telegram cho cả bộ thử. Kiểm thử `test_notification_reaches_telegram_group_once_within_two_seconds` gửi hai tin liên tiếp. Khi trigger `notify` bị xóa, tin thứ hai chờ tới lần đọc bảng tiếp theo nên kiểm thử báo lỗi.
+
+### Gửi email
+
+Hàm `core.send_email` và hàm `core.check_message` được tạo trong file `0017_email.sql`. Client SMTP nằm trong `saigonos_core/smtp.py` và dùng `smtplib`, không thêm thư viện. Khi sửa phần này, cần tuân theo các quy tắc sau:
+
+- Hàm `core.check_message` kiểm tra khóa chống trùng, tiêu đề, nội dung và đường dẫn cho cả `core.notify` và `core.send_email`. Quy tắc của các giá trị này chỉ được sửa ở hàm này.
+- Hàm `core.send_email` và `saigonos_core/smtp.py` kiểm tra địa chỉ email theo cùng một mẫu. Mẫu này là định nghĩa địa chỉ email hợp lệ của HTML và chỉ nhận ký tự ASCII. Do đó, máy chủ SMTP không cần hỗ trợ SMTPUTF8.
+- Nội dung email được mã hóa bằng quoted-printable hoặc base64 nhờ policy `cte_type="7bit"`, nên chỉ gồm ký tự ASCII. Do đó, máy chủ SMTP không cần hỗ trợ 8BITMIME.
+- Mỗi kênh có một vòng gửi `Deliveries` riêng, với cấu hình `Channel` trong `saigonos_core/deliveries.py`. Mọi câu truy vấn của vòng gửi lọc theo cột `channel`. Nhờ đó, lệnh chờ `retry_after` của Telegram không làm chậm email.
+- Luôn truyền `ssl.create_default_context()` cho `starttls()` và `SMTP_SSL`. Khi không nhận context, `smtplib` vẫn mã hóa kết nối nhưng không kiểm tra chứng chỉ.
+- Không bỏ qua STARTTLS khi máy chủ không hỗ trợ. Cấu hình có mật khẩu mà `SMTP_SECURITY` là `none` bị từ chối lúc khởi động.
+- Nội dung email được gửi bằng `docmd("DATA")`, `send()` và `getreply()`, không dùng `sendmail()`. Nhờ đó, client phân biệt được nội dung chưa gửi xong, được gửi lại, với câu trả lời bị mất sau khi đã gửi xong nội dung, cho kết quả `unknown`.
+
+Máy chủ SMTP giả nằm trong file `tests/integration/fake_smtp.py` và chỉ dùng thư viện chuẩn của Python. Unit test trong `tests/core/test_smtp.py` nạp file này theo đường dẫn và chạy máy chủ trong cùng tiến trình. Fixture `mail_server` của integration test chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `smtp-gia`. Hàm `make_certificates` dùng thư viện `cryptography` để tạo một CA thử và chứng chỉ của máy chủ giả. Chứng chỉ có đủ các extension mà Python 3.13 trở lên đòi hỏi khi kiểm tra chứng chỉ. Fixture ghi file `compose.override.yaml` để service `core` tin CA thử qua biến `SSL_CERT_FILE`. Kiểm thử `test_email_is_skipped_while_smtp_is_not_configured` phải đứng trước các kiểm thử dùng fixture `mail_server`. `smtplib` của Python 3.14 gửi `mail from:` và `rcpt to:` bằng chữ thường, nên máy chủ giả ghi lại hai lệnh này bằng chữ hoa.
 
 ## Phát hành phiên bản mới
 

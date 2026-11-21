@@ -1,0 +1,25 @@
+{
+  "name": "realtime",
+  "desc": "Centrifugo: kết nối WebSocket của client, Centrifugo kiểm tra access token trong lệnh connect. API của server và Admin web của Centrifugo không mở qua API Gateway",
+  "uri": "/realtime/connection/websocket",
+  "enable_websocket": true,
+  "plugins": {
+    "limit-count": {
+      "count": 300,
+      "time_window": 10,
+      "key_type": "var",
+      "key": "remote_addr",
+      "rejected_code": 429,
+      "rejected_msg": "Gọi API quá nhiều lần, vui lòng thử lại sau"
+    },
+    "proxy-rewrite": {
+      "uri": "/connection/websocket"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "centrifugo:8000": 1
+    }
+  }
+}

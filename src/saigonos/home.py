@@ -13,6 +13,7 @@ DEFAULT_HTTP_PORT = 9080
 DEFAULT_ADMIN_PORT = 9180
 DEFAULT_KEYCLOAK_PORT = 9280
 DEFAULT_SEAWEEDFS_PORT = 9380
+DEFAULT_CENTRIFUGO_PORT = 9480
 DEFAULT_MAX_FILE_SIZE = 10
 LARGEST_FILE_SIZE = 100
 DEFAULT_CADDY_HTTP_PORT = 80
@@ -36,9 +37,15 @@ SECRET_KEYS = (
     "OPERATON_DB_PASSWORD",
     "OPERATON_CLIENT_SECRET",
     "CORE_OPERATON_PASSWORD",
+    "CENTRIFUGO_API_KEY",
+    "CENTRIFUGO_ADMIN_PASSWORD",
+    "CENTRIFUGO_ADMIN_SECRET",
+    "CENTRIFUGO_DB_PASSWORD",
+    "CENTRIFUGO_SUBSCRIPTION_KEY",
 )
 SECRET_ALPHABET = string.ascii_letters + string.digits
 SECRET_LENGTH = 32
+GLOB_SPECIALS = "*?\\[]{}"
 
 
 class Initialized(NamedTuple):
@@ -62,6 +69,10 @@ def local_url(port: str) -> str:
 
 def listen_address(host: str, port: str) -> str:
     return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def origin_pattern(url: str) -> str:
+    return "".join(f"\\{char}" if char in GLOB_SPECIALS else char for char in url)
 
 
 def read_env_lines(home: Path) -> list[str]:
@@ -185,6 +196,7 @@ def init_home(
     admin_port: int | None = None,
     keycloak_port: int | None = None,
     seaweedfs_port: int | None = None,
+    centrifugo_port: int | None = None,
     max_file_size: int | None = None,
     caddy: bool | None = None,
 ) -> Initialized:
@@ -200,14 +212,17 @@ def init_home(
     old_admin_port = current.get("SAIGONOS_ADMIN_PORT") or DEFAULT_ADMIN_PORT
     old_keycloak_port = current.get("SAIGONOS_KEYCLOAK_PORT") or DEFAULT_KEYCLOAK_PORT
     old_seaweedfs_port = current.get("SAIGONOS_SEAWEEDFS_PORT") or DEFAULT_SEAWEEDFS_PORT
+    old_centrifugo_port = current.get("SAIGONOS_CENTRIFUGO_PORT") or DEFAULT_CENTRIFUGO_PORT
     old_max_file_size = current.get("SAIGONOS_MAX_FILE_SIZE") or DEFAULT_MAX_FILE_SIZE
     values = {
         "SAIGONOS_URL": url,
+        "CENTRIFUGO_ALLOWED_ORIGIN": origin_pattern(url),
         "SAIGONOS_HTTP_HOST": new_http_host,
         "SAIGONOS_HTTP_PORT": new_http_port,
         "SAIGONOS_ADMIN_PORT": str(admin_port or old_admin_port),
         "SAIGONOS_KEYCLOAK_PORT": str(keycloak_port or old_keycloak_port),
         "SAIGONOS_SEAWEEDFS_PORT": str(seaweedfs_port or old_seaweedfs_port),
+        "SAIGONOS_CENTRIFUGO_PORT": str(centrifugo_port or old_centrifugo_port),
         "SAIGONOS_MAX_FILE_SIZE": str(max_file_size or old_max_file_size),
     }
     missing = [key for key in SECRET_KEYS if not current.get(key)]
@@ -234,6 +249,8 @@ def init_home(
     check_port(values["SAIGONOS_KEYCLOAK_PORT"], "Keycloak", "--keycloak-port", used)
     used.append((values["SAIGONOS_KEYCLOAK_PORT"], "cổng của Keycloak"))
     check_port(values["SAIGONOS_SEAWEEDFS_PORT"], "SeaweedFS", "--seaweedfs-port", used)
+    used.append((values["SAIGONOS_SEAWEEDFS_PORT"], "cổng của SeaweedFS"))
+    check_port(values["SAIGONOS_CENTRIFUGO_PORT"], "Centrifugo", "--centrifugo-port", used)
 
     home.mkdir(parents=True, exist_ok=True)
     for key, value in values.items():

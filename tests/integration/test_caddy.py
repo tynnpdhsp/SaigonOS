@@ -80,6 +80,16 @@ def test_rate_limit_counts_address_of_caller_despite_forged_header(caddy_stack, 
     assert counts == [299, 298, 297]
 
 
+def test_websocket_of_centrifugo_works_through_caddy(caddy_stack):
+    token = caddy_stack.token(caddy_stack.new_user())
+
+    with caddy_stack.realtime() as client:
+        reply = client.connect(token)
+
+    assert client.accepted
+    assert reply["connect"]["expires"] is True
+
+
 def test_certificate_is_kept_after_down_with_volumes(caddy_stack):
     before = caddy_stack.certificate()
 

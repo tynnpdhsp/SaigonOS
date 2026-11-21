@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+import base64
+import hashlib
 import json
+import secrets
 import ssl
-from http.client import HTTPConnection, HTTPException, HTTPSConnection
+from http.client import HTTPConnection, HTTPException, HTTPMessage, HTTPSConnection
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import parse_qs, urlsplit
@@ -18,6 +21,9 @@ AUTHORIZATION_PATH = f"{REALM_PATH}/protocol/openid-connect/auth"
 OPERATON_LOGIN_PATH = "/operaton/oauth2/authorization/operaton"
 OPERATON_CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
 OPERATON_REST_PATH = "/operaton/engine-rest/version"
+REALTIME_PATH = "/realtime/connection/websocket"
+REALTIME_API_PATH = "/realtime/api"
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
@@ -38,7 +44,7 @@ class Check(NamedTuple):
 class Reply(NamedTuple):
     status: int
     body: bytes
-    location: str | None
+    headers: HTTPMessage
 
 
 def service_state(service: dict[str, Any], container: dict[str, Any] | None) -> tuple[bool, str]:
@@ -97,7 +103,7 @@ def fetch(url: str, certificate: str | None = None, headers: dict[str, str] | No
     try:
         connection.request("GET", parts.path, headers=headers or {})
         response = connection.getresponse()
-        return Reply(response.status, response.read(), response.getheader("Location"))
+        return Reply(response.status, response.read(), response.headers)
     finally:
         connection.close()
 
@@ -163,6 +169,31 @@ def operaton_state(url: str, status: int, location: str | None, rest: int) -> tu
     return True, "Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn"
 
 
+def realtime_state(url: str, status: int, accepted: bool, api: int) -> tuple[bool, str]:
+    if status == 400:
+        return False, (
+            "Centrifugo không nhận được yêu cầu kết nối WebSocket. "
+            "Hãy kiểm tra header Upgrade và Connection của reverse proxy"
+        )
+    if status == 403:
+        return False, (
+            f"Centrifugo từ chối kết nối từ trang {url}. "
+            "Hãy chạy lệnh saigonos init rồi saigonos up để Centrifugo nhận địa chỉ này"
+        )
+    if status != 101:
+        return False, f"lời gọi {REALTIME_PATH} nhận mã {status}, đúng ra là 101"
+    if not accepted:
+        return False, "API Gateway không trả lời đúng giao thức WebSocket"
+    if api != 404:
+        return False, f"API của Centrifugo nhận mã {api} qua API Gateway, đúng ra là 404"
+    return True, "Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn"
+
+
+def websocket_accept(key: str) -> str:
+    digest = hashlib.sha1(f"{key}{WEBSOCKET_GUID}".encode(), usedforsecurity=False).digest()
+    return base64.b64encode(digest).decode()
+
+
 def login_check(url: str, certificate: str | None) -> tuple[bool, str]:
     reply = fetch(f"{url}{DISCOVERY_PATH}", certificate)
     return login_state(url, reply.status, reply.body)
@@ -183,7 +214,22 @@ def core_check(url: str, certificate: str | None) -> tuple[bool, str]:
 def operaton_check(url: str, certificate: str | None) -> tuple[bool, str]:
     login = fetch(f"{url}{OPERATON_LOGIN_PATH}", certificate)
     rest = fetch(f"{url}{OPERATON_REST_PATH}", certificate)
-    return operaton_state(url, login.status, login.location, rest.status)
+    return operaton_state(url, login.status, login.headers.get("Location"), rest.status)
+
+
+def realtime_check(url: str, certificate: str | None) -> tuple[bool, str]:
+    key = base64.b64encode(secrets.token_bytes(16)).decode()
+    headers = {
+        "Upgrade": "websocket",
+        "Connection": "Upgrade",
+        "Sec-WebSocket-Key": key,
+        "Sec-WebSocket-Version": "13",
+        "Origin": url,
+    }
+    handshake = fetch(f"{url}{REALTIME_PATH}", certificate, headers)
+    accepted = handshake.headers.get("Sec-WebSocket-Accept") == websocket_accept(key)
+    api = fetch(f"{url}{REALTIME_API_PATH}", certificate)
+    return realtime_state(url, handshake.status, accepted, api.status)
 
 
 PROBES = (
@@ -191,6 +237,7 @@ PROBES = (
     ("API", api_check),
     ("Core API", core_check),
     ("Operaton", operaton_check),
+    ("Centrifugo", realtime_check),
 )
 
 

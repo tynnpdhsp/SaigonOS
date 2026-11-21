@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+client:
+  token:
+    jwks_public_endpoint: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
+    audience: saigonos
+  subscription_token:
+    enabled: true
+  allow_anonymous_connect_without_token: false
+  disallow_anonymous_connection_tokens: true
+channel:
+  namespaces:
+    - name: public
+      allow_subscribe_for_client: true
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
+    - name: user
+      allow_user_limited_channels: true
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
+    - name: role
+      history_size: 100
+      history_ttl: 300s
+      force_recovery: true
+      allow_history_for_subscriber: true
+consumers:
+  - enabled: true
+    name: outbox
+    type: postgresql
+    postgresql:
+      outbox_table_name: core.outbox
+      partition_poll_interval: 5s
+      partition_notification_channel: core_outbox
+http_server:
+  port: "8000"
+  internal_port: "9000"
+admin:
+  enabled: true
+health:
+  enabled: true
+usage_stats:
+  disabled: true

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import shlex
-from ipaddress import ip_address
+from ipaddress import IPv6Address, ip_address
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 import click
 from click.core import ParameterSource
@@ -12,6 +12,7 @@ from saigonos.audit import verify as verify_chain
 from saigonos.doctor import run_checks
 from saigonos.home import (
     DEFAULT_ADMIN_PORT,
+    DEFAULT_CENTRIFUGO_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_KEYCLOAK_PORT,
@@ -25,6 +26,7 @@ from saigonos.home import (
 )
 
 PORT = click.IntRange(1, 65535)
+DEFAULT_PORTS = {"http": 80, "https": 443}
 MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
 MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
 COLUMN_GAP = " " * 4
@@ -39,14 +41,20 @@ home_option = click.option(
 )
 
 
+def url_host(parts: SplitResult) -> str:
+    host = parts.hostname or ""
+    return f"[{IPv6Address(host).compressed}]" if parts.netloc.startswith("[") else host
+
+
 def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
     if value is None:
         return None
     try:
         parts = urlsplit(value)
+        host = url_host(parts)
         valid = (
             parts.scheme in {"http", "https"}
-            and bool(parts.hostname)
+            and bool(host)
             and parts.port != 0
             and "@" not in parts.netloc
             and parts.path in {"", "/"}
@@ -60,7 +68,8 @@ def normalize_url(ctx: click.Context, param: click.Parameter, value: str | None)
             "địa chỉ phải có dạng http://tên-máy[:cổng] hoặc https://tên-máy[:cổng], "
             "không kèm đường dẫn."
         )
-    return f"{parts.scheme}://{parts.netloc.lower()}"
+    port = "" if parts.port in {None, DEFAULT_PORTS[parts.scheme]} else f":{parts.port}"
+    return f"{parts.scheme}://{host}{port}"
 
 
 def normalize_host(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
@@ -142,6 +151,14 @@ def main() -> None:
     ),
 )
 @click.option(
+    "--centrifugo-port",
+    type=PORT,
+    help=(
+        "Cổng của API và Admin web của Centrifugo, chỉ truy cập được từ chính máy cài đặt. "
+        f"Mặc định là {DEFAULT_CENTRIFUGO_PORT}."
+    ),
+)
+@click.option(
     "--max-file-size",
     type=click.IntRange(1, LARGEST_FILE_SIZE),
     help=(
@@ -168,6 +185,7 @@ def init(
     admin_port: int | None,
     keycloak_port: int | None,
     seaweedfs_port: int | None,
+    centrifugo_port: int | None,
     max_file_size: int | None,
     caddy: bool | None,
 ) -> None:
@@ -180,6 +198,7 @@ def init(
             admin_port=admin_port,
             keycloak_port=keycloak_port,
             seaweedfs_port=seaweedfs_port,
+            centrifugo_port=centrifugo_port,
             max_file_size=max_file_size,
             caddy=caddy,
         )

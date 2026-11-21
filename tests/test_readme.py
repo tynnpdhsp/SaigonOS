@@ -15,17 +15,22 @@ from saigonos.doctor import PROBES
 from saigonos.home import (
     APISIX_INTERNAL_PORTS,
     DEFAULT_ADMIN_PORT,
+    DEFAULT_CENTRIFUGO_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_KEYCLOAK_PORT,
     DEFAULT_MAX_FILE_SIZE,
     DEFAULT_SEAWEEDFS_PORT,
     LARGEST_FILE_SIZE,
+    origin_pattern,
 )
+from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.notifications import Notification
 from saigonos_core.processes import rules_of
+from saigonos_core.smtp import NONE, PORTS, STARTTLS, TLS
 from saigonos_core.tasks import Task
 
 README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
@@ -42,6 +47,14 @@ VERIFY_SAMPLES = [sample for sample in SAMPLES if "audit log" in sample.lower()]
 PROSE = re.sub(r"```.*?```", "", README, flags=re.DOTALL)
 HEADINGS = re.findall(r"^#{1,6} (.+)$", PROSE, re.MULTILINE)
 OPERATON = (files("saigonos") / "stack" / "config" / "operaton" / "production.yml").read_text(
+    encoding="utf-8"
+)
+CENTRIFUGO = (files("saigonos") / "stack" / "config" / "centrifugo" / "config.yaml").read_text(
+    encoding="utf-8"
+)
+STACK = files("saigonos") / "stack"
+COMPOSE = (STACK / "compose.yaml").read_text(encoding="utf-8")
+DELIVERIES = (STACK / "config" / "postgres" / "migrations" / "0016_deliveries.sql").read_text(
     encoding="utf-8"
 )
 
@@ -135,10 +148,17 @@ def test_readme_lists_ports_that_http_port_cannot_use():
 
 
 def test_readme_lists_ports_used_by_default():
-    ports = [DEFAULT_HTTP_PORT, DEFAULT_ADMIN_PORT, DEFAULT_KEYCLOAK_PORT, DEFAULT_SEAWEEDFS_PORT]
+    ports = [
+        DEFAULT_HTTP_PORT,
+        DEFAULT_ADMIN_PORT,
+        DEFAULT_KEYCLOAK_PORT,
+        DEFAULT_SEAWEEDFS_PORT,
+        DEFAULT_CENTRIFUGO_PORT,
+    ]
     *first, last = map(str, ports)
 
     assert f"Hệ thống dùng các cổng {', '.join(first)} và {last}." in README
+    assert f"Centrifugo nằm ở cổng {DEFAULT_CENTRIFUGO_PORT}," in README
 
 
 def test_readme_states_file_size_limits():
@@ -165,6 +185,14 @@ def test_readme_lists_every_task_field():
     rows = re.findall(r"^\| (`[^|]+) \|", section("### Danh sách việc"), re.MULTILINE)
 
     assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
+
+
+def test_readme_lists_every_notification_field():
+    rows = re.findall(r"^\| (`[^|]+) \|", section("### Đọc thông báo"), re.MULTILINE)
+
+    assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(
+        Notification.model_fields
+    )
 
 
 def test_readme_lists_every_form_field_type():
@@ -220,6 +248,7 @@ def test_readme_states_the_default_values():
     assert f"| `--admin-port` | `{DEFAULT_ADMIN_PORT}` |" in README
     assert f"| `--keycloak-port` | `{DEFAULT_KEYCLOAK_PORT}` |" in README
     assert f"| `--seaweedfs-port` | `{DEFAULT_SEAWEEDFS_PORT}` |" in README
+    assert f"| `--centrifugo-port` | `{DEFAULT_CENTRIFUGO_PORT}` |" in README
     assert f"| `--url` | `http://localhost:{DEFAULT_HTTP_PORT}` |" in README
     assert f"| `--max-file-size` | `{DEFAULT_MAX_FILE_SIZE}` |" in README
     assert "| `--home` | `~/saigonos` |" in README
@@ -232,3 +261,63 @@ def test_readme_states_job_settings_of_operaton():
 
     assert f"{wait // 1000} giây một lần" in PROSE
     assert f"từ {begin} đến {end} giờ Việt Nam" in PROSE
+
+
+def test_readme_states_history_of_centrifugo():
+    sizes = re.findall(r"^ +history_size: (\d+)$", CENTRIFUGO, re.MULTILINE)
+    ttls = re.findall(r"^ +history_ttl: (\d+)s$", CENTRIFUGO, re.MULTILINE)
+    size, minutes = sizes[0], int(ttls[0]) // 60
+
+    assert len(sizes) == len(ttls) == 3
+    assert len(set(sizes)) == len(set(ttls)) == 1
+    assert f"giữ tối đa {size} tin gần nhất trong {minutes} phút" in PROSE
+    assert f"lỡ quá {size} tin, kết nối lại sau quá {minutes} phút" in PROSE
+    assert f"sub.history({{ limit: {size} }})" in README
+
+
+def test_readme_example_of_allowed_origin_matches_init():
+    url = "http://[2001:db8::1]:9080"
+
+    assert f"địa chỉ `{url}` được ghi thành `{origin_pattern(url)}`" in PROSE
+
+
+def duration(seconds):
+    return f"{seconds // 60} phút" if seconds % 60 == 0 else f"{seconds} giây"
+
+
+def test_readme_lists_every_delivery_status():
+    rows = re.findall(r"^\| `([a-z]+)` \|", section("### Hàng đợi gửi tin"), re.MULTILINE)
+    statuses = re.search(r"status IN \(([^)]+)\)", DELIVERIES)[1]
+
+    assert rows == re.findall(r"'([a-z]+)'", statuses)
+
+
+def test_readme_lists_every_telegram_setting():
+    rows = re.findall(
+        r"^\| `(TELEGRAM_[A-Z_]+)` \|", section("### Gửi thông báo qua Telegram"), re.MULTILINE
+    )
+
+    assert sorted(rows) == sorted(re.findall(r"\$\{(TELEGRAM_[A-Z_]+):-", COMPOSE))
+
+
+def test_readme_lists_every_smtp_setting():
+    cells = re.findall(r"^\| (`SMTP_[^|]*) \|", section("### Gửi email"), re.MULTILINE)
+    names = re.findall(r"`(SMTP_[A-Z_]+)`", " ".join(cells))
+
+    assert sorted(names) == sorted(re.findall(r"\$\{(SMTP_[A-Z_]+):-", COMPOSE))
+
+
+def test_readme_states_default_ports_of_smtp():
+    assert (
+        f"Mặc định là {PORTS[STARTTLS]}, hoặc {PORTS[TLS]} khi `SMTP_SECURITY` là `{TLS}`, "
+        f"hoặc {PORTS[NONE]} khi `SMTP_SECURITY` là `{NONE}`"
+    ) in README
+    assert f"Mặc định là `{TLS}` khi `SMTP_PORT` là {PORTS[TLS]}, và `{STARTTLS}`" in README
+
+
+def test_readme_states_retry_rules_of_telegram():
+    delays = [duration(seconds) for seconds in RETRY_DELAYS]
+
+    assert f"gửi lại sau {', '.join(delays[:-1])} và {delays[-1]}." in PROSE
+    assert f"Sau {MAX_ATTEMPTS} lần gửi lỗi, tin chuyển sang `failed`." in PROSE
+    assert f"Tin được gửi lại trong vòng {POLL} giây." in PROSE

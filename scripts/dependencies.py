@@ -71,6 +71,11 @@ IMAGES = {
         "Làm reverse proxy HTTPS và tự động lấy chứng chỉ khi được bật",
         "https://github.com/caddyserver/caddy/tree/v2.11.9",
     ),
+    "centrifugo/centrifugo:v6.10.3": Image(
+        "Apache-2.0",
+        "Gửi cập nhật tức thời tới ứng dụng qua WebSocket",
+        "https://github.com/centrifugal/centrifugo/tree/v6.10.3",
+    ),
     "chrislusf/seaweedfs:4.54": Image(
         "Apache-2.0",
         "Lưu file của các ứng dụng theo chuẩn S3",

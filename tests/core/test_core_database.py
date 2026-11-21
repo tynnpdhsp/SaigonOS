@@ -185,3 +185,59 @@ def test_close_closes_pool(pool):
     asyncio.run(database.close())
 
     assert created.events == ["close"]
+
+
+class FakeListening:
+    def __init__(self, options, failure):
+        self.options = options
+        self.failure = failure
+        self.listeners = []
+        self.terminated = False
+
+    async def add_listener(self, channel, callback):
+        if self.failure:
+            raise self.failure
+        self.listeners.append((channel, callback))
+
+    def terminate(self):
+        self.terminated = True
+
+
+@pytest.fixture
+def connections(monkeypatch):
+    created = []
+    failure = []
+
+    async def connect(**options):
+        created.append(FakeListening(options, failure[0] if failure else None))
+        return created[-1]
+
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    return created, failure
+
+
+def test_listener_has_own_connection_and_calls_back_on_each_notification(connections):
+    created, _ = connections
+    calls = []
+
+    listener = asyncio.run(Database().listen("core_deliveries", lambda: calls.append("tỉnh")))
+    [(channel, callback)] = listener.listeners
+    callback(listener, 4321, "core_deliveries", "")
+    callback(listener, 4321, "core_deliveries", "")
+
+    assert created == [listener]
+    assert listener.options == {
+        "timeout": 10,
+        "server_settings": {"application_name": "saigonos-core"},
+    }
+    assert (channel, calls, listener.terminated) == ("core_deliveries", ["tỉnh", "tỉnh"], False)
+
+
+def test_listener_connection_is_closed_when_listen_fails(connections):
+    created, failure = connections
+    failure.append(asyncpg.InterfaceError("kết nối đã đóng"))
+
+    with pytest.raises(asyncpg.InterfaceError):
+        asyncio.run(Database().listen("core_deliveries", lambda: None))
+
+    assert created[0].terminated

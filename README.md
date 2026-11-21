@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Mục lục
 
@@ -29,6 +29,8 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
+- [Cập nhật tức thời](#cập-nhật-tức-thời)
+- [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -69,7 +71,7 @@ saigonos init
 
 Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
-Hệ thống dùng các cổng 9080, 9180, 9280 và 9380. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
+Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
 ### 3. Khởi động các service
 
@@ -89,26 +91,28 @@ saigonos doctor
 Khi mọi service hoạt động bình thường, lệnh in ra kết quả sau:
 
 ```text
-BÌNH THƯỜNG    apisix       đang chạy
-BÌNH THƯỜNG    clamav       đang chạy
-BÌNH THƯỜNG    core         đang chạy
-BÌNH THƯỜNG    databases    đã chạy xong
-BÌNH THƯỜNG    etcd         đang chạy
-BÌNH THƯỜNG    freshclam    đang chạy
-BÌNH THƯỜNG    jwks         đã chạy xong
-BÌNH THƯỜNG    keycloak     đang chạy
-BÌNH THƯỜNG    migrate      đã chạy xong
-BÌNH THƯỜNG    operaton     đang chạy
-BÌNH THƯỜNG    postgres     đang chạy
-BÌNH THƯỜNG    postgrest    đang chạy
-BÌNH THƯỜNG    processes    đã chạy xong
-BÌNH THƯỜNG    realm        đã chạy xong
-BÌNH THƯỜNG    routes       đã chạy xong
-BÌNH THƯỜNG    seaweedfs    đang chạy
-BÌNH THƯỜNG    Đăng nhập    Keycloak trả lời tại http://localhost:9080/auth
-BÌNH THƯỜNG    API          PostgREST trả lời, access token không hợp lệ bị từ chối
-BÌNH THƯỜNG    Core API     service core trả lời, access token không hợp lệ bị từ chối
-BÌNH THƯỜNG    Operaton     Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
+BÌNH THƯỜNG    apisix        đang chạy
+BÌNH THƯỜNG    centrifugo    đang chạy
+BÌNH THƯỜNG    clamav        đang chạy
+BÌNH THƯỜNG    core          đang chạy
+BÌNH THƯỜNG    databases     đã chạy xong
+BÌNH THƯỜNG    etcd          đang chạy
+BÌNH THƯỜNG    freshclam     đang chạy
+BÌNH THƯỜNG    jwks          đã chạy xong
+BÌNH THƯỜNG    keycloak      đang chạy
+BÌNH THƯỜNG    migrate       đã chạy xong
+BÌNH THƯỜNG    operaton      đang chạy
+BÌNH THƯỜNG    postgres      đang chạy
+BÌNH THƯỜNG    postgrest     đang chạy
+BÌNH THƯỜNG    processes     đã chạy xong
+BÌNH THƯỜNG    realm         đã chạy xong
+BÌNH THƯỜNG    routes        đã chạy xong
+BÌNH THƯỜNG    seaweedfs     đang chạy
+BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại http://localhost:9080/auth
+BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối
+BÌNH THƯỜNG    Operaton      Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
+BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn
 Hệ thống hoạt động bình thường.
 ```
 
@@ -123,8 +127,10 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
+| http://127.0.0.1:9480/ | Admin web của Centrifugo, dùng để xem số kết nối và gọi thử API của server, chỉ truy cập được từ chính máy cài đặt | Mật khẩu là giá trị `CENTRIFUGO_ADMIN_PASSWORD` |
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 | http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
+| ws://localhost:9080/realtime/connection/websocket | Kết nối WebSocket của Centrifugo, dùng để nhận [cập nhật tức thời](#cập-nhật-tức-thời) | Access token do Keycloak cấp, gửi trong lệnh connect |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -295,7 +301,7 @@ Các mã lỗi của hai lời gọi:
 
 ## Cấu hình
 
-Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo được giữ nguyên.
+Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram và SMTP được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram) và mục [Gửi email](#gửi-email).
 
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -305,6 +311,7 @@ Mọi giá trị cấu hình được đặt bằng tùy chọn của lệnh `sa
 | `--admin-port` | `9180` | Cổng quản trị của APISIX, chỉ truy cập được từ chính máy cài đặt |
 | `--keycloak-port` | `9280` | Cổng của Keycloak, chỉ truy cập được từ chính máy cài đặt. Admin Console của realm master dùng cổng này |
 | `--seaweedfs-port` | `9380` | Cổng Admin UI của SeaweedFS, chỉ truy cập được từ chính máy cài đặt |
+| `--centrifugo-port` | `9480` | Cổng API của server và Admin web của Centrifugo, chỉ truy cập được từ chính máy cài đặt |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
@@ -434,6 +441,11 @@ Trong đó `dx.example.com` là tên miền của hệ thống. Cổng HTTP vẫ
 Ví dụ, với Nginx và chứng chỉ do Certbot lấy từ Let's Encrypt:
 
 ```nginx
+map $http_upgrade $saigonos_connection {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 443 ssl;
     server_name dx.example.com;
@@ -445,6 +457,9 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:9080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $saigonos_connection;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -460,13 +475,15 @@ Header `X-Forwarded-For` được đặt bằng `$remote_addr` để người d�
 
 Dòng `client_max_body_size` cho phép Nginx nhận nội dung lớn tới 10 MB, bằng giới hạn dung lượng file mặc định của SaigonOS. Nginx mặc định chỉ nhận nội dung tới 1 MB. Khi đổi giới hạn bằng tùy chọn `--max-file-size`, cần đổi cả giá trị này.
 
+Khối `map` và ba dòng `proxy_http_version`, `Upgrade`, `Connection` cho phép Nginx chuyển tiếp kết nối WebSocket tới [Centrifugo](#cập-nhật-tức-thời). Khối `map` đặt ở ngoài khối `server` và dùng tên biến riêng của SaigonOS để không trùng với cấu hình của các site khác. Centrifugo gửi ping 25 giây một lần. Do đó, thời gian chờ mặc định 60 giây của Nginx không đóng các kết nối WebSocket đang mở.
+
 ### 3. Kiểm tra hệ thống
 
 ```bash
 saigonos doctor
 ```
 
-Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được.
+Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được. Nếu reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo lỗi ở mục Centrifugo.
 
 ## Kiểm tra audit log
 
@@ -839,6 +856,382 @@ Job executor của Operaton tìm các hẹn giờ đã tới hạn 2 giây một
 Các hẹn giờ được lưu trong cơ sở dữ liệu `operaton`. Khi Operaton dừng rồi chạy lại, các hẹn giờ vẫn còn. Hẹn giờ tới hạn trong lúc Operaton dừng sẽ chạy ngay khi Operaton chạy lại.
 
 Operaton chạy theo giờ UTC. Do đó, ngày giờ không ghi múi giờ và biểu thức cron trong file BPMN được tính theo giờ UTC. Ví dụ, `2026-12-01T08:00:00` là 15:00 giờ Việt Nam. Để đặt hẹn giờ theo giờ Việt Nam, ghi ngày giờ kèm múi giờ, ví dụ `2026-12-01T08:00:00+07:00`.
+
+## Cập nhật tức thời
+
+SaigonOS dùng Centrifugo để gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway, ví dụ `ws://localhost:9080/realtime/connection/websocket`. Trên máy chủ có HTTPS, địa chỉ này có dạng `wss://dx.example.com/realtime/connection/websocket`. API Gateway chỉ mở địa chỉ này của Centrifugo.
+
+### Kết nối
+
+Sau khi mở WebSocket, ứng dụng gửi access token do Keycloak cấp trong lệnh connect. Trình duyệt không gửi được header `Authorization` khi mở WebSocket. Do đó, API Gateway không kiểm tra access token ở địa chỉ này. Centrifugo tự kiểm tra chữ ký, issuer (`iss`), thời hạn và audience (`aud`) của access token. Kết nối không có access token hoặc có access token không mang mã người dùng (`sub`) đều bị từ chối. Khi Keycloak đổi khóa ký, Centrifugo tự lấy khóa mới.
+
+Centrifugo chỉ nhận access token có audience `saigonos`. Mỗi khi hệ thống khởi động, service `realm` thêm audience này vào access token của mọi client dùng client scope `roles`. ID token không có audience này nên bị từ chối. Khi mapper `audience saigonos` của client scope `roles` bị sửa hoặc bị xóa, service `realm` đặt lại mapper này.
+
+Khi mở WebSocket, trình duyệt gửi địa chỉ của trang trong header `Origin`. Centrifugo chỉ nhận kết nối từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, tức giá trị của tùy chọn `--url`. Do đó, trang của một web khác không mở được kết nối bằng phiên đăng nhập của người dùng.
+
+Lệnh `saigonos init` ghi địa chỉ truy cập vào dòng `CENTRIFUGO_ALLOWED_ORIGIN` của file `.env`. Centrifugo đọc giá trị này như một mẫu glob, nên mỗi ký tự đặc biệt của mẫu glob được thêm dấu `\` ở trước. Ví dụ, địa chỉ `http://[2001:db8::1]:9080` được ghi thành `http://\[2001:db8::1\]:9080`. Lệnh `saigonos init` ghi lại dòng này mỗi lần chạy. Do đó, sau khi sửa dòng `SAIGONOS_URL` trong file `.env`, cần chạy lại lệnh `saigonos init` rồi `saigonos up`.
+
+Ví dụ, với thư viện [centrifuge-js](https://github.com/centrifugal/centrifuge-js) và [keycloak-js](https://www.npmjs.com/package/keycloak-js):
+
+```js
+import { Centrifuge } from "centrifuge";
+
+const centrifuge = new Centrifuge("wss://dx.example.com/realtime/connection/websocket", {
+  getToken: async () => {
+    await keycloak.updateToken(30);
+    return keycloak.token;
+  },
+});
+centrifuge.connect();
+```
+
+Access token chỉ có hiệu lực 60 giây. Khi access token hết hạn, thư viện gọi hàm `getToken` để lấy access token mới và gửi cho Centrifugo. Access token mới phải thuộc cùng người dùng. Nếu không nhận được access token mới, Centrifugo đóng kết nối khoảng 25 giây sau khi access token hết hạn.
+
+Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong các mã sau:
+
+| Mã | Ý nghĩa |
+|---|---|
+| `109` | Access token đã hết hạn. Thư viện tự lấy access token mới rồi kết nối lại |
+| `3001` | Centrifugo đang dừng. Thư viện tự kết nối lại |
+| `3005` | Kết nối hết hạn vì không nhận được access token mới. Thư viện tự kết nối lại |
+| `3500` | Access token không hợp lệ, ví dụ sai chữ ký, sai issuer, là ID token hoặc thuộc người dùng khác |
+| `3501` | Lệnh connect không có access token |
+| `3507` | Access token không mang mã người dùng |
+
+### Nghe kênh
+
+Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong ba dạng sau:
+
+| Kênh | Người nghe được | Token kênh |
+|---|---|---|
+| `public:<tên>` | Mọi người dùng đã đăng nhập | Không cần |
+| `user:#<sub>` | Chỉ người dùng có mã `<sub>`, tức claim `sub` trong access token | Không cần |
+| `role:<realm role>` | Những người dùng có realm role `<realm role>` | Cần |
+
+Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
+
+Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Kênh không có dạng `role:<realm role>` nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
+
+Token kênh có hiệu lực 60 giây và hết hạn không muộn hơn access token dùng để lấy token kênh. Khi token kênh hết hạn, thư viện gọi hàm `getToken` của kênh để lấy token mới. Nếu không nhận được token mới, Centrifugo ngừng gửi tin của kênh trong khoảng 25 đến 52 giây sau khi token kênh hết hạn. Do đó, người dùng bị gỡ realm role ngừng nhận tin của kênh chậm nhất khoảng 2 phút sau khi bị gỡ.
+
+Ví dụ, tiếp theo ví dụ ở mục [Kết nối](#kết-nối):
+
+```js
+import { UnauthorizedError } from "centrifuge";
+
+const sub = centrifuge.newSubscription("role:quan-ly", {
+  getToken: async (ctx) => {
+    await keycloak.updateToken(30);
+    const res = await fetch("https://dx.example.com/core/realtime/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keycloak.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel: ctx.channel }),
+    });
+    if (res.status === 403) {
+      throw new UnauthorizedError();
+    }
+    if (!res.ok) {
+      throw new Error(`Không lấy được token kênh, mã ${res.status}`);
+    }
+    return (await res.json()).token;
+  },
+});
+sub.on("publication", (ctx) => console.log(ctx.data));
+sub.subscribe();
+```
+
+Khi `getToken` ném `UnauthorizedError`, thư viện ngừng nghe kênh. Với lỗi khác, thư viện thử lại sau ít giây. Kênh `public:<tên>` và `user:#<sub>` không cần `getToken`, ví dụ `centrifuge.newSubscription("user:#" + keycloak.subject).subscribe()`.
+
+Khi từ chối hoặc ngừng gửi tin của kênh, Centrifugo trả về một trong các mã sau:
+
+| Mã | Ý nghĩa |
+|---|---|
+| `102` | Kênh thuộc namespace khác ba namespace trên |
+| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` không kèm token kênh hoặc kèm token kênh giả |
+| `109` | Token kênh đã hết hạn. Thư viện tự lấy token kênh mới rồi nghe lại |
+| `2501` | Kênh hết hạn vì không nhận được token kênh mới. Thư viện tự nghe lại |
+| `3500` | Token kênh của kênh khác hoặc của người dùng khác. Centrifugo đóng kết nối và thư viện không kết nối lại |
+
+### Gửi tin từ cơ sở dữ liệu
+
+Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong ba dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
+
+Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới các client đang nghe kênh rồi xóa tin khỏi bảng. Khi transaction bị hủy, tin cũng bị hủy. Do đó, client chỉ nhận tin về dữ liệu đã được lưu. Các tin của cùng một transaction tới client theo đúng thứ tự gọi hàm.
+
+Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Hiện tại, chỉ role `workflow` có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình. Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
+
+```sql
+CREATE FUNCTION ung_dung.bao_da_xu_ly(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE ung_dung.yeu_cau SET trang_thai = 'da_xu_ly' WHERE ma = bien ->> 'ma_yeu_cau';
+    PERFORM core.publish(
+        'user:#' || (bien ->> 'initiator'),
+        jsonb_build_object('ma_yeu_cau', bien ->> 'ma_yeu_cau', 'trang_thai', 'da_xu_ly')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.bao_da_xu_ly(jsonb) TO workflow;
+```
+
+Centrifugo gửi mã của tin trong trường `tags` của tin, với khóa `id`. Ví dụ: `{"id": "1276d3b3-fd8f-43e0-9649-b5ef7743accf"}`. Trong một số trường hợp hiếm, client nhận một tin hai lần. Ví dụ, Centrifugo dừng đột ngột sau khi gửi tin và trước khi xóa tin khỏi bảng. Khi chạy lại, Centrifugo gửi lại tin này. Do đó, client dùng mã của tin để bỏ tin trùng.
+
+### Tin bị lỡ khi mất kết nối
+
+Mỗi kênh có history giữ tối đa 100 tin gần nhất trong 5 phút. Mỗi tin trong history có một số thứ tự (offset). History của kênh có một mã (epoch). Mã này đổi khi history được tạo lại.
+
+Khi client mất kết nối rồi kết nối lại, thư viện tự gửi epoch và offset của tin cuối cùng đã nhận. Nếu các tin bị lỡ còn đủ trong history, Centrifugo gửi lại các tin này theo đúng thứ tự, trước các tin mới. Khi đó, sự kiện `subscribed` có `recovered` là true và ứng dụng không cần làm gì thêm.
+
+Centrifugo trả `recovered` là false khi client lỡ quá 100 tin, kết nối lại sau quá 5 phút hoặc Centrifugo đã khởi động lại. Centrifugo giữ history trong bộ nhớ. Do đó, mỗi lần Centrifugo khởi động lại, history mất và mọi kênh có epoch mới. Khi `recovered` là false, client có thể đã lỡ tin, nên ứng dụng tải lại dữ liệu qua API. Ví dụ, `reloadData` dưới đây là hàm của ứng dụng, đọc lại dữ liệu qua API:
+
+```js
+sub.on("subscribed", async (ctx) => {
+  if (ctx.wasRecovering && !ctx.recovered) {
+    await reloadData();
+  }
+});
+```
+
+Tin ghi bằng hàm `core.publish` trong lúc Centrifugo dừng không bị mất. Các tin này nằm lại trong bảng `core.outbox` và được gửi ngay khi Centrifugo chạy lại, theo đúng thứ tự ghi. Client thường kết nối lại sau lúc đó, nên không nhận các tin này như tin mới. Các tin này nằm trong history của kênh. Ứng dụng chỉ hiện các tin gần đây, ví dụ danh sách thông báo, có thể đọc history thay cho việc tải lại dữ liệu:
+
+```js
+const { publications } = await sub.history({ limit: 100 });
+```
+
+Sau khi Centrifugo khởi động lại, history chỉ gồm các tin được gửi từ lúc đó. Lời gọi `history` phải có `limit`. Khi không có `limit`, Centrifugo chỉ trả epoch và offset của kênh, không trả tin nào. Tin trong history mang cùng mã `id` với tin đã nhận, nên ứng dụng bỏ tin trùng theo mã này. Chỉ client đang nghe kênh mới đọc được history của kênh đó.
+
+### API của server và Admin web
+
+API của server và Admin web của Centrifugo nằm ở cổng 9480, chỉ truy cập được từ chính máy cài đặt. API Gateway không mở cổng này. Lời gọi API của server cần header `X-API-Key` với giá trị `CENTRIFUGO_API_KEY` trong file `.env`. Ví dụ, lệnh sau xem thông tin các node của Centrifugo:
+
+```bash
+curl -X POST -H "X-API-Key: $(grep CENTRIFUGO_API_KEY ~/saigonos/.env | cut -d= -f2)" -d '{}' http://127.0.0.1:9480/api/info
+```
+
+Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết nối và gọi thử API của server. Mật khẩu đăng nhập là giá trị `CENTRIFUGO_ADMIN_PASSWORD` trong file `.env`.
+
+## Thông báo cho người dùng
+
+Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
+
+### Gửi thông báo
+
+Hàm `core.notify(recipient, dedup_key, title, body, link, telegram)` của cơ sở dữ liệu ghi một thông báo rồi gửi thông báo đó tới kênh `user:#<recipient>`. Hàm trả về mã của thông báo, có kiểu `uuid`. Các tham số của hàm như sau:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `recipient` | Mã người nhận, tức claim `sub` trong access token của người nhận |
+| `dedup_key` | Khóa chống trùng, dài từ 1 đến 255 ký tự |
+| `title` | Tiêu đề, dài tối đa 200 ký tự. Tiêu đề không được để trống và không chứa ký tự điều khiển, ví dụ dấu xuống dòng |
+| `body` | Nội dung, dài tối đa 2000 ký tự. Tham số này có thể bỏ qua |
+| `link` | Đường dẫn tới một trang trong hệ thống, bắt đầu bằng một dấu `/` và dài tối đa 1000 ký tự. Ví dụ: `/yeu-cau/YC-001`. Tham số này có thể bỏ qua |
+| `telegram` | Khi có giá trị `true`, thông báo còn được gửi tới nhóm Telegram như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram). Mặc định là `false` |
+
+Hàm báo lỗi khi một tham số không hợp lệ. Hàm từ chối đường dẫn tới web khác, ví dụ `https://...` hoặc `//...`, và đường dẫn `javascript:`. Do đó, ứng dụng hiển thị được đường dẫn của thông báo mà không cần kiểm tra lại.
+
+Thông báo và tin gửi Centrifugo được ghi trong cùng transaction với dữ liệu, như với hàm `core.publish` ở mục [Gửi tin từ cơ sở dữ liệu](#gửi-tin-từ-cơ-sở-dữ-liệu). Khi transaction bị hủy, thông báo và tin cũng bị hủy.
+
+Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
+
+Hiện tại, chỉ role `workflow` có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
+
+```sql
+CREATE FUNCTION ung_dung.bao_tin_da_xu_ly(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM core.notify(
+        recipient => bien ->> 'initiator',
+        dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':da-xu-ly',
+        title => 'Yêu cầu ' || (bien ->> 'ma_yeu_cau') || ' đã được xử lý',
+        link => '/yeu-cau/' || (bien ->> 'ma_yeu_cau')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.bao_tin_da_xu_ly(jsonb) TO workflow;
+```
+
+### Đọc thông báo
+
+Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `id` | Mã của thông báo |
+| `title`, `body`, `link` | Tiêu đề, nội dung và đường dẫn. Trường `body` và `link` có giá trị `null` khi hàm `core.notify` không nhận hai tham số này |
+| `created_at` | Thời điểm tạo |
+| `read_at` | Thời điểm người nhận đánh dấu đã đọc. Giá trị `null` nghĩa là chưa đọc |
+
+Lời gọi `POST /core/notifications/{id}/read` đánh dấu một thông báo là đã đọc và trả về thông báo đó. Khi thông báo đã được đọc trước đó, thời điểm đọc không đổi. Người dùng chỉ thấy và chỉ đánh dấu được thông báo gửi cho chính mình. Với thông báo của người khác, lời gọi nhận mã 404 như khi thông báo không tồn tại.
+
+### Nhận thông báo mới
+
+Khi có thông báo mới, kênh `user:#<sub>` của người nhận nhận một tin có dạng `{"notification": {...}}`. Đối tượng `notification` có các trường như ở mục [Đọc thông báo](#đọc-thông-báo), với `read_at` là `null`. Kênh này có thể nhận cả tin khác của ứng dụng. Do đó, ứng dụng nhận ra thông báo nhờ khóa `notification`. Ví dụ, tiếp theo ví dụ ở mục [Kết nối](#kết-nối):
+
+```js
+const sub = centrifuge.newSubscription("user:#" + keycloak.subject);
+sub.on("publication", (ctx) => {
+  if (ctx.data.notification) {
+    showNotification(ctx.data.notification);
+  }
+});
+sub.subscribe();
+```
+
+Trong ví dụ trên, `showNotification` là hàm của ứng dụng. Ứng dụng thường tải danh sách thông báo bằng lời gọi `GET /core/notifications` rồi nghe kênh. Một thông báo có thể vừa có trong danh sách vừa tới qua kênh. Do đó, ứng dụng bỏ thông báo trùng theo trường `id`.
+
+### Gửi thông báo qua Telegram
+
+Khi hàm `core.notify` nhận tham số `telegram => true`, thông báo còn được gửi tới một nhóm Telegram qua Bot API. Tin Telegram gồm tiêu đề in đậm, nội dung và địa chỉ đầy đủ của đường dẫn, ví dụ `https://dx.example.com/yeu-cau/YC-001`. Tin được gửi tới nhóm, không gửi riêng cho người nhận. Do đó, mỗi khóa chống trùng chỉ có một tin Telegram, kể cả khi sự việc được báo cho nhiều người. Ví dụ, trong hàm của một bước máy làm:
+
+```sql
+PERFORM core.notify(
+    recipient => bien ->> 'nguoi_xu_ly',
+    dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':moi',
+    title => 'Có yêu cầu mới ' || (bien ->> 'ma_yeu_cau'),
+    link => '/yeu-cau/' || (bien ->> 'ma_yeu_cau'),
+    telegram => true
+);
+```
+
+Để bật Telegram:
+
+1. Tạo bot bằng [BotFather](https://t.me/BotFather) với lệnh `/newbot`. BotFather trả về token của bot, có dạng `123456789:AA...`.
+2. Thêm bot vào nhóm nhận thông báo. Sau đó, gửi lệnh `/start@<tên bot>` trong nhóm. Khi nhóm có chủ đề (topic), gửi lệnh này trong chủ đề cần nhận tin.
+3. Mở địa chỉ `https://api.telegram.org/bot<token>/getUpdates` bằng trình duyệt. Mã nhóm là giá trị `chat.id`, ví dụ `-1001234567890`. Mã chủ đề là giá trị `message_thread_id`. Telegram chỉ giữ các giá trị này trong 24 giờ.
+4. Thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`.
+
+```
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_CHAT_ID=-1001234567890
+TELEGRAM_TOPIC_ID=2
+```
+
+Khi bật chủ đề cho nhóm, Telegram chuyển nhóm thành supergroup và mã nhóm thay đổi. Do đó, lấy mã nhóm sau khi bật chủ đề. Các giá trị Telegram trong file `.env` như sau:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token của bot |
+| `TELEGRAM_CHAT_ID` | Mã nhóm, hoặc tên công khai của nhóm dạng `@ten_nhom` |
+| `TELEGRAM_TOPIC_ID` | Mã chủ đề. Khi bỏ trống, tin được gửi vào nhóm, hoặc vào chủ đề General khi nhóm có chủ đề |
+| `TELEGRAM_API_URL` | Địa chỉ của Bot API, mặc định là `https://api.telegram.org`. Chỉ đổi giá trị này khi dùng Bot API server riêng |
+
+Để thử cấu hình, chạy lệnh sau trong thư mục làm việc. Nhóm nhận tin sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-telegram-2`.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.notify('kiem-tra', 'kiem-tra-telegram-1', 'Tin thử của SaigonOS', telegram => true)"
+```
+
+Trạng thái của tin, cách xử lý lỗi và cách gửi lại được trình bày ở mục [Hàng đợi gửi tin](#hàng-đợi-gửi-tin).
+
+### Gửi email
+
+Hàm `core.send_email(address, dedup_key, title, body, link)` của cơ sở dữ liệu ghi một email vào hàng đợi `core.deliveries`. Service `core` gửi email qua một máy chủ SMTP, ví dụ máy chủ của Gmail. Hàm trả về mã của email trong hàng đợi, có kiểu `bigint`. Các tham số của hàm như sau:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `address` | Địa chỉ email của người nhận, dài tối đa 254 ký tự. Địa chỉ không chứa chữ có dấu |
+| `dedup_key` | Khóa chống trùng, dài từ 1 đến 255 ký tự |
+| `title` | Tiêu đề của email, theo quy tắc của tham số `title` ở hàm `core.notify` |
+| `body` | Nội dung, dài tối đa 2000 ký tự. Tham số này có thể bỏ qua |
+| `link` | Đường dẫn tới một trang trong hệ thống, theo quy tắc của tham số `link` ở hàm `core.notify`. Tham số này có thể bỏ qua |
+
+Người nhận không cần có tài khoản trong hệ thống. Ví dụ, hàm sau của một bước máy làm gửi email xác nhận cho người gửi yêu cầu:
+
+```sql
+CREATE FUNCTION ung_dung.gui_email_da_nhan(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM core.send_email(
+        address => bien ->> 'email',
+        dedup_key => 'yeu-cau:' || (bien ->> 'ma_yeu_cau') || ':da-nhan',
+        title => 'Đã nhận yêu cầu ' || (bien ->> 'ma_yeu_cau'),
+        body => 'Cảm ơn bạn đã gửi yêu cầu. Bạn có thể tra cứu yêu cầu tại đường dẫn sau.',
+        link => '/tra-cuu/' || (bien ->> 'ma_yeu_cau')
+    );
+    RETURN NULL;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ung_dung.gui_email_da_nhan(jsonb) TO workflow;
+```
+
+Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
+
+Email chỉ có phần văn bản thuần. Phần này gồm nội dung, hoặc tiêu đề khi không có nội dung, rồi tới địa chỉ đầy đủ của đường dẫn. Email có header `Auto-Submitted: auto-generated`, nên chức năng trả lời tự động của hộp thư người nhận không trả lời email này.
+
+Để bật email, thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`. Ví dụ với Gmail:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_USERNAME=thong-bao@gmail.com
+SMTP_PASSWORD=abcdefghijklmnop
+SMTP_FROM=thong-bao@gmail.com
+SMTP_FROM_NAME=Phòng Kỹ thuật
+```
+
+Gmail không nhận mật khẩu đăng nhập thường của tài khoản. Tài khoản cần bật xác minh 2 bước, rồi tạo mật khẩu ứng dụng tại trang [Mật khẩu ứng dụng](https://myaccount.google.com/apppasswords). Mật khẩu ứng dụng gồm 16 chữ cái, được viết liền, không có khoảng trắng. Các giá trị SMTP trong file `.env` như sau:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `SMTP_HOST` | Tên hoặc địa chỉ IP của máy chủ SMTP |
+| `SMTP_PORT` | Cổng của máy chủ SMTP. Mặc định là 587, hoặc 465 khi `SMTP_SECURITY` là `tls`, hoặc 25 khi `SMTP_SECURITY` là `none` |
+| `SMTP_SECURITY` | Cách mã hóa kết nối. Giá trị `starttls` mã hóa kết nối bằng lệnh STARTTLS. Giá trị `tls` mã hóa ngay từ đầu kết nối. Giá trị `none` không mã hóa và không cho dùng mật khẩu, chỉ dùng với máy chủ SMTP trong mạng nội bộ. Mặc định là `tls` khi `SMTP_PORT` là 465, và `starttls` với các cổng khác |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Tài khoản đăng nhập máy chủ SMTP. Bỏ trống hai giá trị này khi máy chủ không yêu cầu đăng nhập |
+| `SMTP_FROM` | Địa chỉ gửi. Với Gmail, đây là địa chỉ của tài khoản |
+| `SMTP_FROM_NAME` | Tên người gửi hiện trong hộp thư của người nhận. Giá trị này có thể bỏ trống |
+
+Service `core` luôn kiểm tra chứng chỉ của máy chủ SMTP. Khi `SMTP_SECURITY` là `starttls` mà máy chủ không hỗ trợ STARTTLS, email không được gửi. Do đó, mật khẩu không được gửi qua kết nối chưa mã hóa. Khi một giá trị trong file `.env` có dấu `$`, giá trị đó được đặt trong cặp dấu nháy đơn, ví dụ `SMTP_PASSWORD='ab$cd'`.
+
+Để thử cấu hình, chạy lệnh sau trong thư mục làm việc, với `<địa chỉ>` là một địa chỉ email của bạn. Email tới sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-email-2`.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.send_email('<địa chỉ>', 'kiem-tra-email-1', 'Email thử của SaigonOS')"
+```
+
+### Hàng đợi gửi tin
+
+Mỗi tin Telegram và mỗi email là một dòng của bảng `core.deliveries`. Dòng này được ghi trong cùng transaction với dữ liệu. Khi transaction được commit, service `core` gửi tin ngay. Telegram và email có vòng gửi riêng, nên lỗi của kênh này không làm chậm kênh kia. Cột `channel` cho biết kênh gửi, có giá trị `telegram` hoặc `email`. Cột `status` cho biết trạng thái của tin:
+
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `pending` | Tin đang chờ gửi hoặc chờ gửi lại |
+| `sending` | Service `core` đang gửi tin |
+| `sent` | Telegram hoặc máy chủ SMTP đã nhận tin. Cột `sent_id` ghi mã của tin trong nhóm Telegram, hoặc `Message-ID` của email |
+| `failed` | Không gửi được tin. Cột `error` ghi lý do |
+| `unknown` | Không biết Telegram hoặc máy chủ SMTP đã nhận tin hay chưa |
+| `skipped` | Tin không được gửi vì kênh gửi chưa được cấu hình hoặc cấu hình chưa đúng |
+
+Ví dụ, lệnh sau xem 10 tin gần nhất:
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SELECT id, channel, status, failures, error FROM core.deliveries ORDER BY id DESC LIMIT 10"
+```
+
+Khi gửi lỗi, service `core` xử lý như sau:
+
+- Không kết nối được Telegram hoặc máy chủ SMTP, Telegram trả về mã 5xx, hoặc máy chủ SMTP trả về mã 4xx: tin được gửi lại sau 5 giây, 30 giây, 2 phút và 10 phút. Sau 5 lần gửi lỗi, tin chuyển sang `failed`.
+- Telegram trả về mã 429: service `core` chờ đúng số giây trong `retry_after` rồi mới gửi tiếp. Các tin Telegram khác cũng chờ trong thời gian này. Lần chờ này không tính là một lần gửi lỗi.
+- Telegram trả về mã 4xx khác, ví dụ token sai hoặc bot không ở trong nhóm: tin chuyển sang `failed` ngay.
+- Máy chủ SMTP trả về mã 5xx, ví dụ sai mật khẩu hoặc địa chỉ người nhận không tồn tại: email chuyển sang `failed` ngay. Máy chủ không hỗ trợ STARTTLS cũng cho kết quả này.
+
+Mỗi lần gửi lỗi được ghi vào log của service `core`, kèm lý do mà Telegram hoặc máy chủ SMTP trả về. Lệnh `docker compose logs core` trong thư mục làm việc dùng để xem log này.
+
+Bot API của Telegram và giao thức SMTP không có cách chống gửi trùng. Do đó, service `core` chuyển tin sang `sending` trước khi gửi, và tin đã `sent` không được gửi lại. Có hai trường hợp không biết tin đã tới nơi hay chưa. Trường hợp thứ nhất là lời gọi tới Telegram hoặc nội dung email đã được gửi đi, nhưng mất kết nối trước khi có câu trả lời. Trường hợp thứ hai là service `core` bị dừng đột ngột trong lúc gửi. Khi đó, tin chuyển sang `unknown` và không được gửi lại, để người nhận không nhận hai tin giống nhau. Thông báo trong ứng dụng không bị ảnh hưởng. Quản trị viên kiểm tra nhóm Telegram hoặc hỏi người nhận email. Nếu tin chưa tới, lệnh sau đưa tin về `pending`, với `<id>` là giá trị cột `id` của tin. Tin được gửi lại trong vòng 10 giây.
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "UPDATE core.deliveries SET status = 'pending' WHERE id = <id> AND status = 'unknown'"
+```
+
+Khi file `.env` chưa có cấu hình Telegram hoặc SMTP, tin của kênh đó chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc thiếu `SMTP_FROM`, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi kênh được cấu hình sau đó.
+
+Bảng `core.deliveries` giữ địa chỉ email, tiêu đề và nội dung của tin sau khi gửi.
 
 ## Cập nhật phiên bản
 
