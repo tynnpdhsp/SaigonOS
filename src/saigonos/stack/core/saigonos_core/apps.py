@@ -9,6 +9,7 @@ from saigonos_core.app_database import ApplyError, apply_database
 from saigonos_core.manifest import NAME_PATTERN, Problem, check_app, schema_text
 
 APPS = Path("/apps")
+PLUGGED = "Đã cắm ứng dụng {name} {version}."
 
 
 def parser() -> argparse.ArgumentParser:
@@ -74,7 +75,7 @@ def apply(name: str) -> int:
     except ApplyError as error:
         print(error)
         return 1
-    print(f"Đã cắm ứng dụng {manifest.name} {manifest.version}.")
+    print(PLUGGED.format(name=manifest.name, version=manifest.version))
     return 0
 
 

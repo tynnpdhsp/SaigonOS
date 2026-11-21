@@ -26,6 +26,9 @@ PASSWORD_LENGTH = 32
 APPLICATION = "saigonos-apps"
 UNREACHABLE = (OSError, TimeoutError, asyncpg.CannotConnectNowError)
 TRANSACTION_COMMANDS = "transaction commands"
+CREATED = "Đã tạo schema {schema} và role {schema} của ứng dụng."
+RAN = "Đã chạy file {name}."
+NOTHING_NEW = "Không có file SQL mới."
 
 
 class ApplyError(Exception):
@@ -132,7 +135,7 @@ async def run_files(
         try:
             for file in files:
                 await run_file(connection, file)
-                say(f"Đã chạy file {file.name}.")
+                say(RAN.format(name=file.name))
         finally:
             await connection.close()
     finally:
@@ -146,7 +149,7 @@ async def apply_database(manifest: Manifest, folder: Path, say: Callable[[str], 
     try:
         await admin.execute(LOCK)
         if await admin.fetchval(PREPARE, app):
-            say(f"Đã tạo schema {schema_of(app)} và role {schema_of(app)} của ứng dụng.")
+            say(CREATED.format(schema=schema_of(app)))
         applied = dict(await admin.fetch(APPLIED, app))
         for file in files:
             if applied.get(file.name, file.checksum) != file.checksum:
@@ -158,7 +161,7 @@ async def apply_database(manifest: Manifest, folder: Path, say: Callable[[str], 
         if pending:
             await run_files(admin, app, pending, say)
         else:
-            say("Không có file SQL mới.")
+            say(NOTHING_NEW)
         content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_none=True))
         return await admin.fetchval(
             FINISH, app, manifest.title, manifest.version, content, bool(pending)
