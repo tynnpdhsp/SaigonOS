@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from saigonos_core import apps
+from saigonos_core.app_database import ApplyError
 from saigonos_core.manifest import MANIFEST, schema_text
 
 VALID = {
@@ -78,3 +79,72 @@ def test_module_runs_with_python_m(monkeypatch, capsys):
 
     assert exit_info.value.code == 0
     assert json.loads(capsys.readouterr().out)["title"] == "Bản khai ứng dụng SaigonOS"
+
+
+class FakeApply:
+    def __init__(self):
+        self.calls = []
+        self.failure = None
+
+    async def __call__(self, manifest, folder, say):
+        self.calls.append((manifest.name, folder))
+        say("Đã chạy file 0001_don.sql.")
+        if self.failure:
+            raise self.failure
+        return True
+
+
+@pytest.fixture
+def applied(monkeypatch):
+    fake = FakeApply()
+    monkeypatch.setattr(apps, "apply_database", fake)
+    return fake
+
+
+def test_apply_plugs_checked_app(folder, applied, capsys):
+    assert apps.main(["apply", "don-tu"]) == 0
+    assert applied.calls == [("don-tu", folder)]
+    assert capsys.readouterr().out == "Đã chạy file 0001_don.sql.\nĐã cắm ứng dụng don-tu 1.2.0.\n"
+
+
+def test_apply_reports_error_of_database(folder, applied, capsys):
+    applied.failure = ApplyError("Không chạy được file 0001_don.sql: lỗi.")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "Đã chạy file 0001_don.sql.",
+        "Không chạy được file 0001_don.sql: lỗi.",
+    ]
+
+
+def test_apply_checks_app_first(folder, applied, capsys):
+    (folder / "ui" / "index.html").unlink()
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out == (
+        'Ứng dụng có 1 lỗi:\n- ui: Thư mục "ui" không có file index.html.\n'
+    )
+
+
+def test_apply_needs_folder_named_after_app(folder, applied, capsys):
+    folder.rename(folder.with_name("don-tu-cu"))
+
+    assert apps.main(["apply", "don-tu-cu"]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out == (
+        "Thư mục don-tu-cu chứa bản khai của ứng dụng don-tu. "
+        "Tên thư mục phải trùng tên ứng dụng.\n"
+    )
+
+
+@pytest.mark.parametrize("name", ["../etc", "Don-Tu", "don_tu", "don-tu/ui", ""])
+def test_apply_refuses_invalid_name(folder, applied, capsys, name):
+    assert apps.main(["apply", name]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out == f"Tên ứng dụng {name} không hợp lệ.\n"
+
+
+def test_apply_reports_missing_folder(folder, applied, capsys):
+    assert apps.main(["apply", "khong-co"]) == 1
+    assert capsys.readouterr().out == "Không tìm thấy thư mục khong-co trong thư mục apps.\n"
