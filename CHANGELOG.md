@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.5.0] - 2026-11-21
+
 ### Thêm
 
 - Service `centrifugo` gửi cập nhật tức thời tới ứng dụng qua WebSocket. Ứng dụng kết nối tới địa chỉ `/realtime/connection/websocket` của API Gateway và gửi access token của Keycloak trong lệnh connect. Centrifugo kiểm tra chữ ký, issuer, thời hạn và audience của access token. Kết nối không có access token, kết nối bằng ID token và kết nối bằng access token không mang mã người dùng đều bị từ chối. Centrifugo chỉ nhận kết nối WebSocket từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống, kể cả khi địa chỉ truy cập là một địa chỉ IPv6.
@@ -189,7 +191,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.4.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.2.0
