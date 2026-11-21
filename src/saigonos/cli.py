@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import os
 import shlex
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
@@ -30,6 +31,7 @@ DEFAULT_PORTS = {"http": 80, "https": 443}
 MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
 MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
 COLUMN_GAP = " " * 4
+CHECK_FOLDER = "/check"
 
 home_option = click.option(
     "--home",
@@ -256,6 +258,47 @@ def up(ctx: click.Context, home: Path) -> None:
 def down(ctx: click.Context, home: Path, volumes: bool) -> None:
     remove_disabled_services(home)
     run_compose(ctx, home, "down", *(["--volumes"] if volumes else []))
+
+
+@main.command(
+    short_help="Soát bản khai và các thư mục của một ứng dụng.",
+    help=(
+        "Soát bản khai saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
+        "rồi in mọi lỗi tìm thấy.\n\n"
+        "Lệnh chạy service apps bằng Docker Compose. Thư mục làm việc phải được tạo "
+        "bằng lệnh saigonos init, nhưng hệ thống không cần đang chạy."
+    ),
+)
+@home_option
+@click.option("--check", is_flag=True, help="Chỉ soát ứng dụng, không cắm ứng dụng vào hệ thống.")
+@click.argument("folder", metavar="THƯ_MỤC", type=click.Path(resolve_path=True, path_type=Path))
+@click.pass_context
+def apply(ctx: click.Context, home: Path, check: bool, folder: Path) -> None:
+    if not check:
+        raise click.UsageError("Lệnh apply hiện chỉ chạy với tùy chọn --check.")
+    if not folder.exists():
+        raise click.ClickException(f"Không tìm thấy thư mục {folder}.")
+    if not folder.is_dir():
+        raise click.ClickException(f"{folder} không phải thư mục.")
+    if ":" in str(folder):
+        raise click.ClickException(
+            f"Đường dẫn {folder} có dấu hai chấm, "
+            "nên Docker Compose không gắn được thư mục này vào container."
+        )
+    run_compose(
+        ctx,
+        home,
+        "run",
+        "--rm",
+        "--no-deps",
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+        "--volume",
+        f"{folder}:{CHECK_FOLDER}:ro",
+        "apps",
+        "check",
+        CHECK_FOLDER,
+    )
 
 
 @main.command(help="Kiểm tra trạng thái các service và API Gateway.")
