@@ -26,6 +26,7 @@ from saigonos.home import (
 )
 from saigonos_core import apps
 from saigonos_core.app_database import CREATED, RAN
+from saigonos_core.app_keycloak import CLIENT_CREATED, DEFAULT_SCOPES, OWNER, ROLE_CREATED
 from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
@@ -402,6 +403,15 @@ def test_readme_shows_real_output_of_apply():
     assert sample.splitlines() == [
         CREATED.format(schema=data["name"].replace("-", "_")),
         RAN.format(name=sql_file),
+        *(ROLE_CREATED.format(role=role["name"]) for role in data["roles"]),
+        CLIENT_CREATED.format(client=data["name"]),
         apps.INSTALLED.format(name=data["name"], version=data["version"]),
     ]
     assert f"Ví dụ file `database/{sql_file}`" in PROSE
+
+
+def test_readme_states_client_scopes_and_owner_attribute_of_app_clients():
+    scopes = ", ".join(f"`{scope}`" for scope in DEFAULT_SCOPES)
+
+    assert f"client scope mặc định {scopes} và không có client scope tùy chọn" in PROSE
+    assert f"thuộc tính `{OWNER}` của client và realm role" in PROSE

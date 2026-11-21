@@ -1328,17 +1328,20 @@ Lệnh thực hiện các bước sau:
 
 1. Soát ứng dụng như mục [Soát ứng dụng](#soát-ứng-dụng). Khi có lỗi, lệnh dừng và không thay đổi gì.
 2. Chép bản khai và các thư mục đã khai vào thư mục `apps/<tên ứng dụng>` của thư mục làm việc. Các file khác trong thư mục ứng dụng, ví dụ thư mục `.git`, không được chép.
-3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng).
+3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng) và vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng).
 
 Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
 
 ```text
 Đã tạo schema nghi_phep và role nghi_phep của ứng dụng.
 Đã chạy file 0001_don.sql.
+Đã tạo realm role nghi-phep.nhan-vien.
+Đã tạo realm role nghi-phep.quan-ly.
+Đã tạo client nghi-phep.
 Đã cài đặt ứng dụng nghi-phep 0.1.0.
 ```
 
-Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu không thay đổi.
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu và Keycloak không thay đổi.
 
 Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
 
@@ -1348,7 +1351,7 @@ cd ~/saigonos
 docker compose run --rm apps apply nghi-phep
 ```
 
-Service `apps` giữ mật khẩu superuser của PostgreSQL và chỉ chạy khi được gọi. Service `core` không có mật khẩu này.
+Service `apps` giữ mật khẩu superuser của PostgreSQL và mật khẩu của tài khoản `admin` trong realm master của Keycloak. Service này chỉ chạy khi được gọi. Service `core` không có hai mật khẩu này.
 
 ### File SQL của ứng dụng
 
@@ -1380,9 +1383,31 @@ GRANT USAGE ON SCHEMA nghi_phep TO authenticated;
 GRANT SELECT, INSERT ON don TO authenticated;
 ```
 
+### Đăng nhập vào ứng dụng
+
+Lệnh cài đặt tạo các mục sau trong realm `saigonos` của Keycloak:
+
+- Mỗi role trong bản khai trở thành một realm role, với mô tả lấy từ bản khai.
+- Một client trùng tên ứng dụng, ví dụ `nghi-phep`. Đây là public client, chỉ dùng luồng Authorization Code với PKCE `S256`. Password grant, luồng implicit, service account và device grant đều tắt. Địa chỉ chuyển hướng chỉ gồm `<địa chỉ truy cập>/apps/<tên ứng dụng>/` và các đường dẫn bên dưới.
+- Thiết lập Full scope allowed của client bị tắt. Scope mapping của client chỉ gồm realm role `authenticated` và các role của ứng dụng. Client có các client scope mặc định `acr`, `basic`, `email`, `profile`, `roles`, `web-origins` và không có client scope tùy chọn.
+
+Nhờ đó, access token do client cấp chỉ mang realm role `authenticated` và các role của chính ứng dụng, kể cả khi người dùng có role của ứng dụng khác hoặc role `admin`. Ứng dụng cũng không xin được scope `offline_access`.
+
+Ứng dụng đăng nhập theo các địa chỉ trong tài liệu discovery `/auth/realms/saigonos/.well-known/openid-configuration`, với `client_id` là tên ứng dụng.
+
+Để gán role của ứng dụng cho người dùng, mở Admin Console của realm `saigonos`, chọn **Users**, chọn người dùng, mở tab **Role mapping**, bấm **Assign role** rồi chọn role của ứng dụng.
+
+Mỗi lần cài đặt, client được đặt lại theo bản khai. Thiết lập, mapper, scope mapping và client scope đã sửa trong Admin Console đều trở về như trên. Mô tả của realm role cũng được đặt lại, composite role thêm vào role của ứng dụng bị gỡ. Role bị bỏ khỏi bản khai vẫn được giữ cùng với việc gán role, nhưng không còn trong scope mapping. Do đó, access token của ứng dụng không mang role đó nữa.
+
+SaigonOS ghi tên ứng dụng vào thuộc tính `saigonos.app` của client và realm role. Khi Keycloak đã có client hoặc realm role trùng tên mà không mang thuộc tính này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới client hoặc role đó.
+
+Địa chỉ chuyển hướng lấy từ giá trị `SAIGONOS_URL` trong file `.env`. Sau khi đổi địa chỉ truy cập, hãy chạy lại lệnh cài đặt cho từng ứng dụng, ví dụ `saigonos apply ./nghi-phep`.
+
 ### Gọi API của ứng dụng
 
-PostgREST phục vụ schema của mọi ứng dụng đã cài đặt tại địa chỉ `/api/` của API Gateway. Lời gọi chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Ví dụ:
+PostgREST phục vụ schema của mọi ứng dụng đã cài đặt tại địa chỉ `/api/` của API Gateway. Lời gọi chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`.
+
+Lời gọi vào schema của một ứng dụng phải kèm access token được cấp cho client của ứng dụng đó, tức claim `azp` của access token là tên ứng dụng. Access token của client khác, kể cả của ứng dụng khác, nhận mã 403 với mã lỗi `SGN02`. Lời gọi không có access token vẫn chạy với role `anon`. Schema `api` nhận access token của mọi client. Ví dụ:
 
 ```js
 const headers = {
