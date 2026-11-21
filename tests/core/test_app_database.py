@@ -288,6 +288,21 @@ def test_error_of_core_function_is_reported_with_hint(server, folder):
     assert server.queries("postgres") == [LOCK, PREPARE, "close"]
 
 
+def test_step_before_finish_runs_after_files_and_its_error_stops_apply(server, folder):
+    seen = []
+
+    def before_finish():
+        seen.append([event[1] for event in server.events])
+        raise ApplyError("Keycloak trả về mã 500 cho lời gọi POST /clients.")
+
+    with pytest.raises(ApplyError, match="mã 500"):
+        asyncio.run(apply_database(Manifest.model_validate(DATA), folder, [].append, before_finish))
+
+    assert seen[0][-1] == CLOSE_LOGIN
+    assert FINISH not in server.queries("postgres")
+    assert server.events[-1] == ("postgres", "close")
+
+
 def test_database_without_functions_of_this_version_asks_to_update(server, folder):
     server.failures[PREPARE, "ghi-chu"] = postgres_error(
         "42883", "function core.prepare_app(unknown) does not exist"

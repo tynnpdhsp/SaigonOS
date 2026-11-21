@@ -471,6 +471,10 @@ services:
       PGDATABASE: saigonos
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
     volumes:
       - ./apps:/apps:ro
 

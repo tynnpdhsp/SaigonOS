@@ -81,31 +81,97 @@ def test_module_runs_with_python_m(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["title"] == "Bản khai ứng dụng SaigonOS"
 
 
+SETTINGS = {
+    "KEYCLOAK_URL": "http://keycloak:8080/auth",
+    "KEYCLOAK_ADMIN_USERNAME": "admin",
+    "KEYCLOAK_ADMIN_PASSWORD": "mat-khau-quan-tri",
+    "SAIGONOS_URL": "https://dx.example.com",
+}
+
+
 class FakeApply:
     def __init__(self):
         self.calls = []
+        self.events = []
         self.failure = None
+        self.taken = None
+        self.refusal = None
 
-    async def __call__(self, manifest, folder, say):
+    async def database(self, manifest, folder, say, before_finish):
         self.calls.append((manifest.name, folder))
         say("Đã chạy file 0001_don.sql.")
         if self.failure:
             raise self.failure
+        before_finish()
+        self.events.append("finish")
+        return True
+
+    def check_names(self, keycloak, manifest):
+        admin = (keycloak.host, keycloak.port, keycloak.base, keycloak.username, keycloak.password)
+        self.events.append(("check", *admin, manifest.name))
+        if self.taken:
+            raise self.taken
+
+    def apply_keycloak(self, keycloak, manifest, site_url, say):
+        self.events.append(("keycloak", site_url, manifest.name))
+        say("Đã tạo client don-tu.")
+        if self.refusal:
+            raise self.refusal
         return True
 
 
 @pytest.fixture
 def applied(monkeypatch):
     fake = FakeApply()
-    monkeypatch.setattr(apps, "apply_database", fake)
+    for name, value in SETTINGS.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(apps, "apply_database", fake.database)
+    monkeypatch.setattr(apps, "check_names", fake.check_names)
+    monkeypatch.setattr(apps, "apply_keycloak", fake.apply_keycloak)
     return fake
 
 
 def test_apply_plugs_checked_app(folder, applied, capsys):
     assert apps.main(["apply", "don-tu"]) == 0
     assert applied.calls == [("don-tu", folder)]
-    assert (
-        capsys.readouterr().out == "Đã chạy file 0001_don.sql.\nĐã cài đặt ứng dụng don-tu 1.2.0.\n"
+    assert applied.events == [
+        ("check", "keycloak", 8080, "/auth", "admin", "mat-khau-quan-tri", "don-tu"),
+        ("keycloak", "https://dx.example.com", "don-tu"),
+        "finish",
+    ]
+    assert capsys.readouterr().out == (
+        "Đã chạy file 0001_don.sql.\nĐã tạo client don-tu.\nĐã cài đặt ứng dụng don-tu 1.2.0.\n"
+    )
+
+
+def test_names_taken_on_keycloak_stop_apply_before_database(folder, applied, capsys):
+    applied.taken = ApplyError("Client don-tu đã có trong Keycloak.")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out == "Client don-tu đã có trong Keycloak.\n"
+
+
+def test_error_of_keycloak_stops_apply_before_finish(folder, applied, capsys):
+    applied.refusal = ApplyError("Keycloak trả về mã 500 cho lời gọi POST /clients.")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert "finish" not in applied.events
+    assert capsys.readouterr().out.splitlines() == [
+        "Đã chạy file 0001_don.sql.",
+        "Đã tạo client don-tu.",
+        "Keycloak trả về mã 500 cho lời gọi POST /clients.",
+    ]
+
+
+def test_apply_needs_settings_of_keycloak(folder, applied, capsys, monkeypatch):
+    monkeypatch.delenv("KEYCLOAK_ADMIN_PASSWORD")
+    monkeypatch.setenv("SAIGONOS_URL", "")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert (applied.calls, applied.events) == ([], [])
+    assert capsys.readouterr().out == (
+        "Service apps thiếu biến môi trường KEYCLOAK_ADMIN_PASSWORD, SAIGONOS_URL.\n"
     )
 
 

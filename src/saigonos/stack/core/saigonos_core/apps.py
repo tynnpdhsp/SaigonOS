@@ -1,15 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 import argparse
 import asyncio
+import os
 import re
 import sys
 from pathlib import Path
 
 from saigonos_core.app_database import ApplyError, apply_database
+from saigonos_core.app_keycloak import Keycloak, apply_keycloak, check_names
 from saigonos_core.manifest import NAME_PATTERN, Problem, check_app, schema_text
 
 APPS = Path("/apps")
 INSTALLED = "Đã cài đặt ứng dụng {name} {version}."
+SETTINGS = ("KEYCLOAK_URL", "KEYCLOAK_ADMIN_USERNAME", "KEYCLOAK_ADMIN_PASSWORD", "SAIGONOS_URL")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -53,6 +56,14 @@ def check(folder: str) -> int:
     return 0
 
 
+def keycloak_settings() -> tuple[Keycloak, str]:
+    missing = [name for name in SETTINGS if not os.environ.get(name)]
+    if missing:
+        raise ApplyError(f"Service apps thiếu biến môi trường {', '.join(missing)}.")
+    url, username, password, site_url = (os.environ[name] for name in SETTINGS)
+    return Keycloak(url, username, password), site_url
+
+
 def apply(name: str) -> int:
     if not re.fullmatch(NAME_PATTERN, name):
         print(f"Tên ứng dụng {name} không hợp lệ.")
@@ -71,7 +82,16 @@ def apply(name: str) -> int:
         )
         return 1
     try:
-        asyncio.run(apply_database(manifest, folder, print))
+        keycloak, site_url = keycloak_settings()
+        check_names(keycloak, manifest)
+        asyncio.run(
+            apply_database(
+                manifest,
+                folder,
+                print,
+                lambda: apply_keycloak(keycloak, manifest, site_url, print),
+            )
+        )
     except ApplyError as error:
         print(error)
         return 1

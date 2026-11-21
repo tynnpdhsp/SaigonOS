@@ -142,7 +142,12 @@ async def run_files(
         await admin.execute(CLOSE_LOGIN, app)
 
 
-async def apply_database(manifest: Manifest, folder: Path, say: Callable[[str], None]) -> bool:
+async def apply_database(
+    manifest: Manifest,
+    folder: Path,
+    say: Callable[[str], None],
+    before_finish: Callable[[], object] | None = None,
+) -> bool:
     app = manifest.name
     files = sql_files(folder, manifest)
     admin = await connect()
@@ -162,6 +167,8 @@ async def apply_database(manifest: Manifest, folder: Path, say: Callable[[str], 
             await run_files(admin, app, pending, say)
         else:
             say(NOTHING_NEW)
+        if before_finish is not None:
+            before_finish()
         content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_none=True))
         return await admin.fetchval(
             FINISH, app, manifest.title, manifest.version, content, bool(pending)
