@@ -294,7 +294,7 @@ def test_database_without_functions_of_this_version_asks_to_update(server, folde
     )
 
     assert failure_of(folder) == (
-        "Cơ sở dữ liệu chưa có các hàm để cắm ứng dụng. "
+        "Cơ sở dữ liệu chưa có các hàm để cài đặt ứng dụng. "
         "Hãy chạy lệnh saigonos up để cập nhật cơ sở dữ liệu rồi chạy lại."
     )
 

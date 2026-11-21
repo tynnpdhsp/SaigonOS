@@ -287,19 +287,19 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
 
 
 @main.command(
-    short_help="Cắm một ứng dụng vào hệ thống.",
+    short_help="Cài đặt một ứng dụng vào hệ thống.",
     help=(
         "Soát bản khai saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
-        "chép ứng dụng vào thư mục apps của thư mục làm việc rồi cắm ứng dụng "
+        "chép ứng dụng vào thư mục apps của thư mục làm việc rồi cài đặt ứng dụng "
         "vào hệ thống đang chạy.\n\n"
-        "Khi cắm lỗi, thư mục apps giữ bản đã cắm thành công gần nhất."
+        "Khi cài đặt lỗi, thư mục apps giữ bản đã cài đặt thành công gần nhất."
     ),
 )
 @home_option
 @click.option(
     "--check",
     is_flag=True,
-    help="Chỉ soát ứng dụng, không cắm vào hệ thống. Hệ thống không cần đang chạy.",
+    help="Chỉ soát ứng dụng, không cài đặt vào hệ thống. Hệ thống không cần đang chạy.",
 )
 @click.argument("folder", metavar="THƯ_MỤC", type=click.Path(resolve_path=True, path_type=Path))
 @click.pass_context

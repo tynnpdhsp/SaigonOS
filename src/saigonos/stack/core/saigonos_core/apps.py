@@ -9,7 +9,7 @@ from saigonos_core.app_database import ApplyError, apply_database
 from saigonos_core.manifest import NAME_PATTERN, Problem, check_app, schema_text
 
 APPS = Path("/apps")
-PLUGGED = "Đã cắm ứng dụng {name} {version}."
+INSTALLED = "Đã cài đặt ứng dụng {name} {version}."
 
 
 def parser() -> argparse.ArgumentParser:
@@ -26,8 +26,8 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("folder", metavar="THƯ_MỤC", help="Thư mục của ứng dụng trong thư mục apps.")
     apply = actions.add_parser(
         "apply",
-        help="Cắm một ứng dụng vào hệ thống.",
-        description="Soát rồi cắm ứng dụng trong thư mục apps/TÊN vào hệ thống đang chạy.",
+        help="Cài đặt một ứng dụng vào hệ thống.",
+        description="Soát rồi cài đặt ứng dụng trong thư mục apps/TÊN vào hệ thống đang chạy.",
     )
     apply.add_argument("name", metavar="TÊN", help="Tên ứng dụng, cũng là tên thư mục trong apps.")
     actions.add_parser("schema", help="In JSON Schema của bản khai.")
@@ -75,7 +75,7 @@ def apply(name: str) -> int:
     except ApplyError as error:
         print(error)
         return 1
-    print(PLUGGED.format(name=manifest.name, version=manifest.version))
+    print(INSTALLED.format(name=manifest.name, version=manifest.version))
     return 0
 
 

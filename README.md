@@ -1316,9 +1316,9 @@ docker compose run --rm apps check nghi-phep
 
 Khi gọi theo cách này, service `apps` chạy bằng tài khoản `nobody` của container. Do đó, mọi file của ứng dụng cần quyền đọc cho mọi tài khoản, ví dụ quyền `644`, và mọi thư mục cần quyền `755`.
 
-### Cắm ứng dụng
+### Cài đặt ứng dụng
 
-Khi hệ thống đang chạy, lệnh sau cắm ứng dụng trong thư mục `./nghi-phep` vào hệ thống:
+Khi hệ thống đang chạy, lệnh sau cài đặt ứng dụng trong thư mục `./nghi-phep` vào hệ thống:
 
 ```bash
 saigonos apply ./nghi-phep
@@ -1328,19 +1328,19 @@ Lệnh thực hiện các bước sau:
 
 1. Soát ứng dụng như mục [Soát ứng dụng](#soát-ứng-dụng). Khi có lỗi, lệnh dừng và không thay đổi gì.
 2. Chép bản khai và các thư mục đã khai vào thư mục `apps/<tên ứng dụng>` của thư mục làm việc. Các file khác trong thư mục ứng dụng, ví dụ thư mục `.git`, không được chép.
-3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cắm ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng).
+3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng).
 
-Ở lần cắm đầu tiên, lệnh in các dòng sau:
+Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
 
 ```text
 Đã tạo schema nghi_phep và role nghi_phep của ứng dụng.
 Đã chạy file 0001_don.sql.
-Đã cắm ứng dụng nghi-phep 0.1.0.
+Đã cài đặt ứng dụng nghi-phep 0.1.0.
 ```
 
-Khi cắm lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cắm thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu không thay đổi.
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu không thay đổi.
 
-Cũng có thể cắm bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
+Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
 
 ```bash
 cp -r ./nghi-phep ~/saigonos/apps/
@@ -1352,17 +1352,17 @@ Service `apps` giữ mật khẩu superuser của PostgreSQL và chỉ chạy kh
 
 ### File SQL của ứng dụng
 
-Mỗi ứng dụng có một schema và một role riêng trong cơ sở dữ liệu. Tên của cả hai là tên ứng dụng với dấu gạch ngang đổi thành dấu gạch dưới, ví dụ `nghi_phep`. Role sở hữu schema. Lệnh cắm chạy các file `.sql` trong thư mục `database` của ứng dụng theo các quy tắc sau:
+Mỗi ứng dụng có một schema và một role riêng trong cơ sở dữ liệu. Tên của cả hai là tên ứng dụng với dấu gạch ngang đổi thành dấu gạch dưới, ví dụ `nghi_phep`. Role sở hữu schema. Lệnh cài đặt chạy các file `.sql` trong thư mục `database` của ứng dụng theo các quy tắc sau:
 
-- File chạy theo thứ tự tên, bằng role của ứng dụng, không bằng superuser. Role này chỉ đăng nhập được trong lúc lệnh cắm chạy, với mật khẩu sinh mới mỗi lần.
+- File chạy theo thứ tự tên, bằng role của ứng dụng, không bằng superuser. Role này chỉ đăng nhập được trong lúc lệnh cài đặt chạy, với mật khẩu sinh mới mỗi lần.
 - Schema của ứng dụng là `search_path` của file. Do đó, lệnh `CREATE TABLE don (...)` tạo bảng `nghi_phep.don`.
 - Mỗi file chạy trong một transaction. Khi một câu lệnh bị lỗi, mọi thay đổi của file bị hủy. File không được dùng `BEGIN`, `COMMIT`, `ROLLBACK` hay `SAVEPOINT`.
-- Bảng `core.migrations` ghi tên và mã băm của từng file đã chạy, với cột `scope` là tên ứng dụng. File đã chạy thì không chạy lại. File đã chạy mà bị sửa thì lệnh cắm dừng và báo lỗi. Để thay đổi cơ sở dữ liệu, hãy thêm một file mới.
+- Bảng `core.migrations` ghi tên và mã băm của từng file đã chạy, với cột `scope` là tên ứng dụng. File đã chạy thì không chạy lại. File đã chạy mà bị sửa thì lệnh cài đặt dừng và báo lỗi. Để thay đổi cơ sở dữ liệu, hãy thêm một file mới.
 - Role của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, ví dụ `core.audit_log`. Role này cũng không đổi được sang role khác bằng `SET ROLE`.
 - Bảng, view và hàm mới chưa được cấp cho role nào, kể cả `PUBLIC`. File SQL cấp quyền cho role `authenticated` và `anon` bằng `GRANT`, gồm cả quyền `USAGE` trên schema của ứng dụng.
 - Role của ứng dụng dùng được hàm `core.audit()` để ghi audit log cho bảng và hàm `core.append_only()` để chặn sửa, xóa dòng của bảng.
 
-Khi cơ sở dữ liệu đã có role hoặc schema trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cắm dừng và không đụng tới role hoặc schema đó.
+Khi cơ sở dữ liệu đã có role hoặc schema trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng và không đụng tới role hoặc schema đó.
 
 Ví dụ file `database/0001_don.sql` tạo bảng đơn xin nghỉ phép. Mỗi người chỉ thấy đơn của mình:
 
@@ -1382,7 +1382,7 @@ GRANT SELECT, INSERT ON don TO authenticated;
 
 ### Gọi API của ứng dụng
 
-PostgREST phục vụ schema của mọi ứng dụng đã cắm tại địa chỉ `/api/` của API Gateway. Lời gọi chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Ví dụ:
+PostgREST phục vụ schema của mọi ứng dụng đã cài đặt tại địa chỉ `/api/` của API Gateway. Lời gọi chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Ví dụ:
 
 ```js
 const headers = {
@@ -1395,7 +1395,7 @@ await fetch("/api/don", { method: "POST", headers, body: JSON.stringify({ ly_do:
 const don = await (await fetch("/api/don", { headers })).json();
 ```
 
-Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/api/` khi lời gọi có header `Accept-Profile`. Sau khi cắm, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/api/` khi lời gọi có header `Accept-Profile`. Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
 
 ## Cập nhật phiên bản
 

@@ -402,6 +402,6 @@ def test_readme_shows_real_output_of_apply():
     assert sample.splitlines() == [
         CREATED.format(schema=data["name"].replace("-", "_")),
         RAN.format(name=sql_file),
-        apps.PLUGGED.format(name=data["name"], version=data["version"]),
+        apps.INSTALLED.format(name=data["name"], version=data["version"]),
     ]
     assert f"Ví dụ file `database/{sql_file}`" in PROSE

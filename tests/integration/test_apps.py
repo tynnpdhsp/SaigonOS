@@ -257,7 +257,7 @@ def test_apply_plugs_app_and_gateway_serves_its_table(stack, tmp_path):
         result.stdout,
         f"Đã tạo schema {schema} và role {schema} của ứng dụng.\n"
         "Đã chạy file 0001_notes.sql.\n"
-        f"Đã cắm ứng dụng {name} 0.1.0.\n",
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     wait_until_served(stack, name, token)
     created = profile_call(stack, "POST", name, token, {"body": "Xin chào"})
@@ -284,7 +284,9 @@ def test_apply_again_changes_nothing(stack, tmp_path):
     result = plug(stack, app)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert printed_last(result.stdout, f"Không có file SQL mới.\nĐã cắm ứng dụng {name} 0.1.0.\n")
+    assert printed_last(
+        result.stdout, f"Không có file SQL mới.\nĐã cài đặt ứng dụng {name} 0.1.0.\n"
+    )
     assert database_state(stack, name) == state
 
 
@@ -388,7 +390,7 @@ def test_app_copied_into_apps_folder_is_plugged_with_docker_compose(stack):
     result = run_apps(stack, "apply", name)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert printed_last(result.stdout, f"Đã cắm ứng dụng {name} 0.1.0.\n")
+    assert printed_last(result.stdout, f"Đã cài đặt ứng dụng {name} 0.1.0.\n")
     assert table_exists(stack, schema_of(name), "notes")
 
 

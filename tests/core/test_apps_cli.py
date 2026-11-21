@@ -104,7 +104,9 @@ def applied(monkeypatch):
 def test_apply_plugs_checked_app(folder, applied, capsys):
     assert apps.main(["apply", "don-tu"]) == 0
     assert applied.calls == [("don-tu", folder)]
-    assert capsys.readouterr().out == "Đã chạy file 0001_don.sql.\nĐã cắm ứng dụng don-tu 1.2.0.\n"
+    assert (
+        capsys.readouterr().out == "Đã chạy file 0001_don.sql.\nĐã cài đặt ứng dụng don-tu 1.2.0.\n"
+    )
 
 
 def test_apply_reports_error_of_database(folder, applied, capsys):
