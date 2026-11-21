@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import base64
 import json
 import re
 import secrets
@@ -6,6 +7,7 @@ import shutil
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 
@@ -47,6 +49,11 @@ WHO_SQL = """\
 CREATE TABLE who AS
 SELECT current_user::text AS who_current, session_user::text AS who_session,
     (SELECT rolcanlogin FROM pg_roles WHERE rolname = current_user) AS could_log_in;
+"""
+BOARD_SQL = """\
+CREATE TABLE board (id int);
+GRANT USAGE ON SCHEMA {schema} TO anon;
+GRANT SELECT ON board TO anon, authenticated;
 """
 TOTAL_SQL = (
     "CREATE FUNCTION total() RETURNS bigint LANGUAGE sql RETURN (SELECT count(*) FROM notes);\n"
@@ -176,12 +183,12 @@ def schema_of(name):
     return name.replace("-", "_")
 
 
-def notes_app(folder, name, version="0.1.0", files=None):
+def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",)):
     manifest = {
         "name": name,
         "title": "Ghi chú thử",
         "version": version,
-        "roles": [{"name": f"{name}.nguoi-dung", "description": "Ghi chú của mình"}],
+        "roles": [{"name": f"{name}.{role}", "description": f"Vai trò {role}"} for role in roles],
         "database": "database",
     }
     (folder / "database").mkdir(parents=True, exist_ok=True)
@@ -212,6 +219,50 @@ def wait_until_served(stack, name, token, table="notes"):
 
 def started(stack, service):
     return stack.inspect(stack.container(service), "{{.State.StartedAt}} {{.RestartCount}}")
+
+
+def claims_of(token):
+    payload = token.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
+def admin_json(stack, path):
+    reply = stack.admin("GET", path)
+    assert reply.status == 200, reply.body
+    return json.loads(reply.body)
+
+
+def keycloak_client(stack, name):
+    return admin_json(stack, f"/clients?{urlencode({'clientId': name})}")
+
+
+def keycloak_state(stack, name):
+    [client] = keycloak_client(stack, name)
+    path = f"/clients/{client['id']}"
+    client["attributes"].pop("client.secret.creation.time", None)
+    for key in ("redirectUris", "webOrigins", "defaultClientScopes", "optionalClientScopes"):
+        client[key] = sorted(client.get(key, []))
+    mappings = admin_json(stack, f"{path}/scope-mappings")
+    role = f"/roles/{name}.nguoi-dung"
+    return {
+        "client": client,
+        "realm": sorted(item["name"] for item in mappings.get("realmMappings", [])),
+        "clients": mappings.get("clientMappings", {}),
+        "mappers": admin_json(stack, f"{path}/protocol-mappers/models"),
+        "default": sorted(
+            item["name"] for item in admin_json(stack, f"{path}/default-client-scopes")
+        ),
+        "optional": admin_json(stack, f"{path}/optional-client-scopes"),
+        "role": admin_json(stack, role),
+        "composites": admin_json(stack, f"{role}/composites"),
+    }
+
+
+def user_with_roles(stack, *roles):
+    user = stack.new_user()
+    for role in roles:
+        stack.grant_role(user, role)
+    return user
 
 
 def table_exists(stack, schema, table):
@@ -251,19 +302,21 @@ def test_apply_plugs_app_and_gateway_serves_its_table(stack, tmp_path):
 
     result = plug(stack, notes_app(tmp_path / name, name))
 
-    token = stack.token(user)
     assert result.returncode == 0, result.stdout + result.stderr
+    token = stack.app_token(user, name)
     assert printed_last(
         result.stdout,
         f"Đã tạo schema {schema} và role {schema} của ứng dụng.\n"
         "Đã chạy file 0001_notes.sql.\n"
+        f"Đã tạo realm role {name}.nguoi-dung.\n"
+        f"Đã tạo client {name}.\n"
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     wait_until_served(stack, name, token)
     created = profile_call(stack, "POST", name, token, {"body": "Xin chào"})
     assert created.status == 201, created.body
     mine = json.loads(profile_call(stack, "GET", name, token).body)
-    theirs = json.loads(profile_call(stack, "GET", name, stack.token(other)).body)
+    theirs = json.loads(profile_call(stack, "GET", name, stack.app_token(other, name)).body)
     assert [(note["body"], note["owner"]) for note in mine] == [("Xin chào", user.id)]
     assert theirs == []
     assert started(stack, "postgrest") == before
@@ -279,15 +332,18 @@ def test_apply_again_changes_nothing(stack, tmp_path):
     name = new_name()
     app = notes_app(tmp_path / name, name)
     assert plug(stack, app).returncode == 0
-    state = database_state(stack, name)
+    state = database_state(stack, name), keycloak_state(stack, name)
 
     result = plug(stack, app)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
-        result.stdout, f"Không có file SQL mới.\nĐã cài đặt ứng dụng {name} 0.1.0.\n"
+        result.stdout,
+        "Không có file SQL mới.\n"
+        "Không có thay đổi trên Keycloak.\n"
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
-    assert database_state(stack, name) == state
+    assert (database_state(stack, name), keycloak_state(stack, name)) == state
 
 
 def test_files_run_as_role_of_app_which_logs_in_only_during_apply(stack, tmp_path):
@@ -381,6 +437,209 @@ def test_schema_made_by_hand_is_not_taken_over(stack, tmp_path):
     )
     assert not (stack.home / "apps" / name).exists()
     assert stack.sql(f"SELECT count(*) FROM core.apps WHERE name = '{name}'") == [["0"]]
+    assert keycloak_client(stack, name) == []
+
+
+def test_apply_creates_roles_and_public_client_with_code_flow_and_pkce_only(stack, tmp_path):
+    name = new_name()
+    roles = [f"{name}.nguoi-dung", f"{name}.quan-ly"]
+    endpoint = f"{stack.url}/auth/realms/saigonos/protocol/openid-connect"
+
+    result = plug(stack, notes_app(tmp_path / name, name, roles=("nguoi-dung", "quan-ly")))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    state = keycloak_state(stack, name)
+    flags = ("publicClient", "standardFlowEnabled", "implicitFlowEnabled")
+    flags += ("directAccessGrantsEnabled", "serviceAccountsEnabled", "fullScopeAllowed")
+    assert [state["client"][flag] for flag in flags] == [True, True, False, False, False, False]
+    assert state["client"]["redirectUris"] == [f"{stack.url}/apps/{name}/*"]
+    assert state["client"]["attributes"]["pkce.code.challenge.method"] == "S256"
+    assert state["client"]["attributes"]["saigonos.app"] == name
+    assert state["realm"] == ["authenticated", *roles]
+    assert (state["clients"], state["mappers"], state["optional"]) == ({}, [], [])
+    assert state["default"] == ["acr", "basic", "email", "profile", "roles", "web-origins"]
+    for role in roles:
+        found = admin_json(stack, f"/roles/{role}")
+        description = f"Vai trò {role.split('.')[1]}"
+        assert (found["description"], found["attributes"]) == (
+            description,
+            {"saigonos.app": [name]},
+        )
+    user = user_with_roles(stack, *roles)
+    form = {"grant_type": "password", "client_id": name}
+    form |= {"username": user.name, "password": user.password}
+    password = stack.call("POST", f"{endpoint}/token", form=form)
+    query = {"client_id": name, "response_type": "code", "scope": "openid"}
+    without_pkce = stack.call(
+        "GET", f"{endpoint}/auth?{urlencode(query | {'redirect_uri': f'{stack.url}/apps/{name}/'})}"
+    )
+    elsewhere = stack.call(
+        "GET",
+        f"{endpoint}/auth?{urlencode(query | {'redirect_uri': f'{stack.url}/apps/{name}x/'})}",
+    )
+    assert (password.status, json.loads(password.body)["error"]) == (400, "unauthorized_client")
+    assert parse_qs(urlsplit(without_pkce.headers["Location"]).query)["error"] == [
+        "invalid_request"
+    ]
+    assert elsewhere.status == 400
+
+
+def test_token_of_app_carries_only_roles_of_that_app(stack, plugged):
+    user = user_with_roles(stack, f"{plugged.name}.nguoi-dung", f"{plugged.other}.nguoi-dung")
+
+    claims = claims_of(stack.app_token(user, plugged.other))
+
+    assert claims["azp"] == plugged.other
+    roles = sorted(claims["realm_access"]["roles"])
+    assert roles == ["authenticated", f"{plugged.other}.nguoi-dung"]
+    assert "resource_access" not in claims
+
+
+def test_schema_of_app_takes_only_access_token_of_its_client(stack, plugged):
+    user = user_with_roles(stack, f"{plugged.name}.nguoi-dung", f"{plugged.other}.nguoi-dung")
+    own = stack.app_token(user, plugged.name)
+    tokens = {
+        "ung-dung-khac": stack.app_token(user, plugged.other),
+        "client-khac": stack.token(user),
+    }
+    wait_until_served(stack, plugged.name, own)
+
+    replies = {
+        (source, method): profile_call(
+            stack, method, plugged.name, token, {"body": "Ghi lén"} if method == "POST" else None
+        )
+        for source, token in tokens.items()
+        for method in ("GET", "POST")
+    }
+
+    details = (
+        f"Schema {schema_of(plugged.name)} chỉ nhận access token được cấp cho client {plugged.name}"
+    )
+    refused = {
+        key: (reply.status, json.loads(reply.body)["code"], json.loads(reply.body)["details"])
+        for key, reply in replies.items()
+    }
+    assert refused == dict.fromkeys(replies, (403, "SGN02", details))
+    assert profile_call(stack, "GET", plugged.name, own).status == 200
+    assert stack.api(tokens["ung-dung-khac"]).status == 200
+    written = f"SELECT count(*) FROM {schema_of(plugged.name)}.notes WHERE body = 'Ghi lén'"
+    assert stack.sql(written) == [["0"]]
+
+
+def test_call_without_token_into_schema_of_app_still_runs_as_anon(stack, tmp_path):
+    name = new_name()
+    files = {"0002_board.sql": BOARD_SQL.format(schema=schema_of(name))}
+    assert plug(stack, notes_app(tmp_path / name, name, files=files)).returncode == 0
+    wait_until_served(stack, name, None, table="board")
+
+    anonymous = profile_call(stack, "GET", name, None, table="board")
+    foreign = profile_call(stack, "GET", name, stack.token(stack.new_user()), table="board")
+
+    assert (anonymous.status, json.loads(anonymous.body)) == (200, [])
+    assert foreign.status == 403
+
+
+def test_client_and_role_edited_in_admin_console_are_put_back_by_apply(stack, tmp_path):
+    name = new_name()
+    app = notes_app(tmp_path / name, name)
+    assert plug(stack, app).returncode == 0
+    state = keycloak_state(stack, name)
+    path = f"/clients/{state['client']['id']}"
+    flows = {flow["alias"]: flow["id"] for flow in admin_json(stack, "/authentication/flows")}
+    scopes = {scope["name"]: scope["id"] for scope in admin_json(stack, "/client-scopes")}
+    admin = admin_json(stack, "/roles/admin")
+    [management] = keycloak_client(stack, "realm-management")
+    realm_admin = admin_json(stack, f"/clients/{management['id']}/roles/realm-admin")
+    settings = {
+        "publicClient": False,
+        "directAccessGrantsEnabled": True,
+        "fullScopeAllowed": True,
+        "redirectUris": ["*"],
+        "webOrigins": ["*"],
+        "attributes": {"pkce.code.challenge.method": "plain"},
+        "authenticationFlowBindingOverrides": {"browser": flows["browser"]},
+    }
+    mapper = {
+        "name": "gia",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-hardcoded-claim-mapper",
+        "config": {
+            "claim.name": "realm_access",
+            "claim.value": '{"roles": ["admin"]}',
+            "jsonType.label": "JSON",
+            "access.token.claim": "true",
+        },
+    }
+    role = f"/roles/{name}.nguoi-dung"
+    edits = [
+        ("PUT", path, settings),
+        ("POST", f"{path}/protocol-mappers/models", mapper),
+        ("POST", f"{path}/scope-mappings/realm", [admin]),
+        ("POST", f"{path}/scope-mappings/clients/{management['id']}", [realm_admin]),
+        ("PUT", f"{path}/optional-client-scopes/{scopes['offline_access']}", None),
+        ("DELETE", f"{path}/default-client-scopes/{scopes['profile']}", None),
+        ("PUT", role, {"name": f"{name}.nguoi-dung", "description": "Sửa tay"}),
+        ("POST", f"{role}/composites", [admin]),
+    ]
+    for method, target, body in edits:
+        reply = stack.admin(method, target, body)
+        assert reply.status in (201, 204), (target, reply.body)
+    assert keycloak_state(stack, name) != state
+
+    result = plug(stack, app)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        "Không có file SQL mới.\n"
+        f"Đã cập nhật realm role {name}.nguoi-dung.\n"
+        f"Đã cập nhật client {name}.\n"
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+    )
+    assert keycloak_state(stack, name) == state
+
+
+def test_names_made_by_hand_on_keycloak_are_not_taken_over(stack, tmp_path):
+    name = new_name()
+    client = {"clientId": name, "publicClient": True, "directAccessGrantsEnabled": True}
+    assert stack.admin("POST", "/clients", client).status == 201
+    assert stack.admin("POST", "/roles", {"name": f"{name}.nguoi-dung"}).status == 201
+    before = keycloak_client(stack, name)
+
+    result = plug(stack, notes_app(tmp_path / name, name))
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Client {name} và realm role {name}.nguoi-dung đã có trong Keycloak nhưng không do "
+        f"SaigonOS tạo cho ứng dụng {name}. Hãy đặt tên khác cho ứng dụng.\n",
+    )
+    assert keycloak_client(stack, name) == before
+    assert not admin_json(stack, f"/roles/{name}.nguoi-dung").get("attributes")
+    assert stack.sql(
+        f"SELECT (SELECT count(*) FROM core.apps WHERE name = '{name}'), "
+        f"(SELECT count(*) FROM pg_namespace WHERE nspname = '{schema_of(name)}')"
+    ) == [["0", "0"]]
+    assert not (stack.home / "apps" / name).exists()
+
+
+def test_role_left_out_of_new_version_is_kept_but_leaves_tokens_of_app(stack, tmp_path):
+    name = new_name()
+    first = notes_app(tmp_path / "dau" / name, name, roles=("nguoi-dung", "quan-ly"))
+    assert plug(stack, first).returncode == 0
+    user = user_with_roles(stack, f"{name}.nguoi-dung", f"{name}.quan-ly")
+
+    result = plug(stack, notes_app(tmp_path / "sau" / name, name, version="0.2.0"))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Không có file SQL mới.\nĐã cập nhật client {name}.\nĐã cài đặt ứng dụng {name} 0.2.0.\n",
+    )
+    roles = sorted(claims_of(stack.app_token(user, name))["realm_access"]["roles"])
+    assert roles == ["authenticated", f"{name}.nguoi-dung"]
+    kept = admin_json(stack, f"/roles/{name}.quan-ly")
+    assert kept["attributes"] == {"saigonos.app": [name]}
 
 
 def test_app_copied_into_apps_folder_is_plugged_with_docker_compose(stack):
@@ -456,13 +715,15 @@ def test_readme_example_app_is_plugged_and_serves_its_table(stack, tmp_path):
 
     result = plug(stack, app)
 
-    token = stack.token(user)
     assert result.returncode == 0, result.stdout + result.stderr
+    token = stack.app_token(user, "nghi-phep")
     wait_until_served(stack, "nghi-phep", token, table="don")
     body = {"ly_do": "Việc gia đình"}
     created = profile_call(stack, "POST", "nghi-phep", token, body, table="don")
     mine = json.loads(profile_call(stack, "GET", "nghi-phep", token, table="don").body)
-    theirs = profile_call(stack, "GET", "nghi-phep", stack.token(other), table="don")
+    theirs = profile_call(
+        stack, "GET", "nghi-phep", stack.app_token(other, "nghi-phep"), table="don"
+    )
     assert created.status == 201, created.body
     assert [(item["ly_do"], item["nguoi_gui"]) for item in mine] == [("Việc gia đình", user.id)]
     assert json.loads(theirs.body) == []

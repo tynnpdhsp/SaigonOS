@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import base64
 import hashlib
+import html
 import ipaddress
 import json
 import re
@@ -17,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.client import HTTPConnection, HTTPException, HTTPMessage
 from typing import NamedTuple
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 
@@ -176,6 +177,10 @@ def encode(data):
 
 def decode(segment):
     return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+
+
+def cookies_of(reply):
+    return "; ".join(cookie.split(";", 1)[0] for cookie in reply.headers.get_all("Set-Cookie", []))
 
 
 def http_status(result):
@@ -382,6 +387,40 @@ class Stack:
 
     def token(self, user):
         reply = self.login(user)
+        assert reply.status == 200, reply.body
+        return json.loads(reply.body)["access_token"]
+
+    def app_login(self, user, app):
+        redirect = f"{self.url}/apps/{app}/"
+        verifier = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(verifier.encode()).digest()
+        query = {
+            "client_id": app,
+            "redirect_uri": redirect,
+            "response_type": "code",
+            "scope": "openid",
+            "code_challenge": base64.urlsafe_b64encode(digest).rstrip(b"=").decode(),
+            "code_challenge_method": "S256",
+        }
+        endpoint = f"{self.url}/auth/realms/{REALM}/protocol/openid-connect"
+        page = self.call("GET", f"{endpoint}/auth?{urlencode(query)}")
+        assert page.status == 200, page.headers.get("Location")
+        action = html.unescape(re.search(r'action="([^"]+)"', page.body.decode())[1])
+        form = {"username": user.name, "password": user.password}
+        sent = self.call("POST", action, form=form, headers={"Cookie": cookies_of(page)})
+        assert sent.status == 302, sent.body
+        code = parse_qs(urlsplit(sent.headers["Location"]).query)["code"][0]
+        exchange = {
+            "grant_type": "authorization_code",
+            "client_id": app,
+            "redirect_uri": redirect,
+            "code": code,
+            "code_verifier": verifier,
+        }
+        return self.call("POST", f"{endpoint}/token", form=exchange)
+
+    def app_token(self, user, app):
+        reply = self.app_login(user, app)
         assert reply.status == 200, reply.body
         return json.loads(reply.body)["access_token"]
 
