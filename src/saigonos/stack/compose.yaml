@@ -459,6 +459,15 @@ services:
       start_period: 60s
       start_interval: 2s
 
+  apps:
+    build: ./core
+    pull_policy: build
+    profiles: ["apps"]
+    restart: "no"
+    entrypoint: ["python", "-m", "saigonos_core.apps"]
+    volumes:
+      - ./apps:/apps:ro
+
 volumes:
   postgres-data:
   etcd-data:
