@@ -3,6 +3,7 @@ import json
 import os
 import re
 from importlib.resources import files
+from pathlib import Path
 
 import pytest
 
@@ -13,10 +14,11 @@ from saigonos_core.manifest import (
     RESERVED_PREFIX,
     ROLE_LENGTH,
     check_app,
+    schema_text,
 )
 
-STACK = files("saigonos") / "stack"
-CONFIG = STACK / "config"
+CONFIG = files("saigonos") / "stack" / "config"
+SCHEMA_FILE = Path(__file__).resolve().parents[2] / "schemas" / "saigonos-app.schema.json"
 VALID = {
     "name": "nghi-phep",
     "title": "Nghỉ phép",
@@ -507,3 +509,20 @@ def test_names_used_by_core_are_reserved():
     assert {name.replace("_", "-") for name in created} | set(routes) | set(clients) <= (
         RESERVED_NAMES
     )
+
+
+def test_schema_file_matches_model():
+    assert SCHEMA_FILE.read_text(encoding="utf-8") == schema_text(), "Hãy chạy lệnh make schema"
+
+
+def test_schema_lists_rules_of_manifest():
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+    name = schema["properties"]["name"]
+
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert schema["required"] == ["name", "title", "version", "roles"]
+    assert schema["additionalProperties"] is False
+    assert name["not"]["anyOf"] == [
+        {"enum": sorted(RESERVED_NAMES)},
+        {"pattern": f"^{RESERVED_PREFIX}"},
+    ]
