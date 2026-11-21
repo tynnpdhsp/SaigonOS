@@ -37,7 +37,7 @@ Lệnh này thực hiện các bước sau:
 
 ## Integration test
 
-Integration test chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,4 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 3 GB RAM.
+Integration test chạy cả bộ Docker Compose trên máy, do đó cần Docker đang hoạt động. Ở lần chạy đầu tiên, Docker tải các image với tổng dung lượng khoảng 1,5 GB. Mỗi nhóm kiểm thử dựng một bộ riêng và cần khoảng 3 GB RAM.
 
 ```bash
 make integration
