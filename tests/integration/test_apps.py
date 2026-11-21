@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import re
 import secrets
 import shutil
 import time
@@ -10,7 +11,9 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-SCHEMA_FILE = Path(__file__).resolve().parents[2] / "schemas" / "saigonos-app.schema.json"
+ROOT = Path(__file__).resolve().parents[2]
+SCHEMA_FILE = ROOT / "schemas" / "saigonos-app.schema.json"
+README = (ROOT / "README.md").read_text(encoding="utf-8")
 MANIFEST = {
     "name": "nghi-phep",
     "title": "Nghỉ phép",
@@ -195,14 +198,14 @@ def plug(stack, folder):
     return stack.saigonos("apply", str(folder))
 
 
-def profile_call(stack, method, name, token, body=None):
+def profile_call(stack, method, name, token, body=None, table="notes"):
     headers = {"Accept-Profile": schema_of(name), "Content-Profile": schema_of(name)}
-    return stack.call(method, f"{stack.url}/api/notes", token=token, body=body, headers=headers)
+    return stack.call(method, f"{stack.url}/api/{table}", token=token, body=body, headers=headers)
 
 
-def wait_until_served(stack, name, token):
+def wait_until_served(stack, name, token, table="notes"):
     deadline = time.monotonic() + 15
-    while profile_call(stack, "GET", name, token).status != 200:
+    while profile_call(stack, "GET", name, token, table=table).status != 200:
         assert time.monotonic() < deadline, "PostgREST chưa phục vụ schema của ứng dụng"
         time.sleep(0.2)
 
@@ -433,3 +436,31 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
     )
 
     assert granted == [["authenticator", "core.pre_config()"]]
+
+
+def readme_block(language, marker):
+    blocks = re.findall(rf"```{language}\n(.*?)```", README, re.DOTALL)
+    return next(block for block in blocks if marker in block)
+
+
+def test_readme_example_app_is_plugged_and_serves_its_table(stack, tmp_path):
+    manifest = json.loads(readme_block("json", '"roles"')) | {"processes": None, "ui": None}
+    app = tmp_path / manifest["name"]
+    (app / "database").mkdir(parents=True)
+    sql = readme_block("sql", "CREATE TABLE don")
+    (app / "database" / "0001_don.sql").write_text(sql, encoding="utf-8")
+    (app / "saigonos-app.json").write_text(json.dumps(manifest), encoding="utf-8")
+    user, other = stack.new_user(), stack.new_user()
+
+    result = plug(stack, app)
+
+    token = stack.token(user)
+    assert result.returncode == 0, result.stdout + result.stderr
+    wait_until_served(stack, "nghi-phep", token, table="don")
+    body = {"ly_do": "Việc gia đình"}
+    created = profile_call(stack, "POST", "nghi-phep", token, body, table="don")
+    mine = json.loads(profile_call(stack, "GET", "nghi-phep", token, table="don").body)
+    theirs = profile_call(stack, "GET", "nghi-phep", stack.token(other), table="don")
+    assert created.status == 201, created.body
+    assert [(item["ly_do"], item["nguoi_gui"]) for item in mine] == [("Việc gia đình", user.id)]
+    assert json.loads(theirs.body) == []

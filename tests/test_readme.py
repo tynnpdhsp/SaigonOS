@@ -25,6 +25,7 @@ from saigonos.home import (
     origin_pattern,
 )
 from saigonos_core import apps
+from saigonos_core.app_database import CREATED, RAN
 from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
@@ -392,3 +393,15 @@ def test_readme_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
         outputs.append(capsys.readouterr().out)
 
     assert outputs == CHECK_SAMPLES
+
+
+def test_readme_shows_real_output_of_apply():
+    [sample] = [sample for sample in SAMPLES if sample.startswith("Đã tạo schema")]
+    data, sql_file = MANIFEST_EXAMPLE, "0001_don.sql"
+
+    assert sample.splitlines() == [
+        CREATED.format(schema=data["name"].replace("-", "_")),
+        RAN.format(name=sql_file),
+        apps.PLUGGED.format(name=data["name"], version=data["version"]),
+    ]
+    assert f"Ví dụ file `database/{sql_file}`" in PROSE
