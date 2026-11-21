@@ -31,6 +31,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Quy trình](#quy-trình)
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
 - [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
+- [Ứng dụng](#ứng-dụng)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -69,7 +70,7 @@ Mã nguồn của từng phiên bản cũng có ở trang [Releases](https://git
 saigonos init
 ```
 
-Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
+Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config`, thư mục `apps` chứa các ứng dụng và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
 Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
@@ -1232,6 +1233,88 @@ docker compose exec postgres psql -U postgres -d saigonos -c "UPDATE core.delive
 Khi file `.env` chưa có cấu hình Telegram hoặc SMTP, tin của kênh đó chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc thiếu `SMTP_FROM`, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi kênh được cấu hình sau đó.
 
 Bảng `core.deliveries` giữ địa chỉ email, tiêu đề và nội dung của tin sau khi gửi.
+
+## Ứng dụng
+
+Mỗi ứng dụng là một thư mục có file bản khai `saigonos-app.json`. Bản khai cho biết tên, phiên bản, các realm role của ứng dụng và các thư mục chứa file SQL, file BPMN và giao diện.
+
+### Bản khai
+
+Ví dụ bản khai của một ứng dụng xin nghỉ phép:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/tynnpdhsp/SaigonOS/main/schemas/saigonos-app.schema.json",
+  "name": "nghi-phep",
+  "title": "Nghỉ phép",
+  "version": "0.1.0",
+  "roles": [
+    { "name": "nghi-phep.nhan-vien", "description": "Gửi đơn và xem đơn của mình" },
+    { "name": "nghi-phep.quan-ly", "description": "Duyệt đơn của nhân viên" }
+  ],
+  "database": "database",
+  "processes": "processes",
+  "ui": "ui"
+}
+```
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `$schema` | Không | Địa chỉ JSON Schema của bản khai. Trình soạn thảo như VS Code dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai |
+| `name` | Có | Tên ứng dụng |
+| `title` | Có | Tên hiển thị của ứng dụng |
+| `version` | Có | Phiên bản của ứng dụng theo [Semantic Versioning](https://semver.org/lang/vi/), ví dụ `1.2.0` |
+| `roles` | Có | Danh sách realm role của ứng dụng, có ít nhất một role. Mỗi role gồm tên `name` và mô tả `description` |
+| `database` | Không | Thư mục chứa file SQL, có ít nhất một file `.sql` |
+| `processes` | Không | Thư mục chứa file BPMN, có ít nhất một file `.bpmn` |
+| `ui` | Không | Thư mục chứa giao diện, có file `index.html` |
+
+Bản khai tuân theo các quy tắc sau:
+
+- Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `nghi-phep`, `don-tu-2`.
+- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
+- Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `nghi-phep.quan-ly`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
+- Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
+- Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`. Mỗi cấp gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và không bắt đầu bằng dấu chấm. Do đó, đường dẫn không trỏ ra ngoài thư mục ứng dụng được. Ba thư mục không trùng nhau và không nằm trong nhau.
+- Bản khai và các thư mục đã khai không chứa symlink, pipe, socket hay file thiết bị. Mọi file và thư mục con đều phải đọc được.
+- Bản khai chỉ có các trường trong bảng trên. Trường viết sai chính tả bị báo lỗi.
+
+JSON Schema của bản khai nằm trong file [schemas/saigonos-app.schema.json](schemas/saigonos-app.schema.json).
+
+### Soát ứng dụng
+
+Lệnh sau soát bản khai và các thư mục của ứng dụng trong thư mục `./nghi-phep`:
+
+```bash
+saigonos apply --check ./nghi-phep
+```
+
+Thư mục làm việc phải được tạo bằng lệnh `saigonos init` trước đó, nhưng hệ thống không cần đang chạy. Lệnh chạy service `apps` bằng Docker Compose. Service này dùng image của service `core` và chỉ chạy khi được gọi. Mỗi lần chạy, Docker Compose build lại image này. Nhờ cache của Docker, việc build chỉ mất vài giây. Lần build đầu tiên phải tải các thư viện của service `core` nên lâu hơn.
+
+Khi không có lỗi, lệnh in một dòng như sau:
+
+```text
+Ứng dụng nghi-phep 0.1.0 không có lỗi.
+```
+
+Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã thoát 1. Mỗi dòng bắt đầu bằng vị trí của lỗi trong bản khai, ví dụ:
+
+```text
+Ứng dụng có 3 lỗi:
+- version: Phiên bản phải theo Semantic Versioning, ví dụ 1.0.0 hoặc 1.0.0-beta.1.
+- roles[1].name: Tên role phải bắt đầu bằng "nghi-phep.".
+- ui: Thư mục "ui" không có file index.html.
+```
+
+Lệnh soát ở trên chạy service `apps` bằng tài khoản đang dùng. Cũng có thể soát bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc:
+
+```bash
+cp -r ./nghi-phep ~/saigonos/apps/
+cd ~/saigonos
+docker compose run --rm apps check nghi-phep
+```
+
+Khi gọi theo cách này, service `apps` chạy bằng tài khoản `nobody` của container. Do đó, mọi file của ứng dụng cần quyền đọc cho mọi tài khoản, ví dụ quyền `644`, và mọi thư mục cần quyền `755`.
 
 ## Cập nhật phiên bản
 
