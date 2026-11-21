@@ -7,6 +7,12 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Bản khai ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai.
+- Lệnh `saigonos apply --check <thư mục>` soát bản khai và các thư mục của một ứng dụng mà không cần hệ thống đang chạy. Lệnh in mọi lỗi tìm thấy bằng tiếng Việt kèm vị trí trong bản khai, rồi kết thúc với mã thoát 1. Tên trùng tên mà lõi đã dùng, đường dẫn ra ngoài thư mục ứng dụng, symlink và file không đọc được đều bị báo lỗi.
+- Service `apps` dùng image của service `core` và chỉ chạy khi được gọi bằng `docker compose run`. Lệnh `docker compose run --rm apps check <tên>` soát ứng dụng trong thư mục `apps` của thư mục làm việc. Lệnh `saigonos init` tạo thư mục này.
+
 ## [0.5.0] - 2026-11-21
 
 ### Thêm
