@@ -38,13 +38,53 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 
 ## Yêu cầu hệ thống
 
-- Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
-- Python 3.11 trở lên và pip.
+- Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 22.04 và 24.04.
+- Python 3.11 trở lên và pip. Ubuntu 22.04 chỉ có sẵn Python 3.10, nên cần cài Miniforge như bước 1 của mục [Cài đặt](#cài-đặt).
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
-- Khoảng 6 GB dung lượng đĩa cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên.
-- Khoảng 3 GB RAM cho các service.
+- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
+- Nên có 3 GB RAM cho các service. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+
+### Dung lượng đĩa
+
+Kiểm tra dung lượng còn trống của thư mục gốc:
+
+```bash
+df -h /
+```
+
+Bộ cài Ubuntu Server dùng LVM và thường chỉ cấp khoảng một nửa đĩa cho thư mục gốc. Cột `VFree` của lệnh sau cho biết phần đĩa chưa được cấp:
+
+```bash
+sudo vgs
+```
+
+Nếu `VFree` lớn hơn 0, cấp toàn bộ phần còn lại cho thư mục gốc. Thay `/dev/mapper/ubuntu--vg-ubuntu--lv` bằng giá trị ở cột `Filesystem` của lệnh `df -h /`:
+
+```bash
+sudo lvextend --resizefs --extents +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+
+### Swap
+
+Kiểm tra swap hiện có:
+
+```bash
+swapon --show
+```
+
+Máy có 2 GB RAM cần tổng swap từ 2 GB trở lên. Nếu chưa đủ, tạo thêm một file swap 2 GB:
+
+```bash
+sudo fallocate --length 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Dòng cuối giúp swap vẫn được bật sau khi khởi động lại máy.
 
 ## Cài đặt
 
@@ -52,7 +92,16 @@ Việc cài đặt chỉ cần pip và Docker Compose. Mọi cấu hình đều 
 
 ### 1. Cài đặt package `saigonos`
 
-Nên cài đặt trong một môi trường riêng, ví dụ môi trường conda:
+Nên cài đặt trong một môi trường riêng, ví dụ môi trường conda. Máy chưa có conda thì cài Miniforge trước:
+
+```bash
+curl -fsSLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash "Miniforge3-$(uname)-$(uname -m).sh" -b
+~/miniforge3/bin/conda init bash
+exec bash
+```
+
+Sau đó tạo môi trường và cài đặt package:
 
 ```bash
 conda create -n saigonos python=3.12
@@ -63,6 +112,8 @@ pip install .
 ```
 
 Mã nguồn của từng phiên bản cũng có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Tải file `saigonos-X.Y.Z.tar.gz`, giải nén rồi chạy `pip install .` trong thư mục vừa giải nén.
+
+Lệnh `saigonos` chỉ có trong môi trường `saigonos`. Mỗi lần mở terminal mới, chạy `conda activate saigonos` trước khi dùng lệnh `saigonos`. Nếu không, terminal báo `saigonos: command not found`.
 
 ### 2. Tạo thư mục làm việc
 
