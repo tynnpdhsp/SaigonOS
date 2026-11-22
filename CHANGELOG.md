@@ -29,6 +29,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bước máy làm của quy trình trong một ứng dụng chỉ gọi được hàm trong schema của ứng dụng đó. Quy trình không thuộc ứng dụng nào không gọi được hàm của ứng dụng. Bước máy làm sai quy tắc này trở thành incident. Hàm của ứng dụng được khai báo cho bước máy làm bằng lệnh `GRANT EXECUTE` cho role `workflow`.
 - Mã của ứng dụng gọi được `core.notify`, `core.publish` và `core.send_email`. Thông báo do ứng dụng gửi thuộc về ứng dụng đó và được gửi tới kênh `user:<tên ứng dụng>.<sub>`. Access token của ứng dụng chỉ thấy thông báo của ứng dụng đó, access token của client khác chỉ thấy thông báo không thuộc ứng dụng nào. Hàm SQL của ứng dụng cũng chỉ đọc được thông báo của chính ứng dụng. Khóa chống trùng của thông báo và email có hiệu lực riêng trong từng ứng dụng.
 - Mã của ứng dụng chỉ gửi được tin vào kênh `role:<tên ứng dụng>.<vai trò>`, `public:<tên ứng dụng>.<tên>` và `user:<tên ứng dụng>.<sub>`. Lời gọi `POST /core/realtime/token` cấp token kênh cho kênh `user:<tên ứng dụng>.<sub>` khi access token được cấp cho client của ứng dụng đó và `<sub>` là mã của người gọi. Do đó, giao diện của ứng dụng khác không nghe được kênh này.
+- Lệnh cài đặt ứng dụng chỉ in những gì đã thay đổi. Chạy lại khi ứng dụng không đổi thì lệnh in `Không có gì thay đổi.`
+- Lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt sau khi các service sẵn sàng. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai. Service `apps` có lệnh `apply --all` cho việc này.
+- Lệnh `saigonos remove <tên>` gỡ route, client, giao diện và quy trình của ứng dụng, rồi bỏ schema của ứng dụng khỏi API. Schema, dữ liệu, role và việc gán role được giữ lại. Cài đặt lại thì dùng tiếp dữ liệu cũ và chạy lại các quy trình đã tạm dừng. Tùy chọn `--purge` xóa hẳn ứng dụng sau khi hỏi lại.
+- Lệnh `saigonos doctor` có thêm một dòng cho mỗi ứng dụng, kiểm tra API và giao diện của ứng dụng.
 
 ### Thay đổi
 
