@@ -257,6 +257,8 @@ Bước từ chối trong luồng này dùng thông báo có khóa `saigonos-ope
 
 Mapper `audience saigonos` của client scope `roles` cũng là ngoại lệ. Mapper này thêm audience `saigonos` vào access token, không thêm vào ID token. Centrifugo chỉ nhận access token có audience này. Khi mapper bị sửa hoặc bị xóa, script đặt lại mapper ở lần chạy sau.
 
+Mapper `amr` của client scope `basic` và giá trị `default.reference.value` của các bước đăng nhập cũng là ngoại lệ. Luật OPA của trang quản trị dựa vào claim `amr`, nên script đặt lại các thiết lập này khi bị sửa. Mapper phải bật `lightweight.claim`, vì client `security-admin-console` dùng lightweight access token. Keycloak chỉ ghi vào claim `amr` các bước có giá trị `default.reference.value`. Do đó, bước mật khẩu có giá trị `pwd` và bước OTP có giá trị `otp`, ở cả các luồng `saigonos browser*` và luồng `saigonos operaton`. Khi không tìm thấy bước mật khẩu hay bước OTP trong luồng `saigonos browser*`, service `realm` báo lỗi. Keycloak không ghi bước OTP khi người dùng cài đặt OTP bằng required action `CONFIGURE_TOTP`, nên lần đăng nhập đó chỉ có `pwd`.
+
 ## Service core
 
 Mã nguồn của service `core` nằm trong thư mục `src/saigonos/stack/core`. Lệnh `saigonos init` sao chép thư mục này vào thư mục làm việc. Docker Compose build image của service từ file `Dockerfile` trong thư mục đó.
@@ -415,6 +417,9 @@ Luật của lõi nằm trong thư mục `src/saigonos/stack/config/opa`. Unit t
 
 - Quyết định cho API Gateway nằm ở tài liệu `decision` trong một package con của `saigonos`, ví dụ `data.saigonos.admin.decision`. File `system.rego` chỉ cho API của OPA nhận lời gọi `POST` tới các tài liệu này và lời gọi `GET /health`.
 - Image của OPA không có shell. Healthcheck dùng lệnh `opa eval` với hàm `http.send` để gọi `/health`. Khi đổi phiên bản OPA, kiểm tra lại healthcheck này và tùy chọn tắt việc kiểm tra phiên bản mới của lệnh `opa run`.
+- Plugin `openid-connect` chạy ở pha rewrite, trước plugin `opa` ở pha access. Luật đọc claims bằng `io.jwt.decode` mà không kiểm tra lại chữ ký. Do đó, chỉ đọc claims của access token trên route có plugin `openid-connect` với `bearer_only`.
+- Khi không kết nối được OPA, plugin `opa` của APISIX trả mã 403. Khi OPA trả lời không có `result`, plugin trả mã 503. Kiểm thử `test_admin_routes_are_refused_while_opa_is_stopped` kiểm tra cách từ chối này.
+- Service `policies` soát luật bằng `opa eval` thay cho `opa check`, vì lệnh này vừa biên dịch mọi file luật vừa kiểm tra `SAIGONOS_ADMIN_NETWORKS` qua tập `config_errors`.
 
 ## Ứng dụng
 

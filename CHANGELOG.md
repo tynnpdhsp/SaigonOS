@@ -12,9 +12,15 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `opa` chạy Open Policy Agent 1.22.4 để API Gateway hỏi luật truy cập chung. Luật viết bằng Rego và nằm trong thư mục `config/opa`. OPA nạp lại luật ngay khi file thay đổi và giữ luật đang chạy khi file có lỗi. OPA chỉ nằm trong mạng nội bộ cùng APISIX, không nhận lời gọi sửa luật qua API và không gửi thông tin tới máy chủ của dự án OPA.
 - Service `policies` soát các file luật mỗi lần chạy `saigonos up`. Khi có file lỗi, lệnh `saigonos up` báo lỗi và OPA chưa khởi động lần đầu.
 - Lệnh `make opa-test` kiểm tra định dạng, lỗi và unit test của các luật trong `tests/opa`, với yêu cầu độ phủ 100%. CI chạy lệnh này trong job `lint`.
+- Route `auth-admin` đưa Admin Console và Admin REST API của realm `saigonos` qua OPA. Route `operaton` cũng qua OPA. Khi OPA dừng hoặc trả lời sai định dạng, API Gateway từ chối hai route này với mã 403 hoặc 503. Trang đăng nhập và các route khác vẫn hoạt động.
+- Giá trị `SAIGONOS_ADMIN_NETWORKS` trong file `.env` chỉ mở các route quản trị cho các dải mạng được khai báo. Khi có dải không hợp lệ, lệnh `saigonos up` báo lỗi ở service `policies`.
+- Admin REST API của Keycloak qua API Gateway chỉ nhận access token của lần đăng nhập có mã OTP. Lời gọi bị từ chối nhận mã 403 kèm lý do bằng tiếng Việt.
+- Access token có claim `amr` ghi các bước đăng nhập, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Service `realm` thêm thiết lập này vào realm do phiên bản cũ tạo và đặt lại thiết lập khi bị sửa.
 
 ### Thay đổi
 
+- Luồng đăng nhập `saigonos operaton` được tạo lại một lần khi cập nhật, để bước mật khẩu và bước OTP được ghi vào claim `amr`.
+- Tên `auth-admin` được thêm vào danh sách tên mà ứng dụng không được dùng.
 - README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng đĩa bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
 
 ## [0.6.0] - 2026-11-22
