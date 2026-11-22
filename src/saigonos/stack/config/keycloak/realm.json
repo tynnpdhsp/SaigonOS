@@ -64,7 +64,6 @@
       "authenticationExecutions": [
         {
           "authenticator": "auth-username-password-form",
-          "authenticatorConfig": "saigonos password reference",
           "authenticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 10
@@ -99,7 +98,6 @@
         },
         {
           "authenticator": "auth-otp-form",
-          "authenticatorConfig": "saigonos admin otp reference",
           "authenticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 20
@@ -128,7 +126,6 @@
         },
         {
           "authenticator": "auth-otp-form",
-          "authenticatorConfig": "saigonos optional otp reference",
           "authenticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 30
@@ -148,24 +145,6 @@
       "config": {
         "condUserRole": "admin",
         "negate": "true"
-      }
-    },
-    {
-      "alias": "saigonos password reference",
-      "config": {
-        "default.reference.value": "pwd"
-      }
-    },
-    {
-      "alias": "saigonos admin otp reference",
-      "config": {
-        "default.reference.value": "otp"
-      }
-    },
-    {
-      "alias": "saigonos optional otp reference",
-      "config": {
-        "default.reference.value": "otp"
       }
     }
   ]
