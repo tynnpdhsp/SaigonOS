@@ -86,6 +86,11 @@ IMAGES = {
         "Quét mã độc trong file được tải lên",
         "https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4",
     ),
+    "openpolicyagent/opa:1.22.4": Image(
+        "Apache-2.0",
+        "Kiểm tra luật truy cập chung trước khi API Gateway chuyển lời gọi đi",
+        "https://github.com/open-policy-agent/opa/tree/v1.22.4",
+    ),
     "operaton/operaton:2.2.1": Image(
         "Apache-2.0",
         "Chạy các quy trình BPMN, có Cockpit, Tasklist và Admin",

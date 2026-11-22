@@ -54,3 +54,35 @@ def test_only_apps_service_gets_admin_secrets_for_installing_apps():
     for secret in secrets:
         assert any(f"${{{secret}:?}}" in line for line in services()["apps"])
         assert not any(secret in line for line in services()["core"])
+
+
+def image_of(name):
+    return [line for line in services()[name] if line.startswith("image:")]
+
+
+def test_opa_runs_pinned_image_without_asking_for_new_versions():
+    opa = services()["opa"]
+
+    assert re.fullmatch(r"image: openpolicyagent/opa:\d+\.\d+\.\d+", image_of("opa")[0])
+    for flag in ("--skip-version-check", "--watch", "--authorization=basic", "--ignore=.*"):
+        assert f"- {flag}" in opa
+
+
+def test_opa_starts_only_after_rules_pass_check():
+    opa, policies = services()["opa"], services()["policies"]
+    needs = opa[opa.index("policies:") + 1]
+
+    assert image_of("policies") == image_of("opa")
+    assert 'command: ["check", "--ignore=.*", "/policies"]' in policies
+    assert "network_mode: none" in policies
+    assert needs == "condition: service_completed_successfully"
+
+
+def test_only_apisix_shares_internal_network_with_opa():
+    networks = COMPOSE.split("\nnetworks:\n", 1)[1]
+
+    assert sorted(name for name, lines in services().items() if "- policy" in lines) == [
+        "apisix",
+        "opa",
+    ]
+    assert "  policy:\n    internal: true\n" in networks

@@ -50,6 +50,7 @@ Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấ
 | centrifugo/centrifugo | v6.10.3 | Apache-2.0 | Gửi cập nhật tức thời tới ứng dụng qua WebSocket | https://github.com/centrifugal/centrifugo/tree/v6.10.3 |
 | chrislusf/seaweedfs | 4.54 | Apache-2.0 | Lưu file của các ứng dụng theo chuẩn S3 | https://github.com/seaweedfs/seaweedfs/tree/4.54 |
 | clamav/clamav-debian | 1.5.4 | GPL-2.0-only | Quét mã độc trong file được tải lên | https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4 |
+| openpolicyagent/opa | 1.22.4 | Apache-2.0 | Kiểm tra luật truy cập chung trước khi API Gateway chuyển lời gọi đi | https://github.com/open-policy-agent/opa/tree/v1.22.4 |
 | operaton/operaton | 2.2.1 | Apache-2.0 | Chạy các quy trình BPMN, có Cockpit, Tasklist và Admin | https://github.com/operaton/operaton/tree/v2.2.1 |
 | postgres | 18.6-alpine | PostgreSQL | Lưu dữ liệu của Keycloak và của các ứng dụng | https://github.com/postgres/postgres/tree/REL_18_6 |
 | postgrest/postgrest | v16.5 | MIT | Tạo REST API từ cơ sở dữ liệu PostgreSQL | https://github.com/PostgREST/postgrest/tree/v16.5 |
