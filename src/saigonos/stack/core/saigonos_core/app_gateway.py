@@ -9,6 +9,7 @@ from saigonos_core.app_database import ApplyError, schema_of
 from saigonos_core.manifest import Manifest
 
 OWNER = "saigonos.app"
+ACCESS = "saigonos.access."
 PREFIX = "app-"
 TIMEOUT = 30
 UPSTREAM = {"type": "roundrobin", "nodes": {"postgrest:3000": 1}}
@@ -28,6 +29,12 @@ RATE_LIMIT = {
     "key": "remote_addr",
     "rejected_code": 429,
     "rejected_msg": "Gọi API quá nhiều lần, vui lòng thử lại sau",
+}
+POLICY = {
+    "_meta": {"priority": 1000},
+    "host": "http://opa:8181",
+    "policy": "saigonos/apps/decision",
+    "with_route": True,
 }
 STAMPS = ("create_time", "update_time")
 ROUTE_CREATED = "Đã tạo route {route}."
@@ -87,7 +94,9 @@ def route_of(app: str) -> str:
 def wanted_route(manifest: Manifest) -> dict[str, Any]:
     app = manifest.name
     schema = schema_of(app)
-    return {
+    labels = {OWNER: app}
+    labels |= {f"{ACCESS}{index}": rule.label() for index, rule in enumerate(manifest.access, 1)}
+    route = {
         "name": route_of(app),
         "desc": (
             f"PostgREST: API của ứng dụng {app}, tự đặt header Accept-Profile và "
@@ -95,7 +104,7 @@ def wanted_route(manifest: Manifest) -> dict[str, Any]:
             "mọi thay đổi trên route này bị đặt lại khi cài đặt lại ứng dụng"
         ),
         "uris": [f"/apps/{app}/api", f"/apps/{app}/api/*"],
-        "labels": {OWNER: app},
+        "labels": labels,
         "status": 1,
         "priority": 0,
         "plugins": {
@@ -118,6 +127,9 @@ def wanted_route(manifest: Manifest) -> dict[str, Any]:
         },
         "upstream": UPSTREAM,
     }
+    if manifest.access:
+        route["plugins"]["opa"] = POLICY
+    return route
 
 
 def stored(reply: Any) -> dict[str, Any] | None:
