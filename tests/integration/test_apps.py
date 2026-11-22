@@ -43,8 +43,7 @@ ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY own ON notes USING (owner = core.uid());
 CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON notes
     FOR EACH ROW EXECUTE FUNCTION core.audit();
-GRANT USAGE ON SCHEMA {schema} TO authenticated;
-GRANT SELECT, INSERT ON notes TO authenticated;
+GRANT SELECT, INSERT ON notes TO {schema}_user;
 """
 WHO_SQL = """\
 CREATE TABLE who AS
@@ -54,44 +53,79 @@ SELECT current_user::text AS who_current, session_user::text AS who_session,
 BOARD_SQL = """\
 CREATE TABLE board (id int);
 GRANT USAGE ON SCHEMA {schema} TO anon;
-GRANT SELECT ON board TO anon, authenticated;
+GRANT SELECT ON board TO anon, {schema}_user;
 """
 TOTAL_SQL = (
     "CREATE FUNCTION total() RETURNS bigint LANGUAGE sql RETURN (SELECT count(*) FROM notes);\n"
 )
-FORGERY_SQL = """\
+OWNER_TOTAL_SQL = """\
+CREATE FUNCTION owner_total() RETURNS bigint LANGUAGE sql SECURITY DEFINER SET search_path = ''
+RETURN (SELECT count(*) FROM {schema}.notes);
+GRANT EXECUTE ON FUNCTION owner_total() TO {schema}_user;
+"""
+CROSS_SQL = """\
 SET check_function_bodies = off;
+CREATE FUNCTION read_other() RETURNS bigint LANGUAGE sql
+AS $f$ SELECT count(*) FROM {other}.notes $f$;
+CREATE FUNCTION switch_role() RETURNS bigint LANGUAGE plpgsql AS $f$
+BEGIN
+    SET LOCAL ROLE {other}_user;
+    RETURN (SELECT count(*) FROM {other}.notes);
+END $f$;
+CREATE FUNCTION switch_by_clause() RETURNS bigint LANGUAGE sql SET role = '{other}_user'
+AS $f$ SELECT count(*) FROM {other}.notes $f$;
+CREATE FUNCTION make_invoker() RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    ALTER FUNCTION {schema}.switch_role() SECURITY INVOKER;
+END $f$;
+CREATE FUNCTION own_count() RETURNS bigint LANGUAGE sql RETURN (SELECT count(*) FROM notes);
+CREATE VIEW switched AS
+SELECT set_config('role', '{other}_user', true) AS role,
+    query_to_xml('SELECT * FROM {other}.notes', false, false, '')::text AS notes;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO {schema}_user;
+GRANT SELECT ON switched TO {schema}_user;
+"""
+FORGERY_SQL = """\
 CREATE TABLE loot (claims text, seal text);
-GRANT SELECT, INSERT ON loot TO authenticated;
+GRANT SELECT, INSERT ON loot TO {schema}_user;
 CREATE FUNCTION claims_of(victim text) RETURNS text LANGUAGE sql
 RETURN json_build_object(
     'sub', victim, 'role', 'authenticated', 'typ', 'Bearer', 'azp', '{app}'
 )::text;
+CREATE FUNCTION set_claims(claims text, seal text DEFAULT NULL) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    EXECUTE format('SET LOCAL request.jwt.claims = %L', claims);
+    IF seal IS NOT NULL THEN
+        EXECUTE format('SET LOCAL saigonos.claims_seal = %L', seal);
+    END IF;
+END $$;
 CREATE FUNCTION forged_uid(victim text) RETURNS text LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM set_config('request.jwt.claims', claims_of(victim), true);
+    PERFORM set_claims(claims_of(victim));
     RETURN core.uid();
 END $$;
 CREATE FUNCTION read_with_set_config(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
 BEGIN
     PERFORM set_config('request.jwt.claims', claims_of(victim), true);
-    RETURN (SELECT count(*) FROM {other}.notes);
+    RETURN (SELECT count(*) FROM notes);
 END $$;
 CREATE FUNCTION read_with_set_local(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
 BEGIN
-    EXECUTE format('SET LOCAL request.jwt.claims = %L', claims_of(victim));
-    RETURN (SELECT count(*) FROM {other}.notes);
+    PERFORM set_claims(claims_of(victim));
+    RETURN (SELECT count(*) FROM notes);
 END $$;
 CREATE FUNCTION read_after_pre_request(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM set_config('request.jwt.claims', claims_of(victim), true);
+    PERFORM set_claims(claims_of(victim));
     PERFORM core.pre_request();
-    RETURN (SELECT count(*) FROM {other}.notes);
+    RETURN (SELECT count(*) FROM notes);
 END $$;
-CREATE FUNCTION read_after_seal(victim text) RETURNS bigint LANGUAGE sql AS $f$
-    SELECT CASE WHEN set_config('request.jwt.claims', claims_of(victim), true) IS NOT NULL
-        AND core.seal_claims() IS NULL THEN (SELECT count(*) FROM {other}.notes) END
-$f$;
+CREATE FUNCTION read_after_seal(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_claims(claims_of(victim));
+    PERFORM core.seal_claims();
+    RETURN (SELECT count(*) FROM notes);
+END $$;
 CREATE FUNCTION keep_claims() RETURNS void LANGUAGE sql AS $f$
     INSERT INTO loot VALUES (
         current_setting('request.jwt.claims', true), current_setting('saigonos.claims_seal', true)
@@ -99,12 +133,10 @@ CREATE FUNCTION keep_claims() RETURNS void LANGUAGE sql AS $f$
 $f$;
 CREATE FUNCTION read_with_kept_claims() RETURNS bigint LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM set_config('request.jwt.claims', claims, true),
-        set_config('saigonos.claims_seal', seal, true)
-    FROM loot;
-    RETURN (SELECT count(*) FROM {other}.notes);
+    PERFORM set_claims(claims, seal) FROM loot;
+    RETURN (SELECT count(*) FROM notes);
 END $$;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO authenticated;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO {schema}_user;
 """
 PAGE = '<!doctype html><title>Ghi chú</title><script src="app.js"></script>\n'
 SCRIPT = "console.log('ghi chú');\n"
@@ -116,6 +148,8 @@ REFUSED_FILES = {
     "ghi-migrations": "INSERT INTO core.migrations VALUES ('core', '9999_gia.sql', 'x');",
     "doi-sang-postgres": "SET ROLE postgres;",
     "doi-sang-authenticated": "SET ROLE authenticated;",
+    "doi-sang-role-user": "SET ROLE {own}_user;",
+    "cap-schema-cho-authenticated": "GRANT USAGE ON SCHEMA {own} TO authenticated;",
     "reset-role": "RESET ROLE;\nSELECT * FROM core.audit_log;",
     "commit": "COMMIT;",
 }
@@ -370,7 +404,7 @@ def test_apply_plugs_app_and_gateway_serves_its_table(stack, tmp_path):
     token = stack.app_token(user, name)
     assert printed_last(
         result.stdout,
-        f"Đã tạo schema {schema} và role {schema} của ứng dụng.\n"
+        f"Đã tạo schema {schema}, role {schema} và role {schema}_user của ứng dụng.\n"
         "Đã chạy file 0001_notes.sql.\n"
         f"Đã tạo realm role {name}.nguoi-dung.\n"
         f"Đã tạo client {name}.\n"
@@ -433,17 +467,24 @@ def test_files_run_as_role_of_app_which_logs_in_only_during_apply(stack, tmp_pat
     assert stack.sql(f"SELECT count(*) FROM pg_stat_activity WHERE usename = '{schema}'") == [["0"]]
 
 
-def test_function_of_app_is_not_callable_until_granted(stack, tmp_path):
+def test_functions_of_app_run_as_its_user_role_and_keep_their_grants(stack, tmp_path):
     name = new_name()
-    function = f"{schema_of(name)}.total()"
+    schema = schema_of(name)
+    files = {"0002_total.sql": TOTAL_SQL + OWNER_TOTAL_SQL.format(schema=schema)}
 
-    result = plug(stack, notes_app(tmp_path / name, name, files={"0002_total.sql": TOTAL_SQL}))
+    result = plug(stack, notes_app(tmp_path / name, name, files=files))
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert stack.sql(
-        f"SELECT has_function_privilege('authenticated', '{function}', 'EXECUTE'), "
-        f"has_function_privilege('anon', '{function}', 'EXECUTE')"
-    ) == [["f", "f"]]
+        "SELECT p.proname, p.prosecdef, p.proowner::regrole, "
+        f"has_function_privilege('{schema}_user', p.oid, 'EXECUTE'), "
+        "has_function_privilege('authenticated', p.oid, 'EXECUTE'), "
+        "has_function_privilege('anon', p.oid, 'EXECUTE') "
+        f"FROM pg_proc p WHERE p.pronamespace = '{schema}'::regnamespace ORDER BY p.proname"
+    ) == [
+        ["owner_total", "t", schema, "t", "f", "f"],
+        ["total", "t", f"{schema}_user", "f", "f", "f"],
+    ]
 
 
 def test_changed_file_stops_apply_and_keeps_last_good_version(stack, tmp_path):
@@ -475,7 +516,9 @@ def test_refused_file_is_rolled_back_and_last_good_version_kept(stack, plugged, 
     manifest = json.loads((app / "saigonos-app.json").read_text(encoding="utf-8"))
     manifest["version"] = "0.2.0"
     (app / "saigonos-app.json").write_text(json.dumps(manifest), encoding="utf-8")
-    text = REFUSED_FILES[refused].format(other=schema_of(plugged.other))
+    text = REFUSED_FILES[refused].format(
+        own=schema_of(plugged.name), other=schema_of(plugged.other)
+    )
     (app / "database" / "0002_extra.sql").write_text(f"CREATE TABLE extra (id int);\n{text}\n")
 
     result = plug(stack, app)
@@ -613,18 +656,21 @@ def rpc(stack, name, token, function, body):
     return profile_call(stack, "POST", name, token, body, table=f"rpc/{function}")
 
 
+def outcome(reply):
+    found = json.loads(reply.body)
+    return reply.status, found if reply.status == 200 else found["message"]
+
+
 def test_function_of_app_cannot_pass_itself_off_as_another_user(stack, tmp_path):
-    other, name = new_name(), new_name()
-    forgery = FORGERY_SQL.format(schema=schema_of(name), other=schema_of(other), app=other)
-    for app, files in ((other, None), (name, {"0002_forgery.sql": forgery})):
-        result = plug(stack, notes_app(tmp_path / app, app, files=files))
-        assert result.returncode == 0, result.stdout + result.stderr
+    name = new_name()
+    forgery = FORGERY_SQL.format(schema=schema_of(name), app=name)
+    result = plug(stack, notes_app(tmp_path / name, name, files={"0002_forgery.sql": forgery}))
+    assert result.returncode == 0, result.stdout + result.stderr
     victim, thief = stack.new_user(), stack.new_user()
-    victim_token, thief_token = stack.app_token(victim, other), stack.app_token(thief, name)
-    wait_until_served(stack, other, victim_token)
-    wait_until_served(stack, name, thief_token)
-    assert profile_call(stack, "POST", other, victim_token, {"body": "Bí mật"}).status == 201
-    kept = rpc(stack, name, stack.app_token(victim, name), "keep_claims", {})
+    victim_token, thief_token = stack.app_token(victim, name), stack.app_token(thief, name)
+    wait_until_served(stack, name, victim_token)
+    assert profile_call(stack, "POST", name, victim_token, {"body": "Bí mật"}).status == 201
+    kept = rpc(stack, name, victim_token, "keep_claims", {})
     assert kept.status in (200, 204), kept.body
 
     replies = {
@@ -640,21 +686,61 @@ def test_function_of_app_cannot_pass_itself_off_as_another_user(stack, tmp_path)
     replies["read_with_kept_claims"] = rpc(stack, name, thief_token, "read_with_kept_claims", {})
 
     refused = (403, "Hàm core.seal_claims() chỉ dành cho PostgREST và service core")
-    assert {
-        function: (reply.status, json.loads(reply.body)) for function, reply in replies.items()
-    } | {
-        function: (replies[function].status, json.loads(replies[function].body)["message"])
-        for function in ("read_after_pre_request", "read_after_seal")
-    } == {
+    assert {function: outcome(reply) for function, reply in replies.items()} == {
         "forged_uid": (200, None),
-        "read_with_set_config": (200, 0),
+        "read_with_set_config": (403, "permission denied for function set_config"),
         "read_with_set_local": (200, 0),
         "read_after_pre_request": refused,
         "read_after_seal": refused,
         "read_with_kept_claims": (200, 0),
     }
-    own = json.loads(profile_call(stack, "GET", other, victim_token).body)
+    own = json.loads(profile_call(stack, "GET", name, victim_token).body)
     assert [(note["body"], note["owner"]) for note in own] == [("Bí mật", victim.id)]
+
+
+def test_function_of_app_cannot_read_another_app_even_rows_of_caller(stack, plugged, tmp_path):
+    name = new_name()
+    schema, other = schema_of(name), schema_of(plugged.other)
+    cross = CROSS_SQL.format(schema=schema, other=other)
+    result = plug(stack, notes_app(tmp_path / name, name, files={"0002_cross.sql": cross}))
+    assert result.returncode == 0, result.stdout + result.stderr
+    user = stack.new_user()
+    own, theirs = stack.app_token(user, name), stack.app_token(user, plugged.other)
+    wait_until_served(stack, name, own)
+    wait_until_served(stack, plugged.other, theirs)
+    assert profile_call(stack, "POST", plugged.other, theirs, {"body": "Của B"}).status == 201
+    assert profile_call(stack, "POST", name, own, {"body": "Của A"}).status == 201
+
+    calls = [
+        ("read_other", lambda: rpc(stack, name, own, "read_other", {})),
+        ("switch_role", lambda: rpc(stack, name, own, "switch_role", {})),
+        ("switch_by_clause", lambda: rpc(stack, name, own, "switch_by_clause", {})),
+        ("switched", lambda: profile_call(stack, "GET", name, own, table="switched")),
+        ("make_invoker", lambda: rpc(stack, name, own, "make_invoker", {})),
+        ("switch_role_again", lambda: rpc(stack, name, own, "switch_role", {})),
+        ("own_count", lambda: rpc(stack, name, own, "own_count", {})),
+    ]
+    replies = {label: outcome(call()) for label, call in calls}
+
+    definer = 'cannot set parameter "role" within security-definer function'
+    assert replies == {
+        "read_other": (403, f"permission denied for schema {other}"),
+        "switch_role": (403, definer),
+        "switch_by_clause": (403, definer),
+        "switched": (403, "permission denied for function set_config"),
+        "make_invoker": (
+            403,
+            "Lệnh ALTER FUNCTION chỉ chạy được trong file SQL khi cài đặt ứng dụng",
+        ),
+        "switch_role_again": (403, definer),
+        "own_count": (200, 1),
+    }
+    assert stack.sql(
+        f"SELECT prosecdef, proowner::regrole FROM pg_proc WHERE oid = '{schema}.switch_role()'"
+        "::regprocedure"
+    ) == [["t", f"{schema}_user"]]
+    mine = json.loads(profile_call(stack, "GET", plugged.other, theirs).body)
+    assert [note["body"] for note in mine] == ["Của B"]
 
 
 def test_client_and_role_edited_in_admin_console_are_put_back_by_apply(stack, tmp_path):
@@ -804,6 +890,7 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
         "core.finish_app(text, text, text, jsonb, boolean)",
         "core.run_app_sql(text)",
         "core.record_migration(text, text)",
+        "core.secure_app()",
         "core.pre_config()",
     ]
     roles = ["anon", "authenticated", "authenticator", "core_service", "workflow", "centrifugo"]
