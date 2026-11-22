@@ -130,6 +130,18 @@ def test_latest_definition_is_none_for_unknown_key(server, operaton):
     assert operaton.latest_definition("khong_co") is None
 
 
+def test_latest_definition_of_tenant_is_read_by_key_and_tenant(server, operaton):
+    definition = {"id": "nghi_phep.duyet:2:abc", "key": "nghi_phep.duyet", "tenantId": "nghi-phep"}
+    server.reply(
+        "GET", "/process-definition/key/nghi_phep.duyet/tenant-id/nghi-phep", 200, definition
+    )
+
+    assert operaton.latest_definition("nghi_phep.duyet", "nghi-phep") == definition
+    assert server.requests[0][1] == (
+        f"{PREFIX}/process-definition/key/nghi_phep.duyet/tenant-id/nghi-phep"
+    )
+
+
 def test_definition_xml_returns_bpmn_of_definition(server, operaton):
     server.reply(
         "GET", "/process-definition/yeu_cau:1:abc/xml", 200, {"bpmn20Xml": "<definitions />"}

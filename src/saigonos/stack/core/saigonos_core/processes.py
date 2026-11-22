@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from saigonos_core.api import BAD_GATEWAY, UNAUTHORIZED, UNAVAILABLE, Message, User, operaton_errors
 from saigonos_core.forms import START_FORM, Form, FormField, submitted
 from saigonos_core.operaton import Operaton
+from saigonos_core.scopes import Scope
 
 BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 EXTENSIONS = ("http://operaton.org/schema/1.0/bpmn", "http://camunda.org/schema/1.0/bpmn")
@@ -208,9 +209,9 @@ class Processes:
             self.known[definition_id] = rules
         return rules
 
-    def latest(self, key: str) -> tuple[dict[str, Any], Rules] | None:
-        definition = self.operaton.latest_definition(key)
-        if definition is None:
+    def latest(self, key: str, scope: Scope) -> tuple[dict[str, Any], Rules] | None:
+        definition = self.operaton.latest_definition(key, scope.app)
+        if definition is None or not scope.holds(definition):
             return None
         return definition, self.rules(definition["id"], key)
 
@@ -225,7 +226,9 @@ router = APIRouter(prefix="/processes")
     description=(
         "Bắt đầu quy trình bằng form bắt đầu khai trong file BPMN. Nội dung chỉ được chứa các "
         "trường của form này. Khi một giá trị không đạt ràng buộc của trường, lời gọi nhận mã 422 "
-        "với nội dung bắt đầu bằng LỖI TUÂN THỦ"
+        "với nội dung bắt đầu bằng LỖI TUÂN THỦ. Access token của một ứng dụng chỉ bắt đầu được "
+        "quy trình của ứng dụng đó. Access token của client khác chỉ bắt đầu được quy trình không "
+        "thuộc ứng dụng nào"
     ),
     responses=UNAUTHORIZED
     | {
@@ -244,8 +247,9 @@ async def start_process(
 ) -> StartedProcess:
     variables = start.variables if start else {}
     processes = request.app.state.processes
+    scope = await request.app.state.scopes.of(user)
     with operaton_errors("Chưa bắt đầu được quy trình", "bắt đầu quy trình"):
-        found = await run_in_threadpool(processes.latest, key)
+        found = await run_in_threadpool(processes.latest, key, scope)
         if found is None:
             raise HTTPException(404, f"{NOT_FOUND} {key}")
         definition, rules = found

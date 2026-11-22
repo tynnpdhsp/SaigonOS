@@ -60,7 +60,7 @@ class IdleDatabase:
 
 
 @pytest.fixture
-def client(settings, scans, operaton, steps, deliveries):
+def client(settings, scans, operaton, steps, deliveries, scopes):
     app = create_app(
         settings,
         IdleDatabase(),
@@ -68,6 +68,7 @@ def client(settings, scans, operaton, steps, deliveries):
         operaton=operaton,
         steps=steps,
         deliveries=deliveries,
+        scopes=scopes,
     )
     with TestClient(app) as client:
         yield client
@@ -394,3 +395,50 @@ def test_openapi_document_describes_start(client):
 
     assert operation["security"] == [{"HTTPBearer": []}]
     assert {"201", "401", "403", "404", "409", "422", "502", "503"} <= operation["responses"].keys()
+
+
+APP = "nghi-phep"
+ROLE = "nghi-phep.nhan-vien"
+
+
+def test_token_of_app_starts_process_of_its_app(client, operaton, realm, scopes):
+    scopes.apps.add(APP)
+    key = "nghi_phep.duyet"
+    operaton.deploy(key, bpmn(key, ROLE), version=4)
+    latest = operaton.deploy(key, bpmn(key, ROLE), version=2, tenant=APP)
+
+    reply = start(client, bearer(realm, ROLE, azp=APP), key=key)
+
+    assert reply.status_code == 201
+    assert reply.json() == {"id": "quy-trinh-1", "process_key": key, "version": 2}
+    assert [definition for definition, _ in operaton.started] == [latest["id"]]
+
+
+@pytest.mark.parametrize(
+    ("tenant", "client_id"),
+    [(None, APP), (APP, "kiem-thu"), (APP, "khac")],
+    ids=["quy-trinh-ngoai-ung-dung", "client-khac", "ung-dung-khac"],
+)
+def test_process_outside_scope_of_token_is_not_found(
+    client, operaton, realm, scopes, tenant, client_id
+):
+    scopes.apps |= {APP, "khac"}
+    operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER), tenant=tenant)
+
+    reply = start(client, bearer(realm, STARTER, azp=client_id))
+
+    assert (reply.status_code, reply.json()) == (
+        404,
+        {"detail": "Không tìm thấy quy trình yeu_cau"},
+    )
+    assert operaton.started == []
+
+
+def test_definition_of_other_tenant_is_not_started(client, operaton, realm):
+    definition = operaton.deploy("yeu_cau", bpmn("yeu_cau", STARTER))
+    definition["tenantId"] = APP
+
+    reply = start(client, bearer(realm, STARTER))
+
+    assert reply.status_code == 404
+    assert operaton.started == []

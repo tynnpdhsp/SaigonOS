@@ -54,8 +54,11 @@ class Operaton:
         self.refusals = 0
         self.paused_until: float | None = None
 
-    def latest_definition(self, key: str) -> dict[str, Any] | None:
-        status, data = self.call("GET", f"/process-definition/key/{segment(key)}")
+    def latest_definition(self, key: str, tenant: str | None = None) -> dict[str, Any] | None:
+        path = f"/process-definition/key/{segment(key)}"
+        if tenant is not None:
+            path += f"/tenant-id/{segment(tenant)}"
+        status, data = self.call("GET", path)
         if status == 404:
             return None
         return self.result(status, data)

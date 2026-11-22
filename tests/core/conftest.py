@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
 from saigonos_core.main import Settings
+from saigonos_core.scopes import Scope
 
 JWKS_PATH = "/auth/realms/saigonos/protocol/openid-connect/certs"
 PUBLIC_URL = "https://dx.example.com/core"
@@ -150,10 +151,11 @@ class FakeOperaton:
         self.errors = {}
         self.failure = None
 
-    def deploy(self, key, xml, version=1, suspended=False):
-        definition = {"id": f"{key}:{version}:{version:04d}", "key": key, "version": version}
-        definition["suspended"] = suspended
-        self.definitions[key] = definition
+    def deploy(self, key, xml, version=1, suspended=False, tenant=None):
+        number = f"{version:04d}" if tenant is None else tenant
+        definition = {"id": f"{key}:{version}:{number}", "key": key, "version": version}
+        definition |= {"suspended": suspended, "tenantId": tenant}
+        self.definitions[key, tenant] = definition
         self.by_id[definition["id"]] = definition
         self.documents[definition["id"]] = xml
         return definition
@@ -162,9 +164,9 @@ class FakeOperaton:
         if self.failure:
             raise self.failure
 
-    def latest_definition(self, key):
+    def latest_definition(self, key, tenant=None):
         self.check()
-        return self.definitions.get(key)
+        return self.definitions.get((key, tenant))
 
     def definition(self, definition_id):
         self.check()
@@ -189,6 +191,7 @@ class FakeOperaton:
             "suspended": False,
             "processDefinitionId": "yeu_cau:1:0001",
             "taskDefinitionKey": "xu_ly",
+            "tenantId": None,
         } | fields
 
     def tasks(self, query, offset, limit):
@@ -198,6 +201,10 @@ class FakeOperaton:
             return self.found
         task = self.items.get(query["taskId"])
         if task is None or not self.groups[task["id"]] & set(query["candidateGroups"]):
+            return []
+        if task["tenantId"] not in query.get("tenantIdIn", [None]):
+            return []
+        if query.get("withoutTenantId") and task["tenantId"] is not None:
             return []
         return [dict(task)]
 
@@ -257,9 +264,25 @@ def deliveries():
     return FakeWorker(), FakeWorker()
 
 
+class FakeScopes:
+    def __init__(self):
+        self.apps = set()
+        self.asked = []
+
+    async def of(self, caller):
+        client = caller.claims.get("azp")
+        self.asked.append(client)
+        return Scope(client if client in self.apps else None)
+
+
 @pytest.fixture
 def operaton():
     return FakeOperaton()
+
+
+@pytest.fixture
+def scopes():
+    return FakeScopes()
 
 
 @pytest.fixture(scope="session")

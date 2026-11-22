@@ -22,6 +22,7 @@ from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
 from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.scans import Scans
+from saigonos_core.scopes import Scopes
 from saigonos_core.smtp import SmtpSettingsError
 from saigonos_core.smtp import configured as smtp_configured
 from saigonos_core.steps import Steps
@@ -179,6 +180,7 @@ def create_app(
     operaton: Operaton | None = None,
     steps: Steps | None = None,
     deliveries: Sequence[Deliveries] | None = None,
+    scopes: Scopes | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -221,6 +223,7 @@ def create_app(
     app.state.downloads = DownloadLinks(settings.download_key)
     app.state.operaton = operaton
     app.state.processes = definitions
+    app.state.scopes = scopes or Scopes(database)
     app.state.steps = steps
     app.state.deliveries = deliveries
     app.state.subscription_tokens = SubscriptionTokens(settings.subscription_key)

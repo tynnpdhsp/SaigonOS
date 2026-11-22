@@ -18,6 +18,7 @@ from saigonos_core.callers import Caller
 from saigonos_core.forms import TASK_FORM, submitted
 from saigonos_core.operaton import Operaton, OperatonError
 from saigonos_core.processes import Name, Processes, Value, check_variables
+from saigonos_core.scopes import Scope
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -83,17 +84,25 @@ def task_of(data: dict[str, Any]) -> Task:
     )
 
 
-def query_of(caller: Caller) -> dict[str, Any]:
+def query_of(caller: Caller, scope: Scope) -> dict[str, Any]:
     mine = {"assignee": caller.claims["sub"]}
     groups = sorted(caller.realm_roles)
     if not groups:
-        return mine | {"sorting": SORTING}
-    return {"orQueries": [mine | {"candidateGroups": groups}], "sorting": SORTING}
+        return mine | scope.query | {"sorting": SORTING}
+    return {"orQueries": [mine | {"candidateGroups": groups}]} | scope.query | {"sorting": SORTING}
 
 
-def candidate_query(task_id: str, caller: Caller) -> dict[str, Any]:
+def candidate_query(task_id: str, caller: Caller, scope: Scope) -> dict[str, Any]:
     groups = sorted(caller.realm_roles)
-    return {"taskId": task_id, "candidateGroups": groups, "includeAssignedTasks": True}
+    found = {"taskId": task_id, "candidateGroups": groups, "includeAssignedTasks": True}
+    return found | scope.query
+
+
+def visible(operaton: Operaton, task_id: str, scope: Scope) -> dict[str, Any]:
+    task = operaton.task(task_id)
+    if task is None or not scope.holds(task):
+        raise HTTPException(404, NOT_FOUND)
+    return task
 
 
 def claimed_by(task: dict[str, Any], user: str) -> bool:
@@ -106,12 +115,11 @@ def claimed_by(task: dict[str, Any], user: str) -> bool:
     return False
 
 
-def claim_task(operaton: Operaton, task_id: str, caller: Caller) -> None:
+def claim_task(operaton: Operaton, task_id: str, caller: Caller, scope: Scope) -> None:
     user = caller.claims["sub"]
-    found = operaton.tasks(candidate_query(task_id, caller), 0, 1)
+    found = operaton.tasks(candidate_query(task_id, caller, scope), 0, 1)
     if not found:
-        if operaton.task(task_id) is None:
-            raise HTTPException(404, NOT_FOUND)
+        visible(operaton, task_id, scope)
         raise HTTPException(403, NOT_CANDIDATE)
     if claimed_by(found[0], user):
         return
@@ -133,13 +141,11 @@ def check_assignee(task: dict[str, Any], user: str) -> None:
 
 
 def complete_task(
-    processes: Processes, task_id: str, caller: Caller, variables: dict[str, Any]
+    processes: Processes, task_id: str, caller: Caller, variables: dict[str, Any], scope: Scope
 ) -> None:
     operaton = processes.operaton
     user = caller.claims["sub"]
-    task = operaton.task(task_id)
-    if task is None:
-        raise HTTPException(404, NOT_FOUND)
+    task = visible(operaton, task_id, scope)
     check_assignee(task, user)
     rules = processes.rules(task["processDefinitionId"])
     check_variables(rules, variables)
@@ -163,7 +169,9 @@ router = APIRouter(prefix="/tasks")
     summary="Việc của người gọi và việc chờ nhận",
     description=(
         "Trả về các việc mà người gọi đã nhận và các việc chưa ai nhận có nhóm ứng viên "
-        "là một realm role của người gọi. Các việc được xếp theo thời điểm tạo"
+        "là một realm role của người gọi. Các việc được xếp theo thời điểm tạo. Access token "
+        "của một ứng dụng chỉ thấy việc trong quy trình của ứng dụng đó. Access token của "
+        "client khác chỉ thấy việc trong quy trình không thuộc ứng dụng nào"
     ),
     responses=UNAUTHORIZED | BAD_GATEWAY | UNAVAILABLE,
 )
@@ -175,11 +183,12 @@ async def list_tasks(
         int, Query(ge=1, le=MAX_LIMIT, description="Số việc tối đa được trả về")
     ] = DEFAULT_LIMIT,
 ) -> list[Task]:
+    scope = await request.app.state.scopes.of(user)
     with operaton_errors("Chưa lấy được danh sách việc", "lấy danh sách việc"):
         found = await run_in_threadpool(
-            request.app.state.operaton.tasks, query_of(user), offset, limit
+            request.app.state.operaton.tasks, query_of(user, scope), offset, limit
         )
-    return [task_of(data) for data in found]
+    return [task_of(data) for data in found if scope.holds(data)]
 
 
 @router.post(
@@ -201,8 +210,9 @@ async def list_tasks(
     | UNAVAILABLE,
 )
 async def claim(task_id: TaskId, request: Request, user: User) -> None:
+    scope = await request.app.state.scopes.of(user)
     with operaton_errors("Chưa nhận được việc", "nhận việc"):
-        await run_in_threadpool(claim_task, request.app.state.operaton, task_id, user)
+        await run_in_threadpool(claim_task, request.app.state.operaton, task_id, user, scope)
 
 
 @router.post(
@@ -232,7 +242,8 @@ async def complete(
     completion: Annotated[CompleteRequest | None, Body()] = None,
 ) -> None:
     variables = completion.variables if completion else {}
+    scope = await request.app.state.scopes.of(user)
     with operaton_errors("Chưa hoàn thành được việc", "hoàn thành việc"):
         await run_in_threadpool(
-            complete_task, request.app.state.processes, task_id, user, variables
+            complete_task, request.app.state.processes, task_id, user, variables, scope
         )

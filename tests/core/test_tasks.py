@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from saigonos_core.callers import caller_of
 from saigonos_core.main import create_app
 from saigonos_core.operaton import OperatonError, OperatonUnavailableError
+from saigonos_core.scopes import Scope
 from saigonos_core.tasks import SORTING, query_of
 
 WORKER = "nhan-vien"
@@ -81,7 +82,7 @@ class IdleDatabase:
 
 
 @pytest.fixture
-def client(settings, scans, operaton, steps, deliveries):
+def client(settings, scans, operaton, steps, deliveries, scopes):
     app = create_app(
         settings,
         IdleDatabase(),
@@ -89,6 +90,7 @@ def client(settings, scans, operaton, steps, deliveries):
         operaton=operaton,
         steps=steps,
         deliveries=deliveries,
+        scopes=scopes,
     )
     with TestClient(app) as client:
         yield client
@@ -127,6 +129,7 @@ def test_tasks_ask_operaton_for_own_and_claimable_tasks_only(client, operaton, r
                         "candidateGroups": ["a,b", "authenticated", "nhan-vien"],
                     }
                 ],
+                "withoutTenantId": True,
                 "sorting": SORTING,
             },
             0,
@@ -138,7 +141,11 @@ def test_tasks_ask_operaton_for_own_and_claimable_tasks_only(client, operaton, r
 def test_caller_without_realm_roles_asks_only_for_own_tasks():
     caller = caller_of({"sub": "nguoi-dung", "realm_access": {"roles": []}})
 
-    assert query_of(caller) == {"assignee": "nguoi-dung", "sorting": SORTING}
+    assert query_of(caller, Scope()) == {
+        "assignee": "nguoi-dung",
+        "withoutTenantId": True,
+        "sorting": SORTING,
+    }
 
 
 def test_task_fields_come_from_operaton(client, operaton, realm):
@@ -224,6 +231,7 @@ def test_worker_claims_unassigned_task_of_own_group(client, operaton, realm):
                 "taskId": "viec-1",
                 "candidateGroups": ["authenticated", WORKER],
                 "includeAssignedTasks": True,
+                "withoutTenantId": True,
             },
             0,
             1,
@@ -550,3 +558,74 @@ def test_openapi_document_describes_complete(client):
     assert operation["security"] == [{"HTTPBearer": []}]
     assert {"204", "401", "403", "404", "409", "422", "502", "503"} <= operation["responses"].keys()
     assert "CompleteRequest" in json.dumps(body)
+
+
+APP = "nghi-phep"
+
+
+def app_bearer(realm, *roles, app=APP):
+    token = realm.token(realm_access={"roles": ["authenticated", *roles]}, azp=app)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_token_of_app_lists_only_tasks_of_its_app(client, operaton, realm, scopes):
+    scopes.apps.add(APP)
+    operaton.found = [FOUND, FOUND | {"id": "viec-2", "tenantId": APP}]
+
+    reply = client.get("/tasks", headers=app_bearer(realm, WORKER))
+
+    assert [task["id"] for task in reply.json()] == ["viec-2"]
+    [(query, _, _)] = operaton.queries
+    assert query["tenantIdIn"] == [APP]
+    assert "withoutTenantId" not in query
+
+
+def test_token_of_other_client_does_not_list_tasks_of_apps(client, operaton, realm, scopes):
+    scopes.apps.add(APP)
+    operaton.found = [FOUND, FOUND | {"id": "viec-2", "tenantId": APP}]
+
+    reply = client.get("/tasks", headers=app_bearer(realm, WORKER, app="kiem-thu"))
+
+    assert [task["id"] for task in reply.json()] == ["viec-1"]
+    assert operaton.queries[0][0]["withoutTenantId"] is True
+    assert scopes.asked == ["kiem-thu"]
+
+
+@pytest.mark.parametrize("app", ["kiem-thu", "khac"], ids=["client-khac", "ung-dung-khac"])
+def test_task_of_app_is_not_found_with_token_of_other_client(client, operaton, realm, scopes, app):
+    scopes.apps |= {APP, "khac"}
+    operaton.add_task(tenantId=APP)
+    operaton.add_task("viec-2", assignee=realm.subject, tenantId=APP)
+
+    claimed = claim(client, app_bearer(realm, WORKER, app=app))
+    completed = complete(client, app_bearer(realm, app=app), "viec-2", RESULT)
+
+    assert (claimed.status_code, claimed.json()) == (404, NOT_FOUND)
+    assert (completed.status_code, completed.json()) == (404, NOT_FOUND)
+    assert (operaton.claims, operaton.submitted) == ([], [])
+
+
+def test_task_outside_apps_is_not_found_with_token_of_app(client, operaton, realm, scopes):
+    scopes.apps.add(APP)
+    operaton.add_task()
+
+    reply = claim(client, app_bearer(realm, WORKER))
+
+    assert (reply.status_code, reply.json()) == (404, NOT_FOUND)
+    assert operaton.claims == []
+
+
+def test_token_of_app_claims_and_completes_task_of_its_app(client, operaton, realm, scopes):
+    scopes.apps.add(APP)
+    definition = operaton.deploy("yeu_cau", PROCESS, tenant=APP)
+    operaton.add_task(tenantId=APP, processDefinitionId=definition["id"])
+    headers = app_bearer(realm, WORKER)
+
+    claimed = claim(client, headers)
+    completed = complete(client, headers, variables=RESULT)
+
+    assert (claimed.status_code, completed.status_code) == (204, 204)
+    assert operaton.queries[0][0]["tenantIdIn"] == [APP]
+    assert operaton.submitted == [
+        ("viec-1", {"ket_qua": {"value": RESULT["ket_qua"], "type": "String"}})
+    ]
