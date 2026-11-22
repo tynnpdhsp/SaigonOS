@@ -10,6 +10,8 @@ from typing import Any, NamedTuple
 from urllib.parse import parse_qs, urlsplit
 
 from saigonos import compose
+from saigonos.apps import AppFolderError, app_folders, read_manifest
+from saigonos.home import APPS_FOLDER
 
 REALM_PATH = "/auth/realms/saigonos"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
@@ -251,9 +253,41 @@ def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:
     return checks
 
 
+def app_state(name: str, api: int, page: int | None) -> tuple[bool, str]:
+    api_path, page_path = f"/apps/{name}/api/", f"/apps/{name}/"
+    if api != 200:
+        return False, f"lời gọi {api_path} nhận mã {api}, đúng ra là 200"
+    if page is None:
+        return True, f"API của ứng dụng trả lời tại {api_path}"
+    if page != 200:
+        return False, f"lời gọi {page_path} nhận mã {page}, đúng ra là 200"
+    return True, f"API và giao diện của ứng dụng trả lời tại {page_path}"
+
+
+def app_checks(home: Path, url: str, certificate: str | None = None) -> list[Check]:
+    checks = []
+    for folder in app_folders(home / APPS_FOLDER):
+        name = f"Ứng dụng {folder.name}"
+        try:
+            manifest = read_manifest(folder)
+        except (OSError, ValueError, AppFolderError):
+            checks.append(Check(name, False, "không đọc được bản khai trong thư mục apps"))
+            continue
+        try:
+            api = fetch(f"{url}/apps/{folder.name}/api/", certificate).status
+            page = None
+            if manifest.get("ui"):
+                page = fetch(f"{url}/apps/{folder.name}/", certificate).status
+        except (OSError, HTTPException) as error:
+            checks.append(Check(name, False, f"không kết nối được tới {url}: {error}"))
+            continue
+        checks.append(Check(name, *app_state(folder.name, api, page)))
+    return checks
+
+
 def run_checks(home: Path, url: str) -> list[Check]:
     services = service_checks(home)
     certificate = None
     if any(check.name == CADDY for check in services):
         certificate = caddy_root_certificate(home)
-    return [*services, *gateway_checks(url, certificate)]
+    return [*services, *gateway_checks(url, certificate), *app_checks(home, url, certificate)]
