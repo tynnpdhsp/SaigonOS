@@ -27,6 +27,22 @@ MASTER_PATHS = {
     "/auth/realms/master;x=1/.well-known/openid-configuration": 400,
 }
 CONSOLE_CLIENT = "security-admin-console"
+ADMIN_CONSOLE = "/auth/admin/saigonos/console/"
+ADMIN_USERS = "/admin/realms/saigonos/users?max=1"
+COCKPIT = "/operaton/app/cockpit/"
+OUTSIDE_REASON = "Địa chỉ IP này không được vào trang quản trị."
+OTP_REASON = "Trang quản trị cần đăng nhập bằng mật khẩu và mã OTP."
+LOCKED_REASON = "Admin Console đang tạm khóa để bảo trì."
+LOCAL_RULE = f"""# SPDX-License-Identifier: Apache-2.0
+package saigonos.admin
+
+deny contains "{LOCKED_REASON}" if input.request.path == "{ADMIN_CONSOLE}"
+"""
+REFERENCES = {
+    "saigonos browser forms": "pwd",
+    "saigonos browser admin otp": "otp",
+    "saigonos browser optional otp": "otp",
+}
 ENVIRONMENT = re.compile(r'<script id="environment" type="application/json">(.*?)</script>', re.S)
 
 
@@ -69,6 +85,70 @@ def console_login(stack, password):
     return action, location, stack.call("POST", token, form=exchange).status
 
 
+def opa_status(stack, method, path):
+    request = json.dumps(
+        {"method": method, "url": f"http://127.0.0.1:8181{path}", "raw_body": "{}"}
+    )
+    result = stack.exec("opa", "/opa", "eval", "--format=raw", f"http.send({request}).status_code")
+    return int(result.stdout)
+
+
+def set_admin_networks(stack, value):
+    path = stack.home / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = [line for line in lines if not line.startswith("SAIGONOS_ADMIN_NETWORKS=")]
+    if value is not None:
+        lines.append(f"SAIGONOS_ADMIN_NETWORKS={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return stack.compose_result("up", "-d", "--wait", "opa", timeout=180)
+
+
+def subnet_of(stack, network):
+    template = "{{(index .IPAM.Config 0).Subnet}}"
+    return stack.run_docker("network", "inspect", "--format", template, network).stdout.strip()
+
+
+def gateway_page(stack, path, token=None):
+    return stack.call("GET", f"{stack.url}{path}", token=token)
+
+
+def wait_for_reason(stack, reason):
+    wait_for(lambda: gateway_page(stack, ADMIN_CONSOLE).body.decode() == reason)
+
+
+def console_token(stack, user, otp=None, step=1):
+    redirect = f"{stack.url}{ADMIN_CONSOLE}"
+    reply, otp = stack.browser_login(CONSOLE_CLIENT, redirect, user, otp, step)
+    assert reply.status == 200, reply.body
+    return json.loads(reply.body)["access_token"], otp
+
+
+def grant_client_role(stack, user, client, role):
+    found = json.loads(stack.admin("GET", f"/clients?clientId={client}").body)[0]
+    roles = f"/clients/{found['id']}/roles/{role}"
+    wanted = json.loads(stack.admin("GET", roles).body)
+    path = f"/users/{user.id}/role-mappings/clients/{found['id']}"
+    assert stack.admin("POST", path, [wanted]).status == 204
+
+
+def executions(stack, flow):
+    path = f"/authentication/flows/{flow.replace(' ', '%20')}/executions"
+    return json.loads(stack.admin("GET", path).body)
+
+
+def reference_of(stack, flow):
+    for execution in executions(stack, flow):
+        config = execution.get("authenticationConfig")
+        if (
+            execution["level"] == 0
+            and config
+            and "conditional" not in execution.get("providerId", "")
+        ):
+            found = json.loads(stack.admin("GET", f"/authentication/config/{config}").body)
+            return found["config"].get("default.reference.value")
+    return None
+
+
 def wait_for(condition, timeout=60):
     deadline = time.monotonic() + timeout
     while not condition():
@@ -81,6 +161,8 @@ def test_doctor_reports_working_stack(stack):
 
     assert result.returncode == 0, result.stdout
     assert "Hệ thống hoạt động bình thường." in result.stdout
+    assert re.search(r"^BÌNH THƯỜNG +opa +đang chạy$", result.stdout, re.MULTILINE)
+    assert re.search(r"^BÌNH THƯỜNG +policies +đã chạy xong$", result.stdout, re.MULTILINE)
 
 
 def test_gateway_ports_listen_on_loopback_only(stack):
@@ -405,3 +487,161 @@ def test_burst_of_calls_gets_429(stack):
     assert statuses.count(200) == 300
     assert statuses.count(429) == 100
     assert "Gọi API quá nhiều lần" in stack.api(token).body.decode()
+
+
+def test_opa_answers_only_health_and_decisions(stack):
+    statuses = {
+        ("GET", "/health"): 200,
+        ("POST", "/v1/data/saigonos/admin/decision"): 200,
+        ("POST", "/v1/data/saigonos/admin/networks"): 401,
+        ("GET", "/v1/data"): 401,
+        ("GET", "/v1/policies"): 401,
+        ("PUT", "/v1/policies/saigonos"): 401,
+        ("PATCH", "/v1/data"): 401,
+    }
+
+    assert {call: opa_status(stack, *call) for call in statuses} == statuses
+
+
+def test_admin_routes_are_refused_while_opa_is_stopped(stack):
+    assert stack.compose_result("stop", "opa").returncode == 0
+    try:
+        refused = [gateway_page(stack, path).status for path in (ADMIN_CONSOLE, COCKPIT)]
+        login = gateway_page(stack, DISCOVERY_PATH).status
+        api = gateway_page(stack, "/api/").status
+    finally:
+        started = stack.compose_result("up", "-d", "--wait", "opa", timeout=180)
+    stack.wait_until_answers(ADMIN_CONSOLE)
+
+    assert refused == [403, 403]
+    assert (login, api) == (200, 200)
+    assert started.returncode == 0, started.stderr
+
+
+def test_admin_networks_in_env_limit_admin_routes(stack):
+    with stack.outside_network() as network:
+        try:
+            widened = set_admin_networks(stack, f"192.0.2.0/24, {subnet_of(stack, network)}")
+            wait_for_reason(stack, OUTSIDE_REASON)
+            inside = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
+            local = gateway_page(stack, ADMIN_CONSOLE)
+            narrowed = set_admin_networks(stack, "192.0.2.0/24")
+            wait_for_reason(stack, OUTSIDE_REASON)
+            outside = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
+            login = stack.outside_status(network, DISCOVERY_PATH)
+        finally:
+            restored = set_admin_networks(stack, None)
+            stack.wait_until_answers(ADMIN_CONSOLE)
+
+    assert widened.returncode == 0, widened.stderr
+    assert inside[0] == 200
+    assert inside[1] != 403
+    assert (local.status, local.body.decode()) == (403, OUTSIDE_REASON)
+    assert local.headers["Content-Type"] == "text/plain; charset=utf-8"
+    assert narrowed.returncode == 0, narrowed.stderr
+    assert outside == [403, 403]
+    assert login == 200
+    assert restored.returncode == 0, restored.stderr
+
+
+def test_invalid_admin_network_stops_up_with_message(stack):
+    try:
+        failed = set_admin_networks(stack, "192.0.2.0/24, 192.0.2.7")
+        message = stack.logs("policies").splitlines()[-1]
+        refused = gateway_page(stack, ADMIN_CONSOLE).status
+    finally:
+        restored = set_admin_networks(stack, None)
+        stack.wait_until_answers(ADMIN_CONSOLE)
+
+    assert failed.returncode != 0
+    assert message == "Dải mạng 192.0.2.7 trong SAIGONOS_ADMIN_NETWORKS không hợp lệ."
+    assert refused == 403
+    assert restored.returncode == 0, restored.stderr
+
+
+def test_new_rule_file_changes_access_after_saigonos_up(stack):
+    rule = stack.home / "config" / "opa" / "local.rego"
+    rule.write_text(LOCAL_RULE, encoding="utf-8")
+    try:
+        locked = stack.up()
+        console = gateway_page(stack, ADMIN_CONSOLE)
+        cockpit = gateway_page(stack, COCKPIT).status
+    finally:
+        rule.unlink()
+    unlocked = stack.up()
+
+    assert locked.returncode == 0, locked.stderr
+    assert (console.status, console.body.decode()) == (403, LOCKED_REASON)
+    assert cockpit != 403
+    assert unlocked.returncode == 0, unlocked.stderr
+    stack.wait_until_answers(ADMIN_CONSOLE)
+
+
+def test_broken_rule_file_stops_up_and_keeps_running_rules(stack):
+    broken = stack.home / "config" / "opa" / "broken.rego"
+    broken.write_text("package saigonos.admin\n\ndecision := {\n", encoding="utf-8")
+    try:
+        failed = stack.saigonos("up")
+        logs = stack.logs("policies")
+        console = gateway_page(stack, ADMIN_CONSOLE).status
+    finally:
+        broken.unlink()
+    restored = stack.up()
+
+    assert failed.returncode != 0
+    assert "/policies/broken.rego:4: rego_parse_error" in logs
+    assert console == 200
+    assert restored.returncode == 0, restored.stderr
+
+
+def test_admin_api_through_gateway_needs_login_with_otp(stack):
+    admin = stack.new_user(role="admin")
+    viewer = stack.new_user()
+    grant_client_role(stack, viewer, "realm-management", "view-users")
+
+    first, otp = console_token(stack, admin)
+    second, _ = console_token(stack, admin, otp)
+    third, _ = console_token(stack, viewer)
+
+    tokens = (first, second, third)
+    replies = [gateway_page(stack, f"/auth{ADMIN_USERS}", token) for token in tokens]
+    direct = [stack.call("GET", f"{stack.keycloak}{ADMIN_USERS}", token=token) for token in tokens]
+    assert [decode(token.split(".")[1]).get("amr") for token in tokens] == [
+        ["pwd"],
+        ["pwd", "otp"],
+        ["pwd"],
+    ]
+    assert [reply.status for reply in replies] == [403, 200, 403]
+    assert replies[0].body.decode() == OTP_REASON
+    assert [reply.status for reply in direct] == [200, 200, 200]
+
+
+def test_realm_service_adds_amr_to_realm_created_by_older_version(stack):
+    scopes = json.loads(stack.admin("GET", "/client-scopes").body)
+    basic = next(scope for scope in scopes if scope["name"] == "basic")
+    mapper = next(mapper for mapper in basic["protocolMappers"] if mapper["name"] == "amr")
+    path = f"/client-scopes/{basic['id']}/protocol-mappers/models/{mapper['id']}"
+    assert stack.admin("DELETE", path).status == 204
+    for flow in REFERENCES:
+        for execution in executions(stack, flow):
+            config = execution.get("authenticationConfig")
+            provider = execution.get("providerId", "")
+            if execution["level"] == 0 and "conditional" not in provider and config:
+                assert stack.admin("DELETE", f"/authentication/config/{config}").status == 204
+    assert {flow: reference_of(stack, flow) for flow in REFERENCES} == dict.fromkeys(REFERENCES)
+
+    first = stack.up()
+    added = stack.logs("realm").splitlines()[-4:]
+    second = stack.up()
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert added == [
+        "Đã thêm mapper amr vào client scope basic của realm saigonos",
+        "Đã đặt giá trị amr pwd cho bước auth-username-password-form của luồng "
+        "saigonos browser forms",
+        "Đã đặt giá trị amr otp cho bước auth-otp-form của luồng saigonos browser admin otp",
+        "Đã đặt giá trị amr otp cho bước auth-otp-form của luồng saigonos browser optional otp",
+    ]
+    assert stack.logs("realm").splitlines()[-1] == "Realm saigonos không cần thay đổi"
+    assert {flow: reference_of(stack, flow) for flow in REFERENCES} == REFERENCES
