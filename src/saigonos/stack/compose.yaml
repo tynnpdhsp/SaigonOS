@@ -479,6 +479,8 @@ services:
       SAIGONOS_URL: ${SAIGONOS_URL:?}
       APISIX_ADMIN_URL: http://apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
+      OPERATON_URL: http://operaton:8080/operaton/engine-rest
+      CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
     volumes:
       - ./apps:/apps:ro
 

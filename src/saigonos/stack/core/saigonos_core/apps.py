@@ -5,10 +5,12 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from saigonos_core.app_database import ApplyError, apply_database
 from saigonos_core.app_gateway import Apisix, apply_gateway, check_route
 from saigonos_core.app_keycloak import Keycloak, apply_keycloak, check_names
+from saigonos_core.app_processes import Operaton, apply_processes, check_operaton
 from saigonos_core.manifest import NAME_PATTERN, Manifest, Problem, check_app, schema_text
 
 APPS = Path("/apps")
@@ -20,7 +22,16 @@ SETTINGS = (
     "SAIGONOS_URL",
     "APISIX_ADMIN_URL",
     "APISIX_ADMIN_KEY",
+    "OPERATON_URL",
+    "CORE_OPERATON_PASSWORD",
 )
+
+
+class Services(NamedTuple):
+    keycloak: Keycloak
+    site_url: str
+    apisix: Apisix
+    operaton: Operaton
 
 
 def parser() -> argparse.ArgumentParser:
@@ -72,19 +83,30 @@ def check(folder: str) -> int:
     return 0
 
 
-def admin_settings() -> tuple[Keycloak, str, Apisix]:
+def admin_settings() -> Services:
     missing = [name for name in SETTINGS if not os.environ.get(name)]
     if missing:
         raise ApplyError(f"Service apps thiếu biến môi trường {', '.join(missing)}.")
-    url, username, password, site_url, gateway, key = (os.environ[name] for name in SETTINGS)
-    return Keycloak(url, username, password), site_url, Apisix(gateway, key)
+    url, username, password, site_url, gateway, key, engine, secret = (
+        os.environ[name] for name in SETTINGS
+    )
+    return Services(
+        Keycloak(url, username, password), site_url, Apisix(gateway, key), Operaton(engine, secret)
+    )
 
 
-def configure_services(
-    keycloak: Keycloak, apisix: Apisix, manifest: Manifest, site_url: str
-) -> None:
-    apply_keycloak(keycloak, manifest, site_url, print)
-    apply_gateway(apisix, manifest, print)
+def check_services(services: Services, manifest: Manifest) -> None:
+    check_names(services.keycloak, manifest)
+    check_route(services.apisix, manifest)
+    if manifest.processes is not None:
+        check_operaton(services.operaton)
+
+
+def configure_services(services: Services, manifest: Manifest, folder: Path) -> None:
+    apply_keycloak(services.keycloak, manifest, services.site_url, print)
+    apply_gateway(services.apisix, manifest, print)
+    if manifest.processes is not None:
+        apply_processes(services.operaton, manifest, folder, print)
 
 
 def apply(name: str) -> int:
@@ -106,15 +128,11 @@ def apply(name: str) -> int:
         )
         return 1
     try:
-        keycloak, site_url, apisix = admin_settings()
-        check_names(keycloak, manifest)
-        check_route(apisix, manifest)
+        services = admin_settings()
+        check_services(services, manifest)
         asyncio.run(
             apply_database(
-                manifest,
-                folder,
-                print,
-                lambda: configure_services(keycloak, apisix, manifest, site_url),
+                manifest, folder, print, lambda: configure_services(services, manifest, folder)
             )
         )
     except ApplyError as error:

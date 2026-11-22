@@ -97,6 +97,8 @@ SETTINGS = {
     "SAIGONOS_URL": "https://dx.example.com",
     "APISIX_ADMIN_URL": "http://apisix:9180",
     "APISIX_ADMIN_KEY": "khoa-quan-tri",
+    "OPERATON_URL": "http://operaton:8080/operaton/engine-rest",
+    "CORE_OPERATON_PASSWORD": "mat-khau-tai-khoan-core",
 }
 
 
@@ -108,6 +110,7 @@ class FakeApply:
         self.taken = None
         self.refusal = None
         self.route_taken = None
+        self.engine_refusal = None
 
     async def database(self, manifest, folder, say, before_finish):
         self.calls.append((manifest.name, folder))
@@ -142,6 +145,16 @@ class FakeApply:
         say("Đã tạo route app-don-tu.")
         return True
 
+    def check_operaton(self, operaton):
+        self.events.append(("check operaton", operaton.host, operaton.port, operaton.base))
+        if self.engine_refusal:
+            raise self.engine_refusal
+
+    def apply_processes(self, operaton, manifest, folder, say):
+        self.events.append(("processes", manifest.name, folder))
+        say("Đã triển khai file xu-ly.bpmn: quy trình don_tu.xu_ly, phiên bản 1.")
+        return True
+
 
 @pytest.fixture
 def applied(monkeypatch):
@@ -153,6 +166,8 @@ def applied(monkeypatch):
     monkeypatch.setattr(apps, "apply_keycloak", fake.apply_keycloak)
     monkeypatch.setattr(apps, "check_route", fake.check_route)
     monkeypatch.setattr(apps, "apply_gateway", fake.apply_gateway)
+    monkeypatch.setattr(apps, "check_operaton", fake.check_operaton)
+    monkeypatch.setattr(apps, "apply_processes", fake.apply_processes)
     return fake
 
 
@@ -270,3 +285,38 @@ def test_check_prints_warnings_before_result(folder, capsys):
         "nên Cockpit của Operaton không vẽ được quy trình.\n"
         "Ứng dụng don-tu 1.2.0 không có lỗi.\n"
     )
+
+
+def with_processes(folder):
+    (folder / "processes").mkdir()
+    (folder / "processes" / "xu-ly.bpmn").write_text(PROCESS, encoding="utf-8")
+    data = VALID | {"processes": "processes"}
+    (folder / MANIFEST).write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_apply_deploys_processes_after_gateway(folder, applied, capsys):
+    with_processes(folder)
+
+    assert apps.main(["apply", "don-tu"]) == 0
+    assert applied.events == [
+        ("check", "keycloak", 8080, "/auth", "admin", "mat-khau-quan-tri", "don-tu"),
+        ("check route", "apisix", 9180, "", "khoa-quan-tri", "don-tu"),
+        ("check operaton", "operaton", 8080, "/operaton/engine-rest"),
+        ("keycloak", "https://dx.example.com", "don-tu"),
+        ("gateway", "don-tu"),
+        ("processes", "don-tu", folder),
+        "finish",
+    ]
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        "Đã triển khai file xu-ly.bpmn: quy trình don_tu.xu_ly, phiên bản 1.",
+        "Đã cài đặt ứng dụng don-tu 1.2.0.",
+    ]
+
+
+def test_operaton_refusing_core_stops_apply_before_database(folder, applied, capsys):
+    with_processes(folder)
+    applied.engine_refusal = ApplyError("Operaton từ chối tài khoản core.")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out.splitlines()[-1] == "Operaton từ chối tài khoản core."
