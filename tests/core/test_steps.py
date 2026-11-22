@@ -37,7 +37,7 @@ PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
-DECLARED = {"oid": OID, "takes_jsonb": True, "gives_jsonb": True, "declared": True}
+DECLARED = {"oid": OID, "takes_jsonb": True, "gives_jsonb": True, "declared": True, "app": None}
 
 
 class FakeConnection:
@@ -252,6 +252,50 @@ def test_function_that_cannot_run_becomes_incident_without_call(
     database.catalog[FUNCTION] = rows
 
     handle(steps, external())
+
+    assert incident(operaton) == message
+    assert database.calls == []
+    assert database.runs == {}
+
+
+def test_step_of_app_runs_function_in_schema_of_app(steps, database, operaton):
+    database.catalog["ung_dung.cap_nhat"] = [DECLARED | {"app": "ung-dung"}]
+
+    handle(steps, external(tenantId="ung-dung"))
+
+    assert [procedure for procedure, _ in database.calls] == [OID]
+    assert operaton.failed == []
+
+
+def test_step_of_app_calling_function_of_another_schema_becomes_incident(steps, database, operaton):
+    handle(steps, external("khac.cap_nhat", tenantId="ung-dung"))
+
+    assert incident(operaton) == (
+        "Quy trình của ứng dụng ung-dung chỉ gọi được hàm trong schema ung_dung. "
+        "Hàm khac.cap_nhat nằm ngoài schema này"
+    )
+    assert database.statements == []
+
+
+@pytest.mark.parametrize(
+    ("tenant", "owner", "message"),
+    [
+        (
+            None,
+            "ung-dung",
+            "Quy trình không thuộc ứng dụng nào nên không gọi được hàm ung_dung.cap_nhat "
+            "của ứng dụng ung-dung",
+        ),
+        ("ung-dung", None, "Hàm ung_dung.cap_nhat không thuộc ứng dụng ung-dung"),
+    ],
+    ids=["quy-trinh-cua-he-thong", "ung-dung-da-mat"],
+)
+def test_function_of_other_owner_becomes_incident(
+    steps, database, operaton, tenant, owner, message
+):
+    database.catalog[FUNCTION] = [DECLARED | {"app": owner}]
+
+    handle(steps, external(tenantId=tenant))
 
     assert incident(operaton) == message
     assert database.calls == []
