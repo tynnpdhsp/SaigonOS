@@ -58,6 +58,53 @@ GRANT SELECT ON board TO anon, authenticated;
 TOTAL_SQL = (
     "CREATE FUNCTION total() RETURNS bigint LANGUAGE sql RETURN (SELECT count(*) FROM notes);\n"
 )
+FORGERY_SQL = """\
+SET check_function_bodies = off;
+CREATE TABLE loot (claims text, seal text);
+GRANT SELECT, INSERT ON loot TO authenticated;
+CREATE FUNCTION claims_of(victim text) RETURNS text LANGUAGE sql
+RETURN json_build_object(
+    'sub', victim, 'role', 'authenticated', 'typ', 'Bearer', 'azp', '{app}'
+)::text;
+CREATE FUNCTION forged_uid(victim text) RETURNS text LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', claims_of(victim), true);
+    RETURN core.uid();
+END $$;
+CREATE FUNCTION read_with_set_config(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', claims_of(victim), true);
+    RETURN (SELECT count(*) FROM {other}.notes);
+END $$;
+CREATE FUNCTION read_with_set_local(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
+BEGIN
+    EXECUTE format('SET LOCAL request.jwt.claims = %L', claims_of(victim));
+    RETURN (SELECT count(*) FROM {other}.notes);
+END $$;
+CREATE FUNCTION read_after_pre_request(victim text) RETURNS bigint LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', claims_of(victim), true);
+    PERFORM core.pre_request();
+    RETURN (SELECT count(*) FROM {other}.notes);
+END $$;
+CREATE FUNCTION read_after_seal(victim text) RETURNS bigint LANGUAGE sql AS $f$
+    SELECT CASE WHEN set_config('request.jwt.claims', claims_of(victim), true) IS NOT NULL
+        AND core.seal_claims() IS NULL THEN (SELECT count(*) FROM {other}.notes) END
+$f$;
+CREATE FUNCTION keep_claims() RETURNS void LANGUAGE sql AS $f$
+    INSERT INTO loot VALUES (
+        current_setting('request.jwt.claims', true), current_setting('saigonos.claims_seal', true)
+    )
+$f$;
+CREATE FUNCTION read_with_kept_claims() RETURNS bigint LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', claims, true),
+        set_config('saigonos.claims_seal', seal, true)
+    FROM loot;
+    RETURN (SELECT count(*) FROM {other}.notes);
+END $$;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO authenticated;
+"""
 REFUSED_FILES = {
     "doc-ung-dung-khac": "SELECT * FROM {other}.notes;",
     "doc-audit-log": "SELECT * FROM core.audit_log;",
@@ -537,6 +584,54 @@ def test_call_without_token_into_schema_of_app_still_runs_as_anon(stack, tmp_pat
 
     assert (anonymous.status, json.loads(anonymous.body)) == (200, [])
     assert foreign.status == 403
+
+
+def rpc(stack, name, token, function, body):
+    return profile_call(stack, "POST", name, token, body, table=f"rpc/{function}")
+
+
+def test_function_of_app_cannot_pass_itself_off_as_another_user(stack, tmp_path):
+    other, name = new_name(), new_name()
+    forgery = FORGERY_SQL.format(schema=schema_of(name), other=schema_of(other), app=other)
+    for app, files in ((other, None), (name, {"0002_forgery.sql": forgery})):
+        result = plug(stack, notes_app(tmp_path / app, app, files=files))
+        assert result.returncode == 0, result.stdout + result.stderr
+    victim, thief = stack.new_user(), stack.new_user()
+    victim_token, thief_token = stack.app_token(victim, other), stack.app_token(thief, name)
+    wait_until_served(stack, other, victim_token)
+    wait_until_served(stack, name, thief_token)
+    assert profile_call(stack, "POST", other, victim_token, {"body": "Bí mật"}).status == 201
+    kept = rpc(stack, name, stack.app_token(victim, name), "keep_claims", {})
+    assert kept.status in (200, 204), kept.body
+
+    replies = {
+        function: rpc(stack, name, thief_token, function, {"victim": victim.id})
+        for function in (
+            "forged_uid",
+            "read_with_set_config",
+            "read_with_set_local",
+            "read_after_pre_request",
+            "read_after_seal",
+        )
+    }
+    replies["read_with_kept_claims"] = rpc(stack, name, thief_token, "read_with_kept_claims", {})
+
+    refused = (403, "Hàm core.seal_claims() chỉ dành cho PostgREST và service core")
+    assert {
+        function: (reply.status, json.loads(reply.body)) for function, reply in replies.items()
+    } | {
+        function: (replies[function].status, json.loads(replies[function].body)["message"])
+        for function in ("read_after_pre_request", "read_after_seal")
+    } == {
+        "forged_uid": (200, None),
+        "read_with_set_config": (200, 0),
+        "read_with_set_local": (200, 0),
+        "read_after_pre_request": refused,
+        "read_after_seal": refused,
+        "read_with_kept_claims": (200, 0),
+    }
+    own = json.loads(profile_call(stack, "GET", other, victim_token).body)
+    assert [(note["body"], note["owner"]) for note in own] == [("Bí mật", victim.id)]
 
 
 def test_client_and_role_edited_in_admin_console_are_put_back_by_apply(stack, tmp_path):
