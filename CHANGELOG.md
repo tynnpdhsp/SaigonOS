@@ -16,11 +16,13 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Giá trị `SAIGONOS_ADMIN_NETWORKS` trong file `.env` chỉ mở các route quản trị cho các dải mạng được khai báo. Khi có dải không hợp lệ, lệnh `saigonos up` báo lỗi ở service `policies`.
 - Admin REST API của Keycloak qua API Gateway chỉ nhận access token của lần đăng nhập có mã OTP. Lời gọi bị từ chối nhận mã 403 kèm lý do bằng tiếng Việt.
 - Access token có claim `amr` ghi các bước đăng nhập, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Service `realm` thêm thiết lập này vào realm do phiên bản cũ tạo và đặt lại thiết lập khi bị sửa.
+- Trường `access` của bản khai khai tối đa 20 luật truy cập API của ứng dụng. Mỗi luật chọn phương thức và mẫu đường dẫn, rồi đặt điều kiện về role, dải mạng hoặc việc đăng nhập bằng mã OTP. Lệnh cài đặt ghi mỗi luật thành một label của route `app-<tên>` và thêm plugin `opa`, nên luật có hiệu lực ngay sau khi cài đặt. Lời gọi không đạt luật nhận mã 403, hoặc 401 khi thiếu access token, với nội dung theo dạng lỗi của PostgREST và mã `SGN03`.
 
 ### Thay đổi
 
 - Luồng đăng nhập `saigonos operaton` được tạo lại một lần khi cập nhật, để bước mật khẩu và bước OTP được ghi vào claim `amr`.
 - Tên `auth-admin` được thêm vào danh sách tên mà ứng dụng không được dùng.
+- Địa chỉ `/api/` chỉ phục vụ schema `api`. API Gateway ghi đè header `Accept-Profile` và `Content-Profile` của lời gọi tới địa chỉ này. Schema của ứng dụng chỉ gọi được qua địa chỉ `/apps/<tên>/api/`, nên không đi vòng được luật truy cập của ứng dụng.
 - README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng đĩa bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
 
 ## [0.6.0] - 2026-11-22
