@@ -7,6 +7,8 @@ cjson.decode_array_with_array_mt(true)
 local REALM = "saigonos"
 local MASTER = "master"
 local SCOPE = "roles"
+local BASIC_SCOPE = "basic"
+local REFERENCE = "default.reference.value"
 local ATTRIBUTE = {
     name = "unit",
     displayName = "Đơn vị",
@@ -39,6 +41,36 @@ local AUDIENCE_MAPPER = {
         ["introspection.token.claim"] = "true",
     },
 }
+local AMR_MAPPER = {
+    name = "amr",
+    protocol = "openid-connect",
+    protocolMapper = "oidc-amr-mapper",
+    config = {
+        ["access.token.claim"] = "true",
+        ["id.token.claim"] = "true",
+        ["lightweight.claim"] = "true",
+    },
+}
+local REFERENCES = {
+    {
+        flow = "saigonos browser forms",
+        provider = "auth-username-password-form",
+        alias = "saigonos password reference",
+        value = "pwd",
+    },
+    {
+        flow = "saigonos browser admin otp",
+        provider = "auth-otp-form",
+        alias = "saigonos admin otp reference",
+        value = "otp",
+    },
+    {
+        flow = "saigonos browser optional otp",
+        provider = "auth-otp-form",
+        alias = "saigonos optional otp reference",
+        value = "otp",
+    },
+}
 
 local OPERATON = "operaton"
 local OPERATON_FLOW = "saigonos operaton"
@@ -49,7 +81,12 @@ local ADMIN_ONLY_TEXTS = {
     { locale = "en", text = "Only administrator accounts can open this page." },
 }
 local OPERATON_STEPS = {
-    { provider = "auth-username-password-form", requirement = "REQUIRED" },
+    {
+        provider = "auth-username-password-form",
+        requirement = "REQUIRED",
+        config_alias = OPERATON_FLOW .. " password reference",
+        config = { [REFERENCE] = "pwd" },
+    },
     { flow = NOT_ADMIN_FLOW, requirement = "CONDITIONAL" },
     {
         parent = NOT_ADMIN_FLOW,
@@ -65,7 +102,12 @@ local OPERATON_STEPS = {
         config_alias = NOT_ADMIN_FLOW .. " message",
         config = { denyErrorMessage = ADMIN_ONLY },
     },
-    { provider = "auth-otp-form", requirement = "REQUIRED" },
+    {
+        provider = "auth-otp-form",
+        requirement = "REQUIRED",
+        config_alias = OPERATON_FLOW .. " otp reference",
+        config = { [REFERENCE] = "otp" },
+    },
 }
 local GROUPS_MAPPER = {
     name = "groups",
@@ -183,10 +225,10 @@ local function add_attribute()
     return true
 end
 
-local function roles_scope()
-    local scope = find(call("GET", REALM .. "/client-scopes"), SCOPE)
+local function find_scope(name)
+    local scope = find(call("GET", REALM .. "/client-scopes"), name)
     if not scope then
-        fail("Realm " .. REALM .. " không có client scope " .. SCOPE)
+        fail("Realm " .. REALM .. " không có client scope " .. name)
     end
     return scope
 end
@@ -347,28 +389,68 @@ local function differs(current, wanted)
     return false
 end
 
-local function setup_audience(scope)
+local function setup_mapper(scope, wanted)
     local path = REALM .. "/client-scopes/" .. scope.id .. "/protocol-mappers/models"
-    local name = AUDIENCE_MAPPER.name
+    local name = wanted.name
     local mapper = find(scope.protocolMappers, name)
     if not mapper then
-        call("POST", path, AUDIENCE_MAPPER)
-        print("Đã thêm mapper " .. name .. " vào client scope " .. SCOPE .. " của realm " .. REALM)
+        call("POST", path, wanted)
+        print("Đã thêm mapper " .. name .. " vào client scope " .. scope.name .. " của realm " .. REALM)
         return true
     end
-    local kind = AUDIENCE_MAPPER.protocolMapper
-    if mapper.protocolMapper == kind and not differs(mapper.config, AUDIENCE_MAPPER.config) then
+    local kind = wanted.protocolMapper
+    if mapper.protocolMapper == kind and not differs(mapper.config, wanted.config) then
         return false
     end
     call("PUT", path .. "/" .. mapper.id, {
         id = mapper.id,
         name = name,
-        protocol = AUDIENCE_MAPPER.protocol,
+        protocol = wanted.protocol,
         protocolMapper = kind,
-        config = AUDIENCE_MAPPER.config,
+        config = wanted.config,
     })
-    print("Mapper " .. name .. " của client scope " .. SCOPE .. " đã bị thay đổi nên được đặt lại")
+    print("Mapper " .. name .. " của client scope " .. scope.name .. " đã bị thay đổi nên được đặt lại")
     return true
+end
+
+local function setup_reference(reference)
+    local execution
+    for _, item in ipairs(call("GET", flow_path(reference.flow) .. "/executions")) do
+        if item.level == 0 and item.providerId == reference.provider then
+            execution = item
+        end
+    end
+    if not execution then
+        fail("Luồng đăng nhập " .. reference.flow .. " của realm " .. REALM .. " không có bước " .. reference.provider)
+    end
+    local wanted = { [REFERENCE] = reference.value }
+    local label = reference.provider .. " của luồng " .. reference.flow
+    if not execution.authenticationConfig then
+        call("POST", REALM .. "/authentication/executions/" .. execution.id .. "/config", {
+            alias = reference.alias,
+            config = wanted,
+        })
+        print("Đã đặt giá trị amr " .. reference.value .. " cho bước " .. label)
+        return true
+    end
+    local path = REALM .. "/authentication/config/" .. execution.authenticationConfig
+    local current = call("GET", path)
+    local config = current.config or {}
+    if config[REFERENCE] == reference.value then
+        return false
+    end
+    config[REFERENCE] = reference.value
+    call("PUT", path, { id = current.id, alias = current.alias, config = config })
+    print("Giá trị amr của bước " .. label .. " đã bị thay đổi nên được đặt lại")
+    return true
+end
+
+local function setup_references()
+    local changed = false
+    for _, reference in ipairs(REFERENCES) do
+        changed = setup_reference(reference) or changed
+    end
+    return changed
 end
 
 local function setup_operaton()
@@ -429,12 +511,14 @@ end
 
 log_in()
 secure_master()
-local attribute_added = add_attribute()
-local scope = roles_scope()
-local mapper_added = add_mapper(scope)
-local audience_changed = setup_audience(scope)
-local texts_added = add_texts()
-local operaton_changed = setup_operaton()
-if not (attribute_added or mapper_added or audience_changed or texts_added or operaton_changed) then
+local changed = add_attribute()
+local scope = find_scope(SCOPE)
+changed = add_mapper(scope) or changed
+changed = setup_mapper(scope, AUDIENCE_MAPPER) or changed
+changed = setup_mapper(find_scope(BASIC_SCOPE), AMR_MAPPER) or changed
+changed = setup_references() or changed
+changed = add_texts() or changed
+changed = setup_operaton() or changed
+if not changed then
     print("Realm " .. REALM .. " không cần thay đổi")
 end
