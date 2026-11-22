@@ -32,7 +32,7 @@ RATE_LIMIT = {
 STAMPS = ("create_time", "update_time")
 ROUTE_CREATED = "Đã tạo route {route}."
 ROUTE_UPDATED = "Đã cập nhật route {route}."
-UNCHANGED = "Không có thay đổi trên APISIX."
+ROUTE_REMOVED = "Đã gỡ route {route}."
 
 
 class AdminApi(Protocol):
@@ -160,5 +160,13 @@ def apply_gateway(apisix: AdminApi, manifest: Manifest, say: Callable[[str], Non
     if saved != current:
         say(ROUTE_UPDATED.format(route=route_of(app)))
         return True
-    say(UNCHANGED)
     return False
+
+
+def remove_gateway(apisix: AdminApi, app: str, say: Callable[[str], None]) -> bool:
+    current = find_route(apisix, app)
+    if current is None or not owned(current, app):
+        return False
+    apisix.call("DELETE", f"/routes/{route_of(app)}", missing_ok=True)
+    say(ROUTE_REMOVED.format(route=route_of(app)))
+    return True

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from saigonos_core.app_database import ApplyError
 from saigonos_core.bpmn import bpmn_files
@@ -16,7 +16,9 @@ from saigonos_core.operaton import USER, message_of
 TIMEOUT = 30
 SOURCE = "app:{name}"
 DEPLOYED = "Đã triển khai file {file}: quy trình {key}, phiên bản {version}."
-UNCHANGED = "Không có thay đổi trên Operaton."
+SUSPENDED = "Đã tạm dừng quy trình {key} trên Operaton."
+ACTIVATED = "Đã chạy lại quy trình {key} trên Operaton."
+DELETED = "Đã xóa {count} bản triển khai của ứng dụng trên Operaton."
 REFUSED = (
     "Operaton từ chối tài khoản core. Hãy kiểm tra giá trị CORE_OPERATON_PASSWORD "
     "trong file .env. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản này."
@@ -113,6 +115,51 @@ def apply_processes(
             key, version = definition["key"], definition["version"]
             say(DEPLOYED.format(file=file.name, key=key, version=version))
             changed = True
-    if not changed:
-        say(UNCHANGED)
     return changed
+
+
+def listed(operaton: Operaton, path: str, app: str) -> list[dict[str, Any]]:
+    status, data = operaton.call("GET", f"{path}?{urlencode({'tenantIdIn': app})}")
+    if status != 200 or not isinstance(data, list):
+        raise failure(f"Operaton trả về mã {status} cho lời gọi GET {path}", data)
+    return [item for item in data if item.get("tenantId") == app]
+
+
+def set_suspended(
+    operaton: Operaton, app: str, suspended: bool, say: Callable[[str], None]
+) -> bool:
+    keys = set()
+    for definition in listed(operaton, "/process-definition", app):
+        if definition["suspended"] == suspended:
+            continue
+        body = json.dumps({"suspended": suspended, "includeProcessInstances": True}).encode()
+        path = f"/process-definition/{quote(definition['id'], safe=':')}/suspended"
+        status, data = operaton.call("PUT", path, body, "application/json")
+        if status != 204:
+            raise failure(
+                f"Operaton không đổi được trạng thái của quy trình {definition['key']}", data
+            )
+        keys.add(definition["key"])
+    for key in sorted(keys):
+        say((SUSPENDED if suspended else ACTIVATED).format(key=key))
+    return bool(keys)
+
+
+def suspend_processes(operaton: Operaton, app: str, say: Callable[[str], None]) -> bool:
+    return set_suspended(operaton, app, True, say)
+
+
+def activate_processes(operaton: Operaton, app: str, say: Callable[[str], None]) -> bool:
+    return set_suspended(operaton, app, False, say)
+
+
+def delete_processes(operaton: Operaton, app: str, say: Callable[[str], None]) -> bool:
+    deployments = listed(operaton, "/deployment", app)
+    for deployment in deployments:
+        path = f"/deployment/{quote(deployment['id'], safe='')}?cascade=true"
+        status, data = operaton.call("DELETE", path)
+        if status not in (204, 404):
+            raise failure(f"Operaton không xóa được bản triển khai {deployment['name']}", data)
+    if deployments:
+        say(DELETED.format(count=len(deployments)))
+    return bool(deployments)

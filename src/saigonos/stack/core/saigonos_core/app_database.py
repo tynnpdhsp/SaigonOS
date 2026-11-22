@@ -3,7 +3,8 @@ import hashlib
 import json
 import secrets
 import string
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import NamedTuple
@@ -21,6 +22,11 @@ RUN = "SELECT core.run_app_sql($1)"
 SECURE = "SELECT core.secure_app()"
 RECORD = "SELECT core.record_migration($1, $2)"
 FINISH = "SELECT core.finish_app($1, $2, $3, $4::jsonb, $5)"
+WAS_REMOVED = "SELECT removed_at IS NOT NULL FROM core.apps WHERE name = $1"
+INSTALLED = "SELECT name FROM core.apps WHERE applied_at IS NOT NULL ORDER BY name"
+KNOWN = "SELECT EXISTS (SELECT FROM core.apps WHERE name = $1)"
+REMOVE = "SELECT core.remove_app($1)"
+PURGE = "SELECT core.purge_app($1)"
 CONNECT_TIMEOUT = 10
 PASSWORD_ALPHABET = string.ascii_letters + string.digits
 PASSWORD_LENGTH = 32
@@ -29,7 +35,12 @@ UNREACHABLE = (OSError, TimeoutError, asyncpg.CannotConnectNowError)
 TRANSACTION_COMMANDS = "transaction commands"
 CREATED = "Đã tạo schema {schema}, role {schema} và role {schema}_user của ứng dụng."
 RAN = "Đã chạy file {name}."
-NOTHING_NEW = "Không có file SQL mới."
+LEFT_API = "Đã bỏ schema {schema} khỏi API."
+DROPPED = "Đã xóa schema {schema}, role {schema} và role {schema}_user của ứng dụng."
+NOT_READY = (
+    "Cơ sở dữ liệu chưa có các hàm để cài đặt ứng dụng. "
+    "Hãy chạy lệnh saigonos up để cập nhật cơ sở dữ liệu rồi chạy lại."
+)
 
 
 class ApplyError(Exception):
@@ -144,17 +155,32 @@ async def run_files(
         await admin.execute(CLOSE_LOGIN, app)
 
 
+@asynccontextmanager
+async def admin_connection() -> AsyncIterator[asyncpg.Connection]:
+    admin = await connect()
+    try:
+        yield admin
+    except asyncpg.UndefinedFunctionError as error:
+        raise ApplyError(NOT_READY) from error
+    except asyncpg.UndefinedColumnError as error:
+        raise ApplyError(NOT_READY) from error
+    except asyncpg.PostgresError as error:
+        raise ApplyError(explained(error)) from error
+    finally:
+        await admin.close()
+
+
 async def apply_database(
     manifest: Manifest,
     folder: Path,
     say: Callable[[str], None],
-    before_finish: Callable[[], object] | None = None,
+    before_finish: Callable[[bool], object] | None = None,
 ) -> bool:
     app = manifest.name
     files = sql_files(folder, manifest)
-    admin = await connect()
-    try:
+    async with admin_connection() as admin:
         await admin.execute(LOCK)
+        removed = bool(await admin.fetchval(WAS_REMOVED, app))
         if await admin.fetchval(PREPARE, app):
             say(CREATED.format(schema=schema_of(app)))
         applied = dict(await admin.fetch(APPLIED, app))
@@ -167,20 +193,28 @@ async def apply_database(
         pending = [file for file in files if file.name not in applied]
         if pending:
             await run_files(admin, app, pending, say)
-        else:
-            say(NOTHING_NEW)
         if before_finish is not None:
-            before_finish()
+            before_finish(removed)
         content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_none=True))
         return await admin.fetchval(
             FINISH, app, manifest.title, manifest.version, content, bool(pending)
         )
-    except asyncpg.UndefinedFunctionError as error:
-        raise ApplyError(
-            "Cơ sở dữ liệu chưa có các hàm để cài đặt ứng dụng. "
-            "Hãy chạy lệnh saigonos up để cập nhật cơ sở dữ liệu rồi chạy lại."
-        ) from error
-    except asyncpg.PostgresError as error:
-        raise ApplyError(explained(error)) from error
-    finally:
-        await admin.close()
+
+
+async def installed_apps() -> list[str]:
+    async with admin_connection() as admin:
+        return [row["name"] for row in await admin.fetch(INSTALLED)]
+
+
+async def known_app(app: str) -> bool:
+    async with admin_connection() as admin:
+        return await admin.fetchval(KNOWN, app)
+
+
+async def remove_database(app: str, purge: bool, say: Callable[[str], None]) -> bool:
+    async with admin_connection() as admin:
+        await admin.execute(LOCK)
+        changed = await admin.fetchval(PURGE if purge else REMOVE, app)
+    if changed:
+        say((DROPPED if purge else LEFT_API).format(schema=schema_of(app)))
+    return changed

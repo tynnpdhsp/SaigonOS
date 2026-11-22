@@ -15,11 +15,12 @@ from saigonos_core.app_gateway import (
     OWNER,
     PREFIX,
     ROUTE_CREATED,
+    ROUTE_REMOVED,
     ROUTE_UPDATED,
-    UNCHANGED,
     Apisix,
     apply_gateway,
     check_route,
+    remove_gateway,
     wanted_route,
 )
 from saigonos_core.manifest import Manifest
@@ -60,6 +61,9 @@ class FakeApisix:
                     return None
                 raise ApplyError("APISIX trả về mã 404")
             return {"key": f"/apisix/routes/{route}", "value": copy.deepcopy(self.routes[route])}
+        if method == "DELETE":
+            self.routes.pop(route, None)
+            return {"deleted": "1"}
         assert method == "PUT"
         value = copy.deepcopy(body)
         for plugin, defaults in DEFAULTS.items():
@@ -129,7 +133,7 @@ def test_apply_again_changes_nothing(apisix):
 
     changed, lines = said(apisix)
 
-    assert (changed, lines) == (False, [UNCHANGED])
+    assert (changed, lines) == (False, [])
 
 
 @pytest.mark.parametrize(
@@ -298,3 +302,23 @@ def test_unreachable_apisix_asks_to_start_system():
 
     assert message.startswith("Không kết nối được Admin API của APISIX: ")
     assert message.endswith(". Hãy khởi động hệ thống bằng lệnh saigonos up rồi chạy lại.")
+
+
+def test_remove_deletes_route_of_app_only(apisix):
+    said(apisix)
+    lines = []
+
+    removed = remove_gateway(apisix, "nghi-phep", lines.append)
+    again = remove_gateway(apisix, "nghi-phep", lines.append)
+
+    assert (removed, again) == (True, False)
+    assert lines == [ROUTE_REMOVED.format(route="app-nghi-phep")]
+    assert "app-nghi-phep" not in apisix.routes
+
+
+def test_remove_leaves_route_made_by_hand(apisix):
+    apisix.routes["app-nghi-phep"] = {"uris": ["/apps/nghi-phep/api/*"]}
+
+    assert remove_gateway(apisix, "nghi-phep", [].append) is False
+    assert "app-nghi-phep" in apisix.routes
+    assert ("DELETE", "/routes/app-nghi-phep") not in apisix.calls

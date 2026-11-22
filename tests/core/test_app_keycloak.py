@@ -13,17 +13,19 @@ import pytest
 from saigonos_core.app_database import ApplyError
 from saigonos_core.app_keycloak import (
     CLIENT_CREATED,
+    CLIENT_REMOVED,
     CLIENT_UPDATED,
     DEFAULT_SCOPES,
     DESCRIPTION,
     OWNER,
     ROLE_CREATED,
+    ROLE_REMOVED,
     ROLE_UPDATED,
-    UNCHANGED,
     Keycloak,
     apply_keycloak,
     check_names,
     differs,
+    remove_keycloak,
 )
 from saigonos_core.manifest import Manifest
 
@@ -47,6 +49,9 @@ ROUTES = [
     ("GET", r"/clients\?clientId=(?P<client_id>[^&]+)", "find_clients"),
     ("POST", r"/clients", "create_client"),
     ("PUT", CLIENT, "update_client"),
+    ("DELETE", CLIENT, "delete_client"),
+    ("GET", r"/roles\?search=(?P<search>[^&]+)&briefRepresentation=false", "search_roles"),
+    ("DELETE", ROLE, "delete_role"),
     ("GET", rf"{CLIENT}/protocol-mappers/models", "mappers_of"),
     ("POST", rf"{CLIENT}/protocol-mappers/models", "add_mapper"),
     ("DELETE", rf"{CLIENT}/protocol-mappers/models/(?P<mapper>[^/]+)", "remove_mapper"),
@@ -149,6 +154,19 @@ class FakeKeycloak:
             "default": list(self.realm_defaults),
             "optional": list(REALM_OPTIONAL),
         }
+
+    def delete_client(self, body, client):
+        if client not in self.clients:
+            raise Missing("Could not find client")
+        del self.clients[client]
+
+    def search_roles(self, body, search):
+        return [rep for name, rep in self.roles.items() if search.lower() in name.lower()]
+
+    def delete_role(self, body, role):
+        if role not in self.roles:
+            raise Missing("Could not find role")
+        del self.roles[role]
 
     def update_client(self, body, client):
         rep = self.clients[client]
@@ -352,7 +370,7 @@ def test_apply_again_changes_nothing(keycloak):
 
     changed, said = run(keycloak)
 
-    assert (changed, said) == (False, [UNCHANGED])
+    assert (changed, said) == (False, [])
     assert keycloak.writes == []
     assert keycloak.state("nghi-phep") == state
 
@@ -419,7 +437,7 @@ def test_client_edited_by_hand_is_put_back(keycloak, edit):
 
     assert (changed, said) == (True, [CLIENT_UPDATED.format(client="nghi-phep")])
     assert keycloak.state("nghi-phep") == state
-    assert run(keycloak) == (False, [UNCHANGED])
+    assert run(keycloak) == (False, [])
 
 
 def test_scope_moved_from_default_to_optional_comes_back_as_default(keycloak):
@@ -483,7 +501,7 @@ def test_new_address_updates_addresses_of_client(keycloak):
     assert (changed, said) == (True, [CLIENT_UPDATED.format(client="nghi-phep")])
     assert client["rootUrl"] == "https://moi.example.com"
     assert client["redirectUris"] == ["https://moi.example.com/apps/nghi-phep/*"]
-    assert run(keycloak, site="https://moi.example.com") == (False, [UNCHANGED])
+    assert run(keycloak, site="https://moi.example.com") == (False, [])
 
 
 def test_check_names_lists_every_name_not_made_for_app(keycloak):
@@ -562,6 +580,45 @@ def test_differs_compares_lists_as_sets_and_missing_text_as_empty():
     assert differs({"a": "x"}, {"a": ["x"]})
     assert differs(None, {"a": True})
     assert not differs({"a": None}, {"a": False})
+
+
+def removed(keycloak, purge):
+    said = []
+    changed = remove_keycloak(keycloak, "nghi-phep", purge, said.append)
+    return changed, said
+
+
+def test_remove_deletes_client_and_keeps_roles(keycloak):
+    run(keycloak)
+
+    assert removed(keycloak, False) == (True, [CLIENT_REMOVED.format(client="nghi-phep")])
+    assert removed(keycloak, False) == (False, [])
+    assert keycloak.find_clients(None, "nghi-phep") == []
+    assert set(ROLES) <= set(keycloak.roles)
+
+
+def test_purge_deletes_every_role_owned_by_app(keycloak):
+    run(keycloak)
+    run(keycloak, manifest(roles=DATA["roles"][:1]))
+    keycloak.create_role({"name": "nghi-phep.tu-tao"})
+    keycloak.create_role({"name": "nghi-phep-khac.quan-ly", "attributes": {OWNER: ["nghi-phep"]}})
+
+    changed, said = removed(keycloak, True)
+
+    assert changed is True
+    assert said == [
+        CLIENT_REMOVED.format(client="nghi-phep"),
+        *(ROLE_REMOVED.format(role=role) for role in sorted(ROLES)),
+    ]
+    assert {"nghi-phep.tu-tao", "nghi-phep-khac.quan-ly"} <= set(keycloak.roles)
+    assert not set(ROLES) & set(keycloak.roles)
+
+
+def test_remove_leaves_client_made_by_hand(keycloak):
+    keycloak.create_client({"clientId": "nghi-phep"})
+
+    assert removed(keycloak, False) == (False, [])
+    assert keycloak.find_clients(None, "nghi-phep") != []
 
 
 @pytest.fixture

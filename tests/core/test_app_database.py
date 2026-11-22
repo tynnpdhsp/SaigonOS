@@ -12,14 +12,22 @@ from saigonos_core.app_database import (
     APPLIED,
     CLOSE_LOGIN,
     FINISH,
+    INSTALLED,
+    KNOWN,
     LOCK,
     OPEN_LOGIN,
     PREPARE,
+    PURGE,
     RECORD,
+    REMOVE,
     RUN,
     SECURE,
+    WAS_REMOVED,
     ApplyError,
     apply_database,
+    installed_apps,
+    known_app,
+    remove_database,
 )
 from saigonos_core.manifest import MANIFEST, Manifest
 
@@ -153,6 +161,7 @@ def test_new_files_run_in_name_order_with_role_of_app(server, folder):
     assert re.fullmatch(r"[A-Za-z0-9]{32}", password)
     assert server.events == [
         ("postgres", LOCK),
+        ("postgres", WAS_REMOVED, "ghi-chu"),
         ("postgres", PREPARE, "ghi-chu"),
         ("postgres", APPLIED, "ghi-chu"),
         ("postgres", OPEN_LOGIN, "ghi-chu", password),
@@ -202,9 +211,9 @@ def test_app_without_new_file_never_opens_login(server, folder):
     result, said = apply(folder)
 
     assert result is False
-    assert said == ["Không có file SQL mới."]
+    assert said == []
     assert len(server.connections) == 1
-    assert server.queries("postgres") == [LOCK, PREPARE, APPLIED, FINISH, "close"]
+    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, APPLIED, FINISH, "close"]
     assert server.events[-2][-1] is False
 
 
@@ -213,11 +222,8 @@ def test_app_without_database_folder_runs_no_file(server, folder):
 
     _, said = apply(folder, data)
 
-    assert said == [
-        "Đã tạo schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng.",
-        "Không có file SQL mới.",
-    ]
-    assert server.queries("postgres") == [LOCK, PREPARE, APPLIED, FINISH, "close"]
+    assert said == ["Đã tạo schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng."]
+    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, APPLIED, FINISH, "close"]
 
 
 def test_changed_file_stops_before_any_file_runs(server, folder):
@@ -229,7 +235,7 @@ def test_changed_file_stops_before_any_file_runs(server, folder):
         "File 0001_notes.sql đã được chạy trước đó nhưng nội dung đã thay đổi. "
         "Mỗi thay đổi của cơ sở dữ liệu cần được viết thành một file SQL mới."
     )
-    assert server.queries("postgres") == [LOCK, PREPARE, APPLIED, "close"]
+    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, APPLIED, "close"]
 
 
 def test_failing_file_rolls_back_closes_login_and_shows_line(server, folder):
@@ -309,20 +315,21 @@ def test_error_of_core_function_is_reported_with_hint(server, folder):
         "Role hoặc schema ghi_chu đã có trong cơ sở dữ liệu nhưng không do SaigonOS tạo "
         "cho ứng dụng ghi-chu. Hãy đặt tên khác cho ứng dụng."
     )
-    assert server.queries("postgres") == [LOCK, PREPARE, "close"]
+    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, "close"]
 
 
 def test_step_before_finish_runs_after_files_and_its_error_stops_apply(server, folder):
     seen = []
 
-    def before_finish():
-        seen.append([event[1] for event in server.events])
+    def before_finish(removed):
+        seen.append(([event[1] for event in server.events], removed))
         raise ApplyError("Keycloak trả về mã 500 cho lời gọi POST /clients.")
 
     with pytest.raises(ApplyError, match="mã 500"):
         asyncio.run(apply_database(Manifest.model_validate(DATA), folder, [].append, before_finish))
 
-    assert seen[0][-1] == CLOSE_LOGIN
+    assert seen[0][0][-1] == CLOSE_LOGIN
+    assert seen[0][1] is False
     assert FINISH not in server.queries("postgres")
     assert server.events[-1] == ("postgres", "close")
 
@@ -377,3 +384,69 @@ def test_password_uses_letters_and_digits_only(monkeypatch):
     monkeypatch.setattr(app_database, "PASSWORD_LENGTH", 200)
 
     assert set(app_database.new_password()) <= set(app_database.PASSWORD_ALPHABET)
+
+
+def test_removed_app_is_reported_to_step_before_finish(server, folder):
+    server.answers[WAS_REMOVED] = True
+    seen = []
+
+    asyncio.run(apply_database(Manifest.model_validate(DATA), folder, [].append, seen.append))
+
+    assert seen == [True]
+
+
+def test_installed_apps_are_listed_by_name(server):
+    server.answers[INSTALLED] = [{"name": "don-tu"}, {"name": "nghi-phep"}]
+
+    assert asyncio.run(installed_apps()) == ["don-tu", "nghi-phep"]
+    assert server.queries("postgres") == [INSTALLED, "close"]
+
+
+def test_known_app_asks_table_of_apps(server):
+    server.answers[KNOWN] = True
+
+    assert asyncio.run(known_app("nghi-phep")) is True
+    assert ("postgres", KNOWN, "nghi-phep") in server.events
+
+
+@pytest.mark.parametrize(
+    ("purge", "query", "message"),
+    [
+        (False, REMOVE, "Đã bỏ schema ghi_chu khỏi API."),
+        (True, PURGE, "Đã xóa schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng."),
+    ],
+    ids=["go", "xoa-han"],
+)
+def test_remove_database_holds_lock_and_reports_change(server, purge, query, message):
+    server.answers[query] = True
+    said = []
+
+    changed = asyncio.run(remove_database("ghi-chu", purge, said.append))
+
+    assert (changed, said) == (True, [message])
+    assert server.queries("postgres") == [LOCK, query, "close"]
+
+
+def test_remove_database_without_change_says_nothing(server):
+    server.answers[REMOVE] = False
+    said = []
+
+    assert asyncio.run(remove_database("ghi-chu", False, said.append)) is False
+    assert said == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        postgres_error("42883", "function core.remove_app(unknown) does not exist"),
+        postgres_error("42703", 'column "removed_at" does not exist'),
+    ],
+    ids=["thieu-ham", "thieu-cot"],
+)
+def test_database_of_older_version_asks_to_update(server, folder, error):
+    server.failures[REMOVE, "ghi-chu"] = error
+
+    with pytest.raises(ApplyError) as raised:
+        asyncio.run(remove_database("ghi-chu", False, [].append))
+
+    assert str(raised.value).startswith("Cơ sở dữ liệu chưa có các hàm để cài đặt ứng dụng.")

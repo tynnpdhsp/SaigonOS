@@ -12,12 +12,17 @@ import pytest
 
 from saigonos_core.app_database import ApplyError
 from saigonos_core.app_processes import (
+    ACTIVATED,
+    DELETED,
     DEPLOYED,
     REFUSED,
-    UNCHANGED,
+    SUSPENDED,
     Operaton,
+    activate_processes,
     apply_processes,
     check_operaton,
+    delete_processes,
+    suspend_processes,
 )
 from saigonos_core.manifest import Manifest
 
@@ -49,7 +54,7 @@ def server():
             self.end_headers()
             self.wfile.write(content)
 
-        do_GET = do_POST = answer
+        do_GET = do_POST = do_PUT = do_DELETE = answer
 
         def log_message(self, *details):
             pass
@@ -140,7 +145,7 @@ def test_unchanged_files_give_one_line(server, app, reply):
 
     changed = apply_processes(engine(server), MANIFEST, app, said.append)
 
-    assert (changed, said) == (False, [UNCHANGED])
+    assert (changed, said) == (False, [])
 
 
 def test_app_without_processes_does_not_call_operaton(server, app):
@@ -213,3 +218,113 @@ def test_unreachable_operaton_asks_to_start_system():
 
     assert str(error.value).startswith("Không kết nối được REST API của Operaton: ")
     assert str(error.value).endswith(". Hãy khởi động hệ thống bằng lệnh saigonos up rồi chạy lại.")
+
+
+def definitions(*items):
+    return 200, [
+        {"id": f"{key}:{version}:id", "key": key, "suspended": suspended, "tenantId": tenant}
+        for key, version, suspended, tenant in items
+    ]
+
+
+def test_suspend_stops_every_active_version_of_app_with_its_instances(server):
+    server.replies += [
+        definitions(
+            ("nghi_phep.duyet", 1, False, "nghi-phep"),
+            ("nghi_phep.duyet", 2, False, "nghi-phep"),
+            ("nghi_phep.bao_cao", 1, True, "nghi-phep"),
+            ("khac.duyet", 1, False, "khac"),
+        ),
+        (204, b""),
+        (204, b""),
+    ]
+    said = []
+
+    changed = suspend_processes(engine(server), "nghi-phep", said.append)
+
+    assert changed is True
+    assert said == [SUSPENDED.format(key="nghi_phep.duyet")]
+    listed, *updates = [(method, path, body) for method, path, _, body in server.requests]
+    assert listed[:2] == ("GET", "/operaton/engine-rest/process-definition?tenantIdIn=nghi-phep")
+    assert [(method, path) for method, path, _ in updates] == [
+        ("PUT", "/operaton/engine-rest/process-definition/nghi_phep.duyet:1:id/suspended"),
+        ("PUT", "/operaton/engine-rest/process-definition/nghi_phep.duyet:2:id/suspended"),
+    ]
+    assert {json.loads(body)["includeProcessInstances"] for _, _, body in updates} == {True}
+    assert {json.loads(body)["suspended"] for _, _, body in updates} == {True}
+
+
+def test_activate_resumes_suspended_versions(server):
+    server.replies += [definitions(("nghi_phep.duyet", 1, True, "nghi-phep")), (204, b"")]
+    said = []
+
+    assert activate_processes(engine(server), "nghi-phep", said.append) is True
+    assert said == [ACTIVATED.format(key="nghi_phep.duyet")]
+    assert json.loads(server.requests[1][3]) == {
+        "suspended": False,
+        "includeProcessInstances": True,
+    }
+
+
+def test_nothing_to_suspend_says_nothing(server):
+    server.replies.append(definitions(("nghi_phep.duyet", 1, True, "nghi-phep")))
+    said = []
+
+    assert suspend_processes(engine(server), "nghi-phep", said.append) is False
+    assert said == []
+
+
+def test_delete_removes_deployments_of_app_with_cascade(server):
+    deployments = [
+        {"id": "trien-khai-1", "name": "duyet.bpmn", "tenantId": "nghi-phep"},
+        {"id": "trien-khai-2", "name": "duyet.bpmn", "tenantId": "nghi-phep"},
+        {"id": "khac", "name": "khac.bpmn", "tenantId": "khac"},
+    ]
+    server.replies += [(200, deployments), (204, b""), (404, {"message": "Deployment not found"})]
+    said = []
+
+    changed = delete_processes(engine(server), "nghi-phep", said.append)
+
+    assert changed is True
+    assert said == [DELETED.format(count=2)]
+    assert [(method, path) for method, path, *_ in server.requests[1:]] == [
+        ("DELETE", "/operaton/engine-rest/deployment/trien-khai-1?cascade=true"),
+        ("DELETE", "/operaton/engine-rest/deployment/trien-khai-2?cascade=true"),
+    ]
+
+
+def test_refused_change_of_process_stops_removal(server):
+    server.replies += [
+        definitions(("nghi_phep.duyet", 1, False, "nghi-phep")),
+        (500, {"message": "ENGINE-01009 Error"}),
+    ]
+
+    with pytest.raises(ApplyError) as error:
+        suspend_processes(engine(server), "nghi-phep", print)
+
+    assert str(error.value) == (
+        "Operaton không đổi được trạng thái của quy trình nghi_phep.duyet: ENGINE-01009 Error."
+    )
+
+
+def test_listing_error_is_reported(server):
+    server.replies.append((500, {"message": "ENGINE-03004 Error"}))
+
+    with pytest.raises(ApplyError) as error:
+        delete_processes(engine(server), "nghi-phep", print)
+
+    assert str(error.value) == (
+        "Operaton trả về mã 500 cho lời gọi GET /deployment: ENGINE-03004 Error."
+    )
+
+
+def test_refused_deletion_stops_purge(server):
+    deployment = {"id": "trien-khai-1", "name": "duyet.bpmn", "tenantId": "nghi-phep"}
+    server.replies += [(200, [deployment]), (500, {"message": "ENGINE-03028 Error"})]
+
+    with pytest.raises(ApplyError) as error:
+        delete_processes(engine(server), "nghi-phep", print)
+
+    assert str(error.value) == (
+        "Operaton không xóa được bản triển khai duyet.bpmn: ENGINE-03028 Error."
+    )

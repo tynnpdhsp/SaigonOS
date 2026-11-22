@@ -21,7 +21,8 @@ ROLE_CREATED = "Đã tạo realm role {role}."
 ROLE_UPDATED = "Đã cập nhật realm role {role}."
 CLIENT_CREATED = "Đã tạo client {client}."
 CLIENT_UPDATED = "Đã cập nhật client {client}."
-UNCHANGED = "Không có thay đổi trên Keycloak."
+CLIENT_REMOVED = "Đã gỡ client {client}."
+ROLE_REMOVED = "Đã xóa realm role {role}."
 
 
 class Reply(NamedTuple):
@@ -318,7 +319,27 @@ def apply_keycloak(
     for role in manifest.roles:
         roles[role.name], role_changed = sync_role(keycloak, manifest.name, role, say)
         changed = role_changed or changed
-    changed = sync_client(keycloak, manifest, site_url.rstrip("/"), roles, say) or changed
-    if not changed:
-        say(UNCHANGED)
+    return sync_client(keycloak, manifest, site_url.rstrip("/"), roles, say) or changed
+
+
+def roles_of(keycloak: AdminApi, app: str) -> list[dict[str, Any]]:
+    query = urlencode({"search": f"{app}.", "briefRepresentation": "false"})
+    found = keycloak.call("GET", f"/roles?{query}")
+    return [
+        role for role in found if role.get("name", "").startswith(f"{app}.") and owned(role, app)
+    ]
+
+
+def remove_keycloak(keycloak: AdminApi, app: str, purge: bool, say: Callable[[str], None]) -> bool:
+    changed = False
+    client = find_client(keycloak, app)
+    if client is not None and owned(client, app):
+        keycloak.call("DELETE", f"/clients/{segment(client['id'])}")
+        say(CLIENT_REMOVED.format(client=app))
+        changed = True
+    if purge:
+        for role in sorted(roles_of(keycloak, app), key=lambda role: role["name"]):
+            keycloak.call("DELETE", f"/roles/{segment(role['name'])}")
+            say(ROLE_REMOVED.format(role=role["name"]))
+            changed = True
     return changed
