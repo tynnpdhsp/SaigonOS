@@ -1587,7 +1587,7 @@ const don = await (await fetch("/apps/nghi-phep/api/don", { headers })).json();
 
 Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng dụng>/api/`. Tài liệu chỉ có bảng và hàm trong schema của ứng dụng, với `basePath` là địa chỉ API của ứng dụng.
 
-Địa chỉ `/api/` của PostgREST cũng phục vụ schema của mọi ứng dụng đã cài đặt. Lời gọi qua địa chỉ này chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Schema `api` nhận access token của mọi client.
+Địa chỉ `/api/` chỉ phục vụ schema `api`. API Gateway ghi đè header `Accept-Profile` và `Content-Profile` của mọi lời gọi tới địa chỉ này thành `api`. Do đó, schema của ứng dụng chỉ gọi được qua địa chỉ của ứng dụng, và mọi lời gọi tới schema này đều đi qua luật truy cập của ứng dụng. Schema `api` nhận access token của mọi client.
 
 Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
 
