@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import re
 from importlib.resources import files
+from itertools import takewhile
 
 import pytest
 
@@ -68,14 +69,27 @@ def test_opa_runs_pinned_image_without_asking_for_new_versions():
         assert f"- {flag}" in opa
 
 
-def test_opa_starts_only_after_rules_pass_check():
+def test_opa_starts_only_after_rules_and_admin_networks_pass_check():
     opa, policies = services()["opa"], services()["policies"]
     needs = opa[opa.index("policies:") + 1]
+    command = list(
+        takewhile(lambda line: line.startswith("- "), policies[policies.index("command:") + 1 :])
+    )
+    setting = "SAIGONOS_ADMIN_NETWORKS: ${SAIGONOS_ADMIN_NETWORKS:-}"
 
     assert image_of("policies") == image_of("opa")
-    assert 'command: ["check", "--ignore=.*", "/policies"]' in policies
+    assert command == [
+        "- eval",
+        "- --fail-defined",
+        "- --format=raw",
+        "- --ignore=.*",
+        "- --data=/policies",
+        "- data.saigonos.admin.config_errors[_]",
+    ]
     assert "network_mode: none" in policies
     assert needs == "condition: service_completed_successfully"
+    assert setting in policies
+    assert setting in opa
 
 
 def test_only_apisix_shares_internal_network_with_opa():
