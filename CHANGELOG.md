@@ -7,6 +7,12 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Service `opa` chạy Open Policy Agent 1.22.4 để API Gateway hỏi luật truy cập chung. Luật viết bằng Rego và nằm trong thư mục `config/opa`. OPA nạp lại luật ngay khi file thay đổi và giữ luật đang chạy khi file có lỗi. OPA chỉ nằm trong mạng nội bộ cùng APISIX, không nhận lời gọi sửa luật qua API và không gửi thông tin tới máy chủ của dự án OPA.
+- Service `policies` soát các file luật mỗi lần chạy `saigonos up`. Khi có file lỗi, lệnh `saigonos up` báo lỗi và OPA chưa khởi động lần đầu.
+- Lệnh `make opa-test` kiểm tra định dạng, lỗi và unit test của các luật trong `tests/opa`, với yêu cầu độ phủ 100%. CI chạy lệnh này trong job `lint`.
+
 ### Thay đổi
 
 - README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng đĩa bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.

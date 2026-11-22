@@ -26,6 +26,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Khởi động và dừng](#khởi-động-và-dừng)
 - [Triển khai trên máy chủ chưa có reverse proxy](#triển-khai-trên-máy-chủ-chưa-có-reverse-proxy)
 - [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
+- [Luật truy cập](#luật-truy-cập)
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
@@ -153,7 +154,9 @@ BÌNH THƯỜNG    freshclam     đang chạy
 BÌNH THƯỜNG    jwks          đã chạy xong
 BÌNH THƯỜNG    keycloak      đang chạy
 BÌNH THƯỜNG    migrate       đã chạy xong
+BÌNH THƯỜNG    opa           đang chạy
 BÌNH THƯỜNG    operaton      đang chạy
+BÌNH THƯỜNG    policies      đã chạy xong
 BÌNH THƯỜNG    postgres      đang chạy
 BÌNH THƯỜNG    postgrest     đang chạy
 BÌNH THƯỜNG    processes     đã chạy xong
@@ -541,6 +544,22 @@ saigonos doctor
 ```
 
 Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được. Nếu reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo lỗi ở mục Centrifugo.
+
+## Luật truy cập
+
+Service `opa` chạy [Open Policy Agent](https://www.openpolicyagent.org/) (OPA). Trước khi chuyển lời gọi tới một route cần bảo vệ, API Gateway hỏi OPA. OPA trả lời cho phép hay từ chối theo các luật viết bằng Rego trong thư mục `config/opa` của thư mục làm việc. OPA chỉ giữ các luật chung ở API Gateway. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra.
+
+OPA chỉ nằm trong mạng nội bộ `policy` cùng APISIX và không mở cổng nào trên máy cài đặt. Luật trong file `config/opa/system.rego` chỉ cho API của OPA trả về quyết định. Lời gọi đọc dữ liệu, sửa luật hay sửa dữ liệu qua API của OPA đều bị từ chối. OPA được chạy với việc kiểm tra phiên bản mới đã tắt, nên không gửi thông tin tới máy chủ của dự án OPA.
+
+### Sửa luật
+
+OPA theo dõi thư mục `config/opa` và nạp lại luật ngay khi một file thay đổi. Khi file có lỗi, OPA giữ nguyên luật đang chạy. Lệnh `saigonos up` soát mọi file luật bằng service `policies`. Khi có file lỗi, lệnh báo service `policies` kết thúc với mã lỗi. Trong thư mục làm việc, xem vị trí lỗi bằng lệnh sau:
+
+```bash
+docker compose logs policies
+```
+
+Khi cập nhật phiên bản, lệnh `saigonos init` ghi đè các file luật có sẵn và giữ nguyên các file khác. Do đó, luật riêng của hệ thống nên được viết trong file mới, ví dụ `config/opa/local.rego`.
 
 ## Kiểm tra audit log
 
