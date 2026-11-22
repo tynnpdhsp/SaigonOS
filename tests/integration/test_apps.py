@@ -456,10 +456,7 @@ def test_apply_again_changes_nothing(stack, tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        "Không có file SQL mới.\n"
-        "Không có thay đổi trên Keycloak.\n"
-        "Không có thay đổi trên APISIX.\n"
-        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+        "Không có gì thay đổi.\n",
     )
     assert (
         database_state(stack, name),
@@ -827,10 +824,8 @@ def test_client_and_role_edited_in_admin_console_are_put_back_by_apply(stack, tm
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        "Không có file SQL mới.\n"
         f"Đã cập nhật realm role {name}.nguoi-dung.\n"
         f"Đã cập nhật client {name}.\n"
-        "Không có thay đổi trên APISIX.\n"
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     assert keycloak_state(stack, name) == state
@@ -871,8 +866,7 @@ def test_role_left_out_of_new_version_is_kept_but_leaves_tokens_of_app(stack, tm
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        f"Không có file SQL mới.\nĐã cập nhật client {name}.\n"
-        f"Không có thay đổi trên APISIX.\nĐã cài đặt ứng dụng {name} 0.2.0.\n",
+        f"Đã cập nhật client {name}.\nĐã cài đặt ứng dụng {name} 0.2.0.\n",
     )
     roles = sorted(claims_of(stack.app_token(user, name))["realm_access"]["roles"])
     assert roles == ["authenticated", f"{name}.nguoi-dung"]
@@ -893,10 +887,11 @@ def test_app_copied_into_apps_folder_is_plugged_with_docker_compose(stack):
 
 def test_docker_compose_path_needs_folder_named_after_app(stack):
     name = new_name()
-    notes_app(stack.home / "apps" / "sai-ten", name)
+    folder = notes_app(stack.home / "apps" / "sai-ten", name)
 
     result = run_apps(stack, "apply", "sai-ten")
 
+    shutil.rmtree(folder)
     assert result.returncode == 1, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
@@ -1006,10 +1001,7 @@ def test_route_edited_by_hand_is_put_back_by_apply(stack, tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        "Không có file SQL mới.\n"
-        "Không có thay đổi trên Keycloak.\n"
-        f"Đã cập nhật route app-{name}.\n"
-        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+        f"Đã cập nhật route app-{name}.\nĐã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     assert route_state(stack, name) == state
 
@@ -1080,11 +1072,12 @@ def test_path_with_dot_dot_is_not_found(stack, with_ui, path):
 
 def test_ui_of_app_not_installed_is_not_found(stack):
     name = new_name()
-    notes_app(stack.home / "apps" / name, name, ui=UI)
+    folder = notes_app(stack.home / "apps" / name, name, ui=UI)
 
     copied = app_call(stack, "GET", name, "")
     unknown = app_call(stack, "GET", new_name(), "index.html")
 
+    shutil.rmtree(folder)
     assert (copied.status, unknown.status) == (404, 404)
 
 
@@ -1385,9 +1378,7 @@ def test_changed_bpmn_file_makes_new_version_and_running_process_keeps_old(stack
     assert again.returncode == 0, again.stdout + again.stderr
     assert printed_last(
         again.stdout,
-        "Không có thay đổi trên APISIX.\n"
-        "Không có thay đổi trên Operaton.\n"
-        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+        "Không có gì thay đổi.\n",
     )
     assert changed.returncode == 0, changed.stdout + changed.stderr
     assert f"Đã triển khai file yeu-cau.bpmn: quy trình {key}, phiên bản 2.\n" in changed.stdout
@@ -1586,3 +1577,160 @@ def test_personal_channel_of_app_needs_channel_token_given_to_that_app(stack, no
     assert "subscribe" in joined
     assert pushed["push"]["channel"] == channel
     assert pushed["push"]["pub"]["data"]["notification"]["title"] == "Có đơn mới"
+
+
+KEPT = "Schema, dữ liệu, role và việc gán role vẫn được giữ lại."
+
+
+def realm_roles_of(stack, user):
+    return {role["name"] for role in admin_json(stack, f"/users/{user.id}/role-mappings/realm")}
+
+
+def test_saigonos_up_puts_back_parts_of_apps_edited_by_hand(stack, tmp_path):
+    name = new_name()
+    assert plug(stack, notes_app(tmp_path / name, name)).returncode == 0
+    route = route_state(stack, name)
+    edited = copy.deepcopy(route)
+    edited["uris"].append("/khac/*")
+    assert stack.gateway_admin("PUT", f"/routes/app-{name}", edited).status == 200
+    [client] = keycloak_client(stack, name)
+    assert (
+        stack.admin("PUT", f"/clients/{client['id']}", client | {"redirectUris": ["*"]}).status
+        == 204
+    )
+
+    result = stack.up()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        f"{name}: Đã cập nhật client {name}.\n"
+        f"{name}: Đã cập nhật route app-{name}.\n"
+        f"{name}: Đã cài đặt ứng dụng {name} 0.1.0.\n"
+    ) in result.stdout
+    assert route_state(stack, name) == route
+    assert keycloak_client(stack, name)[0]["redirectUris"] == [f"{stack.url}/apps/{name}/*"]
+
+
+def test_removed_app_keeps_its_data_and_other_apps_keep_running(stack, tmp_path):
+    name, other = new_name(), new_name()
+    schema = schema_of(name)
+    app = notes_app(tmp_path / name, name, ui=UI)
+    for folder in (app, notes_app(tmp_path / other, other)):
+        assert plug(stack, folder).returncode == 0
+    user = stack.new_user()
+    stack.grant_role(user, f"{name}.nguoi-dung")
+    token = stack.app_token(user, name)
+    wait_until_served(stack, name, token)
+    assert profile_call(stack, "POST", name, token, {"body": "Giữ lại"}).status == 201
+
+    result = stack.saigonos("remove", name)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Đã gỡ route app-{name}.\n"
+        f"Đã gỡ client {name}.\n"
+        f"Đã bỏ schema {schema} khỏi API.\n"
+        f"Đã gỡ ứng dụng {name}. {KEPT}\n",
+    )
+    assert not (stack.home / "apps" / name).exists()
+    assert keycloak_client(stack, name) == []
+    assert f"{name}.nguoi-dung" in realm_roles_of(stack, user)
+    assert app_call(stack, "GET", name, "api/notes").status == 404
+    assert app_call(stack, "GET", name, "").status == 404
+    assert stack.sql(f"SELECT body FROM {schema}.notes") == [["Giữ lại"]]
+    doctor = stack.saigonos("doctor")
+    assert doctor.returncode == 0, doctor.stdout
+    assert f"Ứng dụng {name} " not in doctor.stdout
+    assert f"Ứng dụng {other} " in doctor.stdout
+    wait_until_served(stack, other, stack.app_token(stack.new_user(), other))
+
+    again = plug(stack, app)
+
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert printed_last(
+        again.stdout,
+        f"Đã tạo client {name}.\nĐã tạo route app-{name}.\nĐã cài đặt ứng dụng {name} 0.1.0.\n",
+    )
+    token = stack.app_token(user, name)
+    wait_until_served(stack, name, token)
+    notes = json.loads(profile_call(stack, "GET", name, token).body)
+    assert [note["body"] for note in notes] == ["Giữ lại"]
+    assert app_call(stack, "GET", name, "").status == 200
+
+
+def test_removed_app_pauses_its_processes_until_it_is_installed_again(stack, tmp_path):
+    name = new_name()
+    key = f"{schema_of(name)}.yeu_cau"
+    app = process_app(tmp_path / name, name)
+    assert plug(stack, app).returncode == 0
+    user = user_with_roles(stack, f"{name}.nguoi-gui", f"{name}.xu-ly")
+    _, started = start_process(stack, key, stack.app_token(user, name))
+
+    removed = stack.saigonos("remove", name)
+    paused = operaton_get(stack, f"/process-instance/{started['id']}")["suspended"]
+    again = plug(stack, app)
+
+    assert removed.returncode == 0, removed.stdout + removed.stderr
+    assert f"Đã tạm dừng quy trình {key} trên Operaton.\n" in removed.stdout
+    assert paused is True
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert f"Đã chạy lại quy trình {key} trên Operaton.\n" in again.stdout
+    token = stack.app_token(user, name)
+    task = wait_for(lambda: task_of_instance(stack, token, started["id"]), "Chưa có việc")
+    assert task["suspended"] is False
+    done = {"variables": {"ket_qua": "Xong sau khi cài đặt lại"}}
+    assert core_call(stack, "POST", f"tasks/{task['id']}/claim", token) == (204, None)
+    assert core_call(stack, "POST", f"tasks/{task['id']}/complete", token, done) == (204, None)
+    assert finished(stack, started["id"]) == "COMPLETED"
+
+
+def test_purge_leaves_nothing_of_app(stack, tmp_path):
+    name = new_name()
+    schema, key = schema_of(name), f"{schema_of(name)}.yeu_cau"
+    app = process_app(tmp_path / name, name)
+    assert plug(stack, app).returncode == 0
+    user = user_with_roles(stack, f"{name}.nguoi-gui", f"{name}.xu-ly")
+    token = stack.app_token(user, name)
+    _, started = start_process(stack, key, token)
+    task = wait_for(lambda: task_of_instance(stack, token, started["id"]), "Chưa có việc")
+    core_call(stack, "POST", f"tasks/{task['id']}/claim", token)
+    core_call(stack, "POST", f"tasks/{task['id']}/complete", token, {"variables": {"ket_qua": "x"}})
+    assert finished(stack, started["id"]) == "COMPLETED"
+
+    refused = stack.saigonos("remove", name, "--purge")
+    result = stack.saigonos("remove", name, "--purge", "--yes")
+
+    assert refused.returncode == 1
+    assert "Hãy chạy lại trong terminal hoặc thêm tùy chọn --yes." in refused.stdout
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"Đã xóa realm role {name}.nguoi-gui.\n" in result.stdout
+    assert printed_last(result.stdout, f"Đã xóa hẳn ứng dụng {name}.\n")
+    assert stack.sql(
+        f"SELECT (SELECT count(*) FROM pg_namespace WHERE nspname = '{schema}'), "
+        f"(SELECT count(*) FROM pg_roles WHERE rolname IN ('{schema}', '{schema}_user')), "
+        f"(SELECT count(*) FROM core.apps WHERE name = '{name}'), "
+        f"(SELECT count(*) FROM core.migrations WHERE scope = '{name}'), "
+        f"(SELECT count(*) FROM core.notifications WHERE app = '{name}'), "
+        f"(SELECT count(*) FROM core.deliveries WHERE app = '{name}'), "
+        f"(SELECT count(*) FROM core.step_runs WHERE function LIKE '{schema}.%')"
+    ) == [["0"] * 7]
+    assert keycloak_client(stack, name) == []
+    for role in ("nguoi-gui", "xu-ly"):
+        assert stack.admin("GET", f"/roles/{name}.{role}").status == 404
+    assert stack.gateway_admin("GET", f"/routes/app-{name}").status == 404
+    assert operaton_get(stack, f"/deployment?tenantIdIn={name}") == []
+    assert operaton_get(stack, f"/history/process-instance?processInstanceId={started['id']}") == []
+    assert not (stack.home / "apps" / name).exists()
+    fresh = plug(stack, app)
+    assert fresh.returncode == 0, fresh.stdout + fresh.stderr
+    assert f"Đã tạo schema {schema}, role {schema} và role {schema}_user của ứng dụng.\n" in (
+        fresh.stdout
+    )
+
+
+def test_remove_of_app_never_installed_fails(stack):
+    result = stack.saigonos("remove", new_name())
+
+    assert result.returncode == 1
+    assert "chưa được cài đặt." in result.stdout
