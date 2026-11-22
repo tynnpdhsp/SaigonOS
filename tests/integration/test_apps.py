@@ -1114,3 +1114,337 @@ def test_readme_example_app_is_plugged_and_serves_its_table(stack, tmp_path):
     assert created.status == 201, created.body
     assert [(item["ly_do"], item["nguoi_gui"]) for item in mine] == [("Việc gia đình", user.id)]
     assert json.loads(theirs.body) == []
+
+
+ENGINE = "http://127.0.0.1:8080/operaton/engine-rest"
+RESULT_SQL = """\
+CREATE TABLE ket_qua (
+    noi_dung text NOT NULL,
+    ket_qua text NOT NULL,
+    nguoi_gui text NOT NULL,
+    nguoi_chay text NOT NULL
+);
+GRANT INSERT ON ket_qua TO {schema}_user;
+CREATE FUNCTION ghi_ket_qua(bien jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO {schema}.ket_qua
+    VALUES (bien ->> 'noi_dung', bien ->> 'ket_qua', bien ->> 'initiator', current_user);
+    PERFORM core.send_email(
+        'nguoi-gui@example.com', '{schema}-' || (bien ->> 'noi_dung'), 'Yêu cầu đã được xử lý'
+    );
+    RETURN jsonb_build_object('da_ghi', true);
+END $$;
+GRANT EXECUTE ON FUNCTION ghi_ket_qua(jsonb) TO workflow;
+"""
+REQUIRED_FIELD = """\
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="{field}" label="{label}" type="string">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+"""
+STEP_TASK = """\
+    <bpmn:serviceTask id="ghi" name="Ghi kết quả" operaton:type="external"
+                      operaton:topic="saigonos-function">
+      <bpmn:extensionElements>
+        <operaton:properties>
+          <operaton:property name="function" value="{function}" />
+        </operaton:properties>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+"""
+
+
+def picture(key, nodes):
+    shapes, edges = [], []
+    for index, node in enumerate(nodes):
+        shapes.append(
+            f'      <bpmndi:BPMNShape id="{node}_hinh" bpmnElement="{node}">\n'
+            f'        <dc:Bounds x="{100 + 160 * index}" y="80" width="100" height="80" />\n'
+            "      </bpmndi:BPMNShape>\n"
+        )
+    for index in range(1, len(nodes)):
+        start = 200 + 160 * (index - 1)
+        edges.append(
+            f'      <bpmndi:BPMNEdge id="luong_{index}_hinh" bpmnElement="luong_{index}">\n'
+            f'        <di:waypoint x="{start}" y="120" />\n'
+            f'        <di:waypoint x="{start + 60}" y="120" />\n'
+            "      </bpmndi:BPMNEdge>\n"
+        )
+    return (
+        '  <bpmndi:BPMNDiagram id="hinh">\n'
+        f'    <bpmndi:BPMNPlane id="mat_phang" bpmnElement="{key}">\n'
+        f"{''.join(shapes)}{''.join(edges)}"
+        "    </bpmndi:BPMNPlane>\n"
+        "  </bpmndi:BPMNDiagram>\n"
+    )
+
+
+def process_bpmn(key, starters, function, worker=None, task="Xử lý yêu cầu", extra=""):
+    nodes = ["bat_dau", "xu_ly", "ghi", "ket_thuc"] if worker else ["bat_dau", "ghi", "ket_thuc"]
+    body = '    <bpmn:startEvent id="bat_dau">\n'
+    body += REQUIRED_FIELD.format(field="noi_dung", label="Nội dung") + "    </bpmn:startEvent>\n"
+    if worker:
+        body += (
+            f'    <bpmn:userTask id="xu_ly" name="{task}" operaton:candidateGroups="{worker}">\n'
+        )
+        body += REQUIRED_FIELD.format(field="ket_qua", label="Kết quả") + "    </bpmn:userTask>\n"
+    body += STEP_TASK.format(function=function) + '    <bpmn:endEvent id="ket_thuc" />\n'
+    for index in range(1, len(nodes)):
+        body += (
+            f'    <bpmn:sequenceFlow id="luong_{index}" sourceRef="{nodes[index - 1]}" '
+            f'targetRef="{nodes[index]}" />\n'
+        )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="dinh_nghia" targetNamespace="https://saigonos.example/bpmn">
+  <bpmn:process id="{key}" name="Yêu cầu thử" isExecutable="true"
+                operaton:historyTimeToLive="P30D" operaton:candidateStarterGroups="{starters}">
+{body}{extra}  </bpmn:process>
+{picture(key, nodes)}</bpmn:definitions>
+"""
+
+
+def process_app(folder, name, task="Xử lý yêu cầu", extra=""):
+    schema = schema_of(name)
+    manifest = {
+        "name": name,
+        "title": "Yêu cầu thử",
+        "version": "0.1.0",
+        "roles": [
+            {"name": f"{name}.nguoi-gui", "description": "Gửi yêu cầu"},
+            {"name": f"{name}.xu-ly", "description": "Xử lý yêu cầu"},
+        ],
+        "database": "database",
+        "processes": "processes",
+    }
+    for part in ("database", "processes"):
+        (folder / part).mkdir(parents=True, exist_ok=True)
+    sql = RESULT_SQL.replace("{schema}", schema)
+    (folder / "database" / "0001_ket_qua.sql").write_text(sql, encoding="utf-8")
+    bpmn = process_bpmn(
+        f"{schema}.yeu_cau",
+        f"{name}.nguoi-gui",
+        f"{schema}.ghi_ket_qua",
+        worker=f"{name}.xu-ly",
+        task=task,
+        extra=extra,
+    )
+    (folder / "processes" / "yeu-cau.bpmn").write_text(bpmn, encoding="utf-8")
+    content = json.dumps(manifest, ensure_ascii=False, indent=2)
+    (folder / "saigonos-app.json").write_text(content, encoding="utf-8")
+    return folder
+
+
+def operaton_rest(stack, *options, input=None):
+    account = f"core:{stack.env['CORE_OPERATON_PASSWORD']}"
+    command = ["exec", "-T", "operaton", "curl", "--silent", "--fail", "--user", account]
+    result = stack.compose_result(*command, *options, input=input)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
+def operaton_get(stack, path):
+    return operaton_rest(stack, f"{ENGINE}{path}")
+
+
+def deploy_directly(stack, file, text, tenant=None):
+    fields = ["--form-string", f"deployment-name={file}"]
+    fields += ["--form-string", "deployment-source=kiem-thu", "--form", f"data=@-;filename={file}"]
+    if tenant is not None:
+        fields += ["--form-string", f"tenant-id={tenant}"]
+    return operaton_rest(stack, *fields, f"{ENGINE}/deployment/create", input=text)
+
+
+def wait_for(found, message, timeout=30):
+    deadline = time.monotonic() + timeout
+    while not (value := found()):
+        assert time.monotonic() < deadline, message
+        time.sleep(0.5)
+    return value
+
+
+def core_call(stack, method, path, token, body=None):
+    reply = stack.call(method, f"{stack.url}/core/{path}", token=token, body=body)
+    return reply.status, json.loads(reply.body) if reply.body else None
+
+
+def start_process(stack, key, token, text="Máy 12 không lên màn hình"):
+    return core_call(
+        stack, "POST", f"processes/{key}/start", token, {"variables": {"noi_dung": text}}
+    )
+
+
+def finished(stack, instance):
+    def state():
+        found = operaton_get(stack, f"/history/process-instance/{instance}")["state"]
+        return None if found == "ACTIVE" else found
+
+    return wait_for(state, f"Quy trình {instance} chưa kết thúc")
+
+
+def incident_message(stack, instance):
+    path = f"/incident?processInstanceId={instance}"
+    [incident] = wait_for(
+        lambda: operaton_get(stack, path), f"Quy trình {instance} chưa có incident"
+    )
+    return incident["incidentMessage"]
+
+
+def task_of_instance(stack, token, instance):
+    status, tasks = core_call(stack, "GET", "tasks", token)
+    assert status == 200, tasks
+    return next((task for task in tasks if task["process_instance_id"] == instance), None)
+
+
+def test_process_of_app_runs_to_the_end_with_tokens_of_app(stack, tmp_path):
+    name = new_name()
+    schema = schema_of(name)
+    key = f"{schema}.yeu_cau"
+
+    result = plug(stack, process_app(tmp_path / name, name))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Đã tạo route app-{name}.\n"
+        f"Đã triển khai file yeu-cau.bpmn: quy trình {key}, phiên bản 1.\n"
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+    )
+    [definition] = operaton_get(stack, f"/process-definition?key={key}")
+    [deployment] = operaton_get(stack, f"/deployment?id={definition['deploymentId']}")
+    assert (definition["tenantId"], deployment["source"]) == (name, f"app:{name}")
+    sender = user_with_roles(stack, f"{name}.nguoi-gui")
+    worker = user_with_roles(stack, f"{name}.xu-ly")
+    token = stack.app_token(worker, name)
+    status, started = start_process(stack, key, stack.app_token(sender, name), "May 12")
+    assert (status, started["version"]) == (201, 1), started
+    task = wait_for(lambda: task_of_instance(stack, token, started["id"]), "Chưa có việc")
+    assert core_call(stack, "POST", f"tasks/{task['id']}/claim", token) == (204, None)
+    done = {"variables": {"ket_qua": "Đã thay cáp"}}
+    assert core_call(stack, "POST", f"tasks/{task['id']}/complete", token, done) == (204, None)
+    assert finished(stack, started["id"]) == "COMPLETED"
+    assert stack.sql(f"SELECT * FROM {schema}.ket_qua") == [
+        ["May 12", "Đã thay cáp", sender.id, f"{schema}_user"]
+    ]
+    assert stack.sql(
+        f"SELECT count(*) FROM core.deliveries WHERE dedup_key = '{schema}-May 12'"
+    ) == [["1"]]
+
+
+def test_changed_bpmn_file_makes_new_version_and_running_process_keeps_old(stack, tmp_path):
+    name = new_name()
+    key = f"{schema_of(name)}.yeu_cau"
+    app = process_app(tmp_path / name, name)
+    assert plug(stack, app).returncode == 0
+    sender = user_with_roles(stack, f"{name}.nguoi-gui", f"{name}.xu-ly")
+    token = stack.app_token(sender, name)
+    _, first = start_process(stack, key, token)
+
+    again = plug(stack, app)
+    process_app(app, name, task="Kiểm tra yêu cầu")
+    changed = plug(stack, app)
+
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert printed_last(
+        again.stdout,
+        "Không có thay đổi trên APISIX.\n"
+        "Không có thay đổi trên Operaton.\n"
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+    )
+    assert changed.returncode == 0, changed.stdout + changed.stderr
+    assert f"Đã triển khai file yeu-cau.bpmn: quy trình {key}, phiên bản 2.\n" in changed.stdout
+    _, second = start_process(stack, key, token)
+    assert (first["version"], second["version"]) == (1, 2)
+    old = wait_for(lambda: task_of_instance(stack, token, first["id"]), "Chưa có việc cũ")
+    new = wait_for(lambda: task_of_instance(stack, token, second["id"]), "Chưa có việc mới")
+    assert (old["name"], new["name"]) == ("Xử lý yêu cầu", "Kiểm tra yêu cầu")
+    assert old["process_definition_id"] != new["process_definition_id"]
+    done = {"variables": {"ket_qua": "Xong"}}
+    assert core_call(stack, "POST", f"tasks/{old['id']}/claim", token) == (204, None)
+    assert core_call(stack, "POST", f"tasks/{old['id']}/complete", token, done) == (204, None)
+    assert finished(stack, first["id"]) == "COMPLETED"
+
+
+def test_tokens_of_other_clients_do_not_reach_processes_of_app(stack, tmp_path):
+    name, other = new_name(), new_name()
+    key = f"{schema_of(name)}.yeu_cau"
+    for app in (name, other):
+        assert plug(stack, process_app(tmp_path / app, app)).returncode == 0
+    roles = [f"{app}.{role}" for app in (name, other) for role in ("nguoi-gui", "xu-ly")]
+    user = user_with_roles(stack, *roles)
+    own, foreign, plain = (
+        stack.app_token(user, name),
+        stack.app_token(user, other),
+        stack.token(user),
+    )
+    system = f"chung_{secrets.token_hex(3)}"
+    simple = process_bpmn(system, f"{name}.nguoi-gui", "thu_nghiem.khong_co")
+    deploy_directly(stack, f"{system}.bpmn", simple)
+    _, started = start_process(stack, key, own)
+    task = wait_for(lambda: task_of_instance(stack, own, started["id"]), "Chưa có việc")
+
+    for token in (foreign, plain):
+        assert task_of_instance(stack, token, started["id"]) is None
+        assert start_process(stack, key, token)[0] == 404
+        assert core_call(stack, "POST", f"tasks/{task['id']}/claim", token)[0] == 404
+        assert core_call(stack, "POST", f"tasks/{task['id']}/complete", token)[0] == 404
+    assert start_process(stack, system, own)[0] == 404
+    assert start_process(stack, system, plain)[0] == 201
+    assert core_call(stack, "POST", f"tasks/{task['id']}/claim", own) == (204, None)
+
+
+def test_step_calling_function_of_another_app_becomes_incident(stack, tmp_path):
+    name, other = new_name(), new_name()
+    schema = schema_of(name)
+    for app in (name, other):
+        assert plug(stack, process_app(tmp_path / app, app)).returncode == 0
+    user = user_with_roles(stack, f"{name}.nguoi-gui")
+    crossing = process_bpmn(
+        f"{schema}.goi_khac", f"{name}.nguoi-gui", f"{schema_of(other)}.ghi_ket_qua"
+    )
+    deploy_directly(stack, "goi-khac.bpmn", crossing, tenant=name)
+    system = f"chung_{secrets.token_hex(3)}"
+    deploy_directly(
+        stack, f"{system}.bpmn", process_bpmn(system, f"{name}.nguoi-gui", f"{schema}.ghi_ket_qua")
+    )
+
+    _, inside = start_process(stack, f"{schema}.goi_khac", stack.app_token(user, name))
+    _, outside = start_process(stack, system, stack.token(user))
+
+    assert incident_message(stack, inside["id"]) == (
+        f"Quy trình của ứng dụng {name} chỉ gọi được hàm trong schema {schema}. "
+        f"Hàm {schema_of(other)}.ghi_ket_qua nằm ngoài schema này"
+    )
+    assert incident_message(stack, outside["id"]) == (
+        f"Quy trình không thuộc ứng dụng nào nên không gọi được hàm {schema}.ghi_ket_qua "
+        f"của ứng dụng {name}"
+    )
+    for app in (name, other):
+        assert stack.sql(f"SELECT count(*) FROM {schema_of(app)}.ket_qua") == [["0"]]
+
+
+def test_apply_refuses_bpmn_running_code_before_changing_anything(stack, tmp_path):
+    name = new_name()
+    script = '    <bpmn:scriptTask id="chay" scriptFormat="groovy" />\n'
+    app = process_app(tmp_path / name, name, extra=script)
+    line = (app / "processes" / "yeu-cau.bpmn").read_text(encoding="utf-8").splitlines()
+    number = next(index for index, text in enumerate(line, 1) if "scriptTask" in text)
+
+    result = plug(stack, app)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        f'- processes: "processes/yeu-cau.bpmn", dòng {number}: '
+        "Thẻ scriptTask chạy script trong Operaton nên không được dùng.\n"
+    ) in result.stdout
+    assert stack.sql(f"SELECT count(*) FROM core.apps WHERE name = '{name}'") == [["0"]]
+    assert keycloak_client(stack, name) == []

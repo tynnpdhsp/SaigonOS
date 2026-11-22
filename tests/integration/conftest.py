@@ -274,10 +274,15 @@ class Stack:
                 assert time.monotonic() < deadline, f"API Gateway chưa trả lời {path}"
                 time.sleep(0.5)
 
-    def compose_result(self, *args, timeout=120):
-        command = [self.docker, "compose", *args]
+    def compose_result(self, *args, timeout=120, input=None):
         return subprocess.run(
-            command, cwd=self.home, check=False, capture_output=True, text=True, timeout=timeout
+            [self.docker, "compose", *args],
+            cwd=self.home,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            input=input,
         )
 
     def compose(self, *args):
