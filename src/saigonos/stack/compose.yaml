@@ -350,6 +350,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+    volumes:
+      - ./apps:/apps:ro
     networks:
       - default
       - storage
