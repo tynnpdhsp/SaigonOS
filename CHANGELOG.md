@@ -22,6 +22,12 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh cài đặt tạo trên APISIX route `app-<tên>` cho API của ứng dụng tại địa chỉ `/apps/<tên>/api/`. Route tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng, kiểm tra access token và giới hạn tần suất như địa chỉ `/api/`. Tài liệu OpenAPI ở địa chỉ `/apps/<tên>/api/` chỉ có bảng và hàm của ứng dụng. Mỗi lần cài đặt, route được đặt lại theo bản khai. Khi APISIX đã có route trùng tên mà không do SaigonOS tạo, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu. Service `apps` giữ thêm khóa Admin API của APISIX.
 - Service `core` phục vụ giao diện của ứng dụng đã cài đặt tại địa chỉ `/apps/<tên>/`. Địa chỉ không khớp file nào và không có phần mở rộng trả về `index.html`. Mỗi trả lời có header `Content-Security-Policy`, `X-Content-Type-Options` và `Referrer-Policy`. File `index.html` không được cache, các file khác được hỏi lại bằng `ETag`. Địa chỉ có `..`, file có tên bắt đầu bằng dấu chấm, symlink và ứng dụng chưa cài đặt đều nhận mã 404.
 - PostgREST và service `core` niêm phong claims của mỗi lời gọi bằng HMAC-SHA256. Khi hàm SQL của ứng dụng đổi `request.jwt.claims`, các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác để đọc dữ liệu của ứng dụng khác.
+- Mỗi ứng dụng có thêm role `<schema>_user` để chạy lời gọi API mang access token của ứng dụng. Schema của ứng dụng chỉ được cấp cho role này và role `anon`. Hàm của ứng dụng được đổi thành hàm `SECURITY DEFINER` của role này và giữ quyền `EXECUTE` như file SQL đã cấp. Bên trong hàm như vậy, PostgreSQL không cho đổi role. Do đó, hàm của một ứng dụng không đọc được dữ liệu của ứng dụng khác, kể cả dữ liệu của chính người gọi.
+
+### Thay đổi
+
+- Hàm `set_config` của PostgreSQL chỉ còn được cấp cho role `authenticator` của PostgREST và role `core_service`. Hàm trong cơ sở dữ liệu đổi giá trị cấu hình bằng lệnh `SET LOCAL`.
+- Lệnh DDL trong cơ sở dữ liệu `saigonos` chỉ chạy được bằng superuser hoặc trong file SQL khi cài đặt ứng dụng.
 
 ## [0.5.0] - 2026-11-21
 
