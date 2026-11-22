@@ -1,6 +1,93 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "AccessRule": {
+      "additionalProperties": false,
+      "properties": {
+        "methods": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PATCH",
+                  "PUT",
+                  "DELETE"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Các phương thức HTTP mà luật áp dụng. GET áp dụng cả cho HEAD. Khi không khai, luật áp dụng cho mọi phương thức."
+        },
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "pattern": "^/[A-Za-z0-9_.*/-]*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Các đường dẫn mà luật áp dụng, tính từ /apps/<tên ứng dụng>/api, theo cú pháp glob. Dấu * khớp với một cấp, dấu ** khớp với nhiều cấp. Khi không khai, luật áp dụng cho mọi đường dẫn."
+        },
+        "roles": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Người gọi phải có ít nhất một trong các role này của ứng dụng."
+        },
+        "networks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Địa chỉ IP của người gọi phải thuộc một trong các dải mạng này, viết theo dạng CIDR. Ví dụ: 192.168.1.0/24."
+        },
+        "otp": {
+          "default": false,
+          "description": "Người gọi phải đăng nhập bằng mật khẩu và mã OTP.",
+          "type": "boolean"
+        }
+      },
+      "title": "AccessRule",
+      "type": "object"
+    },
     "Role": {
       "additionalProperties": false,
       "properties": {
@@ -142,6 +229,14 @@
       ],
       "default": null,
       "description": "Thư mục chứa giao diện, tính từ thư mục ứng dụng. Thư mục phải có file index.html."
+    },
+    "access": {
+      "description": "Các luật truy cập API của ứng dụng. OPA kiểm tra các luật này ở API Gateway. Lời gọi khớp phương thức và đường dẫn của một luật phải đạt mọi điều kiện của luật.",
+      "items": {
+        "$ref": "#/$defs/AccessRule"
+      },
+      "maxItems": 20,
+      "type": "array"
     }
   },
   "required": [
