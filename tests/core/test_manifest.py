@@ -31,9 +31,38 @@ VALID = {
     "processes": "processes",
     "ui": "ui",
 }
+PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="nghi_phep.duyet" isExecutable="true" operaton:historyTimeToLive="P30D"
+                operaton:candidateStarterGroups="nghi-phep.nhan-vien">
+    <bpmn:startEvent id="bat_dau" />
+    <bpmn:sequenceFlow id="luong_1" sourceRef="bat_dau" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="hinh">
+    <bpmndi:BPMNPlane id="mat_phang" bpmnElement="nghi_phep.duyet">
+      <bpmndi:BPMNShape id="bat_dau_hinh" bpmnElement="bat_dau">
+        <dc:Bounds x="100" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="luong_1_hinh" bpmnElement="luong_1">
+        <di:waypoint x="136" y="98" />
+        <di:waypoint x="200" y="98" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="ket_thuc_hinh" bpmnElement="ket_thuc">
+        <dc:Bounds x="200" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
 FILES = {
     "database/0001_don.sql": "CREATE TABLE nghi_phep.don (id bigint);\n",
-    "processes/duyet.bpmn": "<definitions/>\n",
+    "processes/duyet.bpmn": PROCESS,
     "ui/index.html": "<!doctype html>\n",
     "ui/assets/app.js": "console.log(1);\n",
 }
@@ -525,4 +554,47 @@ def test_schema_lists_rules_of_manifest():
     assert name["not"]["anyOf"] == [
         {"enum": sorted(RESERVED_NAMES)},
         {"pattern": f"^{RESERVED_PREFIX}"},
+    ]
+
+
+def test_problem_of_bpmn_file_names_file_and_line(app):
+    script = '<bpmn:scriptTask id="chay" />\n    <bpmn:startEvent'
+    text = PROCESS.replace("<bpmn:startEvent", script)
+    (app / "processes" / "duyet.bpmn").write_text(text, encoding="utf-8")
+
+    assert problems(app) == [
+        'processes: "processes/duyet.bpmn", dòng 10: '
+        "Thẻ scriptTask chạy script trong Operaton nên không được dùng."
+    ]
+
+
+def test_bpmn_checks_use_name_and_roles_of_manifest(app):
+    roles = [role("nghi-phep.nhan-vien", "Gửi đơn")]
+
+    assert problems(app, VALID | {"roles": roles}) == []
+    assert problems(app, VALID | {"name": "don-tu", "roles": [role("don-tu.quan-ly")]}) == [
+        'processes: "processes/duyet.bpmn", dòng 8: Mã quy trình nghi_phep.duyet phải có dạng '
+        "don_tu.<tên quy trình>. Tên quy trình gồm chữ thường không dấu, chữ số và dấu gạch dưới.",
+        'processes: "processes/duyet.bpmn", dòng 8: Thuộc tính operaton:candidateStarterGroups '
+        "của quy trình nghi_phep.duyet có nghi-phep.nhan-vien không phải role của ứng dụng.",
+    ]
+
+
+def test_bpmn_files_are_read_only_when_folder_is_fine(app):
+    (app / "processes" / "duyet.bpmn").write_text("không phải XML", encoding="utf-8")
+    (app / "processes" / "lien-ket").symlink_to("duyet.bpmn")
+
+    assert problems(app) == [f'processes: "processes/lien-ket" {SYMLINK}']
+
+
+def test_drawing_warning_keeps_app_valid(app):
+    text = re.sub(r"  <bpmndi:BPMNDiagram.*</bpmndi:BPMNDiagram>\n", "", PROCESS, flags=re.DOTALL)
+    (app / "processes" / "duyet.bpmn").write_text(text, encoding="utf-8")
+
+    checked = check_app(app)
+
+    assert checked.manifest is not None
+    assert [str(warning) for warning in checked.warnings] == [
+        'processes: "processes/duyet.bpmn": File không có phần hình vẽ (BPMNDI) '
+        "nên Cockpit của Operaton không vẽ được quy trình."
     ]

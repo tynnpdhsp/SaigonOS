@@ -26,9 +26,27 @@ MANIFEST = {
     "processes": "processes",
     "ui": "ui",
 }
+PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="nghi_phep.duyet" isExecutable="true" operaton:historyTimeToLive="P30D">
+    <bpmn:startEvent id="bat_dau" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="hinh">
+    <bpmndi:BPMNPlane id="mat_phang" bpmnElement="nghi_phep.duyet">
+      <bpmndi:BPMNShape id="bat_dau_hinh" bpmnElement="bat_dau">
+        <dc:Bounds x="100" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
 FILES = {
     "database/0001_don.sql": "CREATE TABLE nghi_phep.don (id bigint);\n",
-    "processes/duyet.bpmn": "<definitions/>\n",
+    "processes/duyet.bpmn": PROCESS,
     "ui/index.html": "<!doctype html>\n",
     "ui/app.js": "console.log(1);\n",
 }

@@ -16,6 +16,15 @@ VALID = {
     "roles": [{"name": "don-tu.can-bo", "description": "Xử lý đơn"}],
     "ui": "ui",
 }
+PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="xu_ly_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="don_tu.xu_ly" isExecutable="true" operaton:historyTimeToLive="P30D">
+    <bpmn:startEvent id="bat_dau" />
+  </bpmn:process>
+</bpmn:definitions>
+"""
 
 
 @pytest.fixture
@@ -246,3 +255,18 @@ def test_apply_refuses_invalid_name(folder, applied, capsys, name):
 def test_apply_reports_missing_folder(folder, applied, capsys):
     assert apps.main(["apply", "khong-co"]) == 1
     assert capsys.readouterr().out == "Không tìm thấy thư mục khong-co trong thư mục apps.\n"
+
+
+def test_check_prints_warnings_before_result(folder, capsys):
+    (folder / "processes").mkdir()
+    (folder / "processes" / "xu-ly.bpmn").write_text(PROCESS, encoding="utf-8")
+    data = VALID | {"processes": "processes"}
+    (folder / MANIFEST).write_text(json.dumps(data), encoding="utf-8")
+
+    assert apps.main(["check", "don-tu"]) == 0
+    assert capsys.readouterr().out == (
+        "Ứng dụng có 1 cảnh báo:\n"
+        '- processes: "processes/xu-ly.bpmn": File không có phần hình vẽ (BPMNDI) '
+        "nên Cockpit của Operaton không vẽ được quy trình.\n"
+        "Ứng dụng don-tu 1.2.0 không có lỗi.\n"
+    )

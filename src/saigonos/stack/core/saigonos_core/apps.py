@@ -52,12 +52,20 @@ def report(problems: list[Problem]) -> int:
     return 1
 
 
+def warn(warnings: tuple[Problem, ...]) -> None:
+    if warnings:
+        print(f"Ứng dụng có {len(warnings)} cảnh báo:")
+        for warning in warnings:
+            print(f"- {warning}")
+
+
 def check(folder: str) -> int:
     path = APPS / folder
     if not path.is_dir():
         print(f"Không tìm thấy thư mục {folder}.")
         return 1
-    manifest, problems = check_app(path)
+    manifest, problems, warnings = check_app(path)
+    warn(warnings)
     if manifest is None:
         return report(problems)
     print(f"Ứng dụng {manifest.name} {manifest.version} không có lỗi.")
@@ -87,7 +95,8 @@ def apply(name: str) -> int:
     if not folder.is_dir():
         print(f"Không tìm thấy thư mục {name} trong thư mục apps.")
         return 1
-    manifest, problems = check_app(folder)
+    manifest, problems, warnings = check_app(folder)
+    warn(warnings)
     if manifest is None:
         return report(problems)
     if manifest.name != name:

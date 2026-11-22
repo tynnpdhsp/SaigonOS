@@ -75,6 +75,24 @@ JSON_BLOCKS = re.findall(r"```json\n(.*?)```", README, re.DOTALL)
 MANIFEST_EXAMPLE = next(json.loads(block) for block in JSON_BLOCKS if '"roles"' in block)
 CHECK_SAMPLES = [sample for sample in SAMPLES if sample.startswith("Ứng dụng")]
 ROOT = Path(__file__).resolve().parent.parent
+PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="nghi_phep.duyet" isExecutable="true" operaton:historyTimeToLive="P30D">
+    <bpmn:startEvent id="bat_dau" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="hinh">
+    <bpmndi:BPMNPlane id="mat_phang" bpmnElement="nghi_phep.duyet">
+      <bpmndi:BPMNShape id="bat_dau_hinh" bpmnElement="bat_dau">
+        <dc:Bounds x="100" y="80" width="36" height="36" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
 
 
 def section(title):
@@ -342,9 +360,10 @@ def test_readme_states_retry_rules_of_telegram():
 
 
 def write_app(folder, manifest):
-    for name in ("database/0001_don.sql", "processes/duyet.bpmn", "ui/index.html"):
+    files = {"database/0001_don.sql": "", "processes/duyet.bpmn": PROCESS, "ui/index.html": ""}
+    for name, text in files.items():
         (folder / name).parent.mkdir(parents=True, exist_ok=True)
-        (folder / name).write_text("", encoding="utf-8")
+        (folder / name).write_text(text, encoding="utf-8")
     (folder / MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
 
 

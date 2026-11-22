@@ -19,6 +19,8 @@ from pydantic import (
 from pydantic.json_schema import GenerateJsonSchema
 from pydantic_core import InitErrorDetails, PydanticCustomError, core_schema
 
+from saigonos_core.bpmn import Finding, check_processes
+
 MANIFEST = "saigonos-app.json"
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 WORD = "[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
@@ -276,6 +278,7 @@ class Problem(NamedTuple):
 class Checked(NamedTuple):
     manifest: Manifest | None
     problems: list[Problem]
+    warnings: tuple[Problem, ...] = ()
 
 
 class DuplicateKeyError(ValueError):
@@ -407,6 +410,13 @@ def overlap(first: PurePosixPath, second: PurePosixPath) -> bool:
     return first == second or first in second.parents or second in first.parents
 
 
+def process_problem(folder: PurePosixPath, finding: Finding) -> Problem:
+    where = f'"{folder / finding.file}"'
+    if finding.line is not None:
+        where += f", dòng {finding.line}"
+    return Problem("processes", f"{where}: {finding.message}")
+
+
 def check_app(folder: Path) -> Checked:
     data, problem = read_manifest(folder)
     if problem is not None:
@@ -429,4 +439,12 @@ def check_app(folder: Path) -> Checked:
         if overlap(first_path, second_path):
             text = f"Thư mục của {first} và {second} trùng nhau hoặc nằm trong nhau."
             problems.append(Problem(second, text))
-    return Checked(None if problems else manifest, problems)
+    warnings: list[Problem] = []
+    processes = folders.get("processes")
+    if processes is not None and all(problem.location != "processes" for problem in problems):
+        app = None if manifest is None else manifest.name
+        roles = None if manifest is None else [role.name for role in manifest.roles]
+        report = check_processes(folder / processes, app, roles)
+        problems += [process_problem(processes, finding) for finding in report.problems]
+        warnings += [process_problem(processes, finding) for finding in report.warnings]
+    return Checked(None if problems else manifest, problems, tuple(warnings))
