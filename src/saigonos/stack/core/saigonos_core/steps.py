@@ -10,7 +10,7 @@ import asyncpg
 from pydantic import TypeAdapter, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from saigonos_core.database import SET_CALLER, Database
+from saigonos_core.database import SEAL_CLAIMS, SET_CALLER, Database
 from saigonos_core.operaton import Operaton, OperatonError, OperatonUnavailableError
 from saigonos_core.processes import Name, Processes, Rules, Value, typed
 
@@ -215,6 +215,7 @@ class Steps:
             variables = plain(task["variables"])
             procedure = procedure_of(await connection.fetch(FIND, schema, name), label)
             await connection.execute(SET_CALLER, ROLE, CLAIMS)
+            await connection.execute(SEAL_CLAIMS)
             try:
                 returned = await connection.fetchval(CALL, procedure, json.dumps(variables))
             except asyncpg.PostgresError as error:

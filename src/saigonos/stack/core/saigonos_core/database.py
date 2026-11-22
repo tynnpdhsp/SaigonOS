@@ -9,6 +9,7 @@ from saigonos_core.callers import Caller
 
 SET_CALLER = "SELECT set_config('role', $1, true), set_config('request.jwt.claims', $2, true)"
 SET_CLAIMS = "SELECT set_config('request.jwt.claims', $1, true)"
+SEAL_CLAIMS = "SELECT core.seal_claims()"
 UNAVAILABLE = (OSError, TimeoutError, asyncpg.PostgresError, asyncpg.InterfaceError)
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 30
@@ -61,10 +62,12 @@ class Database:
     async def session(self, caller: Caller) -> AsyncIterator[asyncpg.Connection]:
         async with self.transaction() as connection:
             await connection.execute(SET_CALLER, caller.role, json.dumps(caller.claims))
+            await connection.execute(SEAL_CLAIMS)
             yield connection
 
     @asynccontextmanager
     async def service_session(self, caller: Caller) -> AsyncIterator[asyncpg.Connection]:
         async with self.transaction() as connection:
             await connection.execute(SET_CLAIMS, json.dumps(caller.claims))
+            await connection.execute(SEAL_CLAIMS)
             yield connection

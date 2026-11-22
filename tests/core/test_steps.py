@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, suppress
 import asyncpg
 import pytest
 
-from saigonos_core.database import SET_CALLER
+from saigonos_core.database import SEAL_CLAIMS, SET_CALLER
 from saigonos_core.operaton import OperatonError, OperatonUnavailableError
 from saigonos_core.processes import Processes
 from saigonos_core.steps import (
@@ -50,6 +50,8 @@ class FakeConnection:
         self.database.statements.append((query, *arguments))
         if query == SET_CALLER:
             self.role = arguments[0]
+        elif query == SEAL_CLAIMS:
+            assert self.role == "workflow"
         elif query == AS_SERVICE:
             self.role = "core_service"
         elif query == SAVE:
@@ -175,7 +177,7 @@ def test_step_calls_declared_function_with_variables_as_workflow(steps, database
         }
     }
     queries = [statement[0] for statement in database.statements]
-    assert queries == [LIMIT, CLAIM, FIND, SET_CALLER, CALL, AS_SERVICE, SAVE]
+    assert queries == [LIMIT, CLAIM, FIND, SET_CALLER, SEAL_CLAIMS, CALL, AS_SERVICE, SAVE]
     assert database.statements[3][1:] == ("workflow", json.dumps({"role": "workflow"}))
 
 
