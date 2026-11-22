@@ -1156,6 +1156,8 @@ BEGIN
     PERFORM core.send_email(
         'nguoi-gui@example.com', '{schema}-' || (bien ->> 'noi_dung'), 'Yêu cầu đã được xử lý'
     );
+    PERFORM core.notify(bien ->> 'initiator', 'xong-' || (bien ->> 'noi_dung'), 'Đã xử lý xong');
+    PERFORM core.publish('role:{app}.xu-ly', jsonb_build_object('xong', bien ->> 'noi_dung'));
     RETURN jsonb_build_object('da_ghi', true);
 END $$;
 GRANT EXECUTE ON FUNCTION ghi_ket_qua(jsonb) TO workflow;
@@ -1252,7 +1254,7 @@ def process_app(folder, name, task="Xử lý yêu cầu", extra=""):
     }
     for part in ("database", "processes"):
         (folder / part).mkdir(parents=True, exist_ok=True)
-    sql = RESULT_SQL.replace("{schema}", schema)
+    sql = RESULT_SQL.replace("{schema}", schema).replace("{app}", name)
     (folder / "database" / "0001_ket_qua.sql").write_text(sql, encoding="utf-8")
     bpmn = process_bpmn(
         f"{schema}.yeu_cau",
@@ -1362,6 +1364,9 @@ def test_process_of_app_runs_to_the_end_with_tokens_of_app(stack, tmp_path):
     assert stack.sql(
         f"SELECT count(*) FROM core.deliveries WHERE dedup_key = '{schema}-May 12'"
     ) == [["1"]]
+    status, mine = core_call(stack, "GET", "notifications", stack.app_token(sender, name))
+    assert (status, [item["title"] for item in mine]) == (200, ["Đã xử lý xong"])
+    assert core_call(stack, "GET", "notifications", stack.token(sender)) == (200, [])
 
 
 def test_changed_bpmn_file_makes_new_version_and_running_process_keeps_old(stack, tmp_path):
@@ -1472,3 +1477,112 @@ def test_apply_refuses_bpmn_running_code_before_changing_anything(stack, tmp_pat
     ) in result.stdout
     assert stack.sql(f"SELECT count(*) FROM core.apps WHERE name = '{name}'") == [["0"]]
     assert keycloak_client(stack, name) == []
+
+
+NOTICE_SQL = """\
+CREATE FUNCTION bao(tieu_de text) RETURNS uuid LANGUAGE sql
+RETURN core.notify(core.uid(), 'khoa-chung', tieu_de);
+CREATE FUNCTION so_thong_bao() RETURNS bigint LANGUAGE sql
+RETURN (SELECT count(*) FROM core.notifications);
+CREATE FUNCTION gui(kenh text) RETURNS uuid LANGUAGE sql RETURN core.publish(kenh, '{}');
+GRANT EXECUTE ON FUNCTION bao(text), so_thong_bao(), gui(text) TO {schema}_user;
+"""
+
+
+@pytest.fixture(scope="module")
+def noticing(stack, tmp_path_factory):
+    names = new_name(), new_name()
+    for name in names:
+        folder = tmp_path_factory.mktemp("thong-bao") / name
+        files = {"0002_thong_bao.sql": NOTICE_SQL.replace("{schema}", schema_of(name))}
+        result = plug(stack, notes_app(folder, name, files=files))
+        assert result.returncode == 0, result.stdout + result.stderr
+    return names
+
+
+def titles(stack, token):
+    status, found = core_call(stack, "GET", "notifications", token)
+    assert status == 200, found
+    return [item["title"] for item in found]
+
+
+def test_notifications_of_app_are_seen_only_with_token_of_that_app(stack, noticing):
+    name, other = noticing
+    user = stack.new_user()
+    own, foreign = stack.app_token(user, name), stack.app_token(user, other)
+    wait_until_served(stack, name, own)
+    wait_until_served(stack, other, foreign)
+
+    sent = [
+        outcome(rpc(stack, app, token, "bao", {"tieu_de": f"Của {app}"}))
+        for app, token in ((name, own), (other, foreign))
+    ]
+    stack.sql(f"SET ROLE workflow; SELECT core.notify('{user.id}', 'khoa-chung', 'Của hệ thống')")
+
+    assert [status for status, _ in sent] == [200, 200]
+    assert titles(stack, own) == [f"Của {name}"]
+    assert titles(stack, foreign) == [f"Của {other}"]
+    assert titles(stack, stack.token(user)) == ["Của hệ thống"]
+    assert outcome(rpc(stack, other, foreign, "so_thong_bao", {})) == (200, 1)
+    marked = stack.call("POST", f"{stack.url}/core/notifications/{sent[0][1]}/read", token=foreign)
+    assert marked.status == 404
+
+
+@pytest.mark.parametrize("target", ["role:{app}.quan-ly", "public:{app}.bang-tin", "user:{app}.x"])
+def test_code_of_app_cannot_publish_into_channels_of_another_app(stack, noticing, target):
+    name, other = noticing
+    token = stack.app_token(stack.new_user(), other)
+    wait_until_served(stack, other, token)
+    channel = target.format(app=name)
+
+    refused = outcome(rpc(stack, other, token, "gui", {"kenh": channel}))
+    own = outcome(rpc(stack, other, token, "gui", {"kenh": target.format(app=other)}))
+
+    assert refused == (403, f"Ứng dụng {other} không gửi được tin vào kênh '{channel}'")
+    assert own[0] == 200
+
+
+def test_code_of_app_cannot_publish_into_channels_of_system(stack, noticing):
+    _, other = noticing
+    user = stack.new_user()
+    token = stack.app_token(user, other)
+    wait_until_served(stack, other, token)
+
+    replies = [
+        outcome(rpc(stack, other, token, "gui", {"kenh": channel}))[0]
+        for channel in (f"user:#{user.id}", "role:admin", "public:bang-tin")
+    ]
+
+    assert replies == [403, 403, 403]
+
+
+def test_personal_channel_of_app_needs_channel_token_given_to_that_app(stack, noticing):
+    name, other = noticing
+    user = stack.new_user()
+    own, foreign = stack.app_token(user, name), stack.app_token(user, other)
+    channel = f"user:{name}.{user.id}"
+    wait_until_served(stack, name, own)
+
+    asked = {
+        label: stack.call(
+            "POST", f"{stack.url}/core/realtime/token", token=token, body={"channel": channel}
+        )
+        for label, token in (("own", own), ("foreign", foreign), ("plain", stack.token(user)))
+    }
+    with stack.realtime() as client:
+        assert "connect" in client.connect(own)
+        bare = client.command("subscribe", {"channel": channel})
+        granted = json.loads(asked["own"].body)["token"]
+        joined = client.command("subscribe", {"channel": channel, "token": granted})
+        assert rpc(stack, name, own, "bao", {"tieu_de": "Có đơn mới"}).status == 200
+        pushed = client.receive()
+
+    assert {label: reply.status for label, reply in asked.items()} == {
+        "own": 200,
+        "foreign": 403,
+        "plain": 403,
+    }
+    assert bare["error"] == {"code": 103, "message": "permission denied"}
+    assert "subscribe" in joined
+    assert pushed["push"]["channel"] == channel
+    assert pushed["push"]["pub"]["data"]["notification"]["title"] == "Có đơn mới"
