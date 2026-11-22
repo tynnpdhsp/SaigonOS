@@ -1334,7 +1334,7 @@ Lệnh thực hiện các bước sau:
 Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
 
 ```text
-Đã tạo schema nghi_phep và role nghi_phep của ứng dụng.
+Đã tạo schema nghi_phep, role nghi_phep và role nghi_phep_user của ứng dụng.
 Đã chạy file 0001_don.sql.
 Đã tạo realm role nghi-phep.nhan-vien.
 Đã tạo realm role nghi-phep.quan-ly.

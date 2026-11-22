@@ -18,6 +18,7 @@ APPLIED = "SELECT name, checksum FROM core.migrations WHERE scope = $1"
 OPEN_LOGIN = "SELECT core.open_app_login($1, $2)"
 CLOSE_LOGIN = "SELECT core.close_app_login($1)"
 RUN = "SELECT core.run_app_sql($1)"
+SECURE = "SELECT core.secure_app()"
 RECORD = "SELECT core.record_migration($1, $2)"
 FINISH = "SELECT core.finish_app($1, $2, $3, $4::jsonb, $5)"
 CONNECT_TIMEOUT = 10
@@ -26,7 +27,7 @@ PASSWORD_LENGTH = 32
 APPLICATION = "saigonos-apps"
 UNREACHABLE = (OSError, TimeoutError, asyncpg.CannotConnectNowError)
 TRANSACTION_COMMANDS = "transaction commands"
-CREATED = "Đã tạo schema {schema} và role {schema} của ứng dụng."
+CREATED = "Đã tạo schema {schema}, role {schema} và role {schema}_user của ứng dụng."
 RAN = "Đã chạy file {name}."
 NOTHING_NEW = "Không có file SQL mới."
 
@@ -120,6 +121,7 @@ async def run_file(connection: asyncpg.Connection, file: SqlFile) -> None:
     try:
         async with connection.transaction():
             await connection.execute(RUN, file.text)
+            await connection.execute(SECURE)
             await connection.execute(RECORD, file.name, file.checksum)
     except asyncpg.PostgresError as error:
         raise ApplyError(file_failure(file, error)) from error

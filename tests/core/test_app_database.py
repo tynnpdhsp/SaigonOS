@@ -17,6 +17,7 @@ from saigonos_core.app_database import (
     PREPARE,
     RECORD,
     RUN,
+    SECURE,
     ApplyError,
     apply_database,
 )
@@ -141,7 +142,7 @@ def test_new_files_run_in_name_order_with_role_of_app(server, folder):
     password = next(event[3] for event in server.events if event[1] == OPEN_LOGIN)
     assert result is True
     assert said == [
-        "Đã tạo schema ghi_chu và role ghi_chu của ứng dụng.",
+        "Đã tạo schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng.",
         "Đã chạy file 0001_notes.sql.",
         "Đã chạy file 0002_tags.sql.",
     ]
@@ -157,10 +158,12 @@ def test_new_files_run_in_name_order_with_role_of_app(server, folder):
         ("postgres", OPEN_LOGIN, "ghi-chu", password),
         ("ghi_chu", "begin"),
         ("ghi_chu", RUN, FIRST),
+        ("ghi_chu", SECURE),
         ("ghi_chu", RECORD, "0001_notes.sql", checksum(FIRST)),
         ("ghi_chu", "commit"),
         ("ghi_chu", "begin"),
         ("ghi_chu", RUN, SECOND),
+        ("ghi_chu", SECURE),
         ("ghi_chu", RECORD, "0002_tags.sql", checksum(SECOND)),
         ("ghi_chu", "commit"),
         ("ghi_chu", "close"),
@@ -210,7 +213,10 @@ def test_app_without_database_folder_runs_no_file(server, folder):
 
     _, said = apply(folder, data)
 
-    assert said == ["Đã tạo schema ghi_chu và role ghi_chu của ứng dụng.", "Không có file SQL mới."]
+    assert said == [
+        "Đã tạo schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng.",
+        "Không có file SQL mới.",
+    ]
     assert server.queries("postgres") == [LOCK, PREPARE, APPLIED, FINISH, "close"]
 
 
@@ -271,6 +277,24 @@ def test_failing_file_explains_reason(server, folder, error, reason):
     assert failure_of(folder) == (
         f"Không chạy được file 0001_notes.sql: {reason} Mọi thay đổi của file này đã được hủy."
     )
+
+
+def test_file_granting_schema_to_other_role_is_rolled_back_before_it_is_recorded(server, folder):
+    server.failures[SECURE,] = postgres_error(
+        "42501",
+        "Schema ghi_chu chỉ được cấp quyền USAGE cho role ghi_chu_user và role anon",
+        H="Hãy bỏ lệnh cấp quyền USAGE trên schema ghi_chu cho role authenticated.",
+    )
+
+    message = failure_of(folder)
+
+    assert message == (
+        "Không chạy được file 0001_notes.sql: Schema ghi_chu chỉ được cấp quyền USAGE cho role "
+        "ghi_chu_user và role anon. Hãy bỏ lệnh cấp quyền USAGE trên schema ghi_chu cho role "
+        "authenticated. Mọi thay đổi của file này đã được hủy."
+    )
+    assert server.queries("ghi_chu") == ["begin", RUN, SECURE, "rollback", "close"]
+    assert FINISH not in server.queries("postgres")
 
 
 def test_error_of_core_function_is_reported_with_hint(server, folder):
