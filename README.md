@@ -132,6 +132,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 | http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
 | ws://localhost:9080/realtime/connection/websocket | Kết nối WebSocket của Centrifugo, dùng để nhận [cập nhật tức thời](#cập-nhật-tức-thời) | Access token do Keycloak cấp, gửi trong lệnh connect |
+| http://localhost:9080/apps/<tên ứng dụng>/ | [Giao diện](#giao-diện-của-ứng-dụng) và [API](#gọi-api-của-ứng-dụng) của từng ứng dụng đã cài đặt | Giao diện không cần đăng nhập. API cần access token do client của ứng dụng cấp |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -1328,7 +1329,7 @@ Lệnh thực hiện các bước sau:
 
 1. Soát ứng dụng như mục [Soát ứng dụng](#soát-ứng-dụng). Khi có lỗi, lệnh dừng và không thay đổi gì.
 2. Chép bản khai và các thư mục đã khai vào thư mục `apps/<tên ứng dụng>` của thư mục làm việc. Các file khác trong thư mục ứng dụng, ví dụ thư mục `.git`, không được chép.
-3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng) và vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng).
+3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng), vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng) và vào APISIX như mục [Gọi API của ứng dụng](#gọi-api-của-ứng-dụng).
 
 Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
 
@@ -1338,10 +1339,11 @@ Lệnh thực hiện các bước sau:
 Đã tạo realm role nghi-phep.nhan-vien.
 Đã tạo realm role nghi-phep.quan-ly.
 Đã tạo client nghi-phep.
+Đã tạo route app-nghi-phep.
 Đã cài đặt ứng dụng nghi-phep 0.1.0.
 ```
 
-Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu và Keycloak không thay đổi.
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak và APISIX không thay đổi.
 
 Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
 
@@ -1351,7 +1353,7 @@ cd ~/saigonos
 docker compose run --rm apps apply nghi-phep
 ```
 
-Service `apps` giữ mật khẩu superuser của PostgreSQL và mật khẩu của tài khoản `admin` trong realm master của Keycloak. Service này chỉ chạy khi được gọi. Service `core` không có hai mật khẩu này.
+Service `apps` giữ mật khẩu superuser của PostgreSQL, mật khẩu của tài khoản `admin` trong realm master của Keycloak và khóa Admin API của APISIX. Service này chỉ chạy khi được gọi. Service `core` không có ba giá trị này.
 
 ### File SQL của ứng dụng
 
@@ -1407,22 +1409,42 @@ SaigonOS ghi tên ứng dụng vào thuộc tính `saigonos.app` của client v�
 
 ### Gọi API của ứng dụng
 
-PostgREST phục vụ schema của mọi ứng dụng đã cài đặt tại địa chỉ `/api/` của API Gateway. Lời gọi chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`.
+Lệnh cài đặt tạo trên APISIX route `app-<tên ứng dụng>` cho API của ứng dụng. API nằm ở địa chỉ `/apps/<tên ứng dụng>/api/` của API Gateway, ví dụ `/apps/nghi-phep/api/don`. Route chuyển lời gọi tới PostgREST và tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng. Header do ứng dụng gửi bị ghi đè, nên lời gọi qua địa chỉ này chỉ tới được schema của ứng dụng đó. Route kiểm tra access token khi lời gọi có header `Authorization` và giới hạn tần suất như địa chỉ `/api/`.
 
-Lời gọi vào schema của một ứng dụng phải kèm access token được cấp cho client của ứng dụng đó, tức claim `azp` của access token là tên ứng dụng. Access token của client khác, kể cả của ứng dụng khác, nhận mã 403 với mã lỗi `SGN02`. Lời gọi không có access token vẫn chạy với role `anon`. Schema `api` nhận access token của mọi client. Ví dụ:
+Lời gọi vào schema của một ứng dụng phải kèm access token được cấp cho client của ứng dụng đó, tức claim `azp` của access token là tên ứng dụng. Access token của client khác, kể cả của ứng dụng khác, nhận mã 403 với mã lỗi `SGN02`. Lời gọi không có access token vẫn chạy với role `anon`. Ví dụ:
 
 ```js
 const headers = {
   Authorization: `Bearer ${accessToken}`,
-  "Accept-Profile": "nghi_phep",
-  "Content-Profile": "nghi_phep",
   "Content-Type": "application/json",
 };
-await fetch("/api/don", { method: "POST", headers, body: JSON.stringify({ ly_do: "Việc gia đình" }) });
-const don = await (await fetch("/api/don", { headers })).json();
+await fetch("/apps/nghi-phep/api/don", {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ ly_do: "Việc gia đình" }),
+});
+const don = await (await fetch("/apps/nghi-phep/api/don", { headers })).json();
 ```
 
-Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/api/` khi lời gọi có header `Accept-Profile`. Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng dụng>/api/`. Tài liệu chỉ có bảng và hàm trong schema của ứng dụng, với `basePath` là địa chỉ API của ứng dụng.
+
+Địa chỉ `/api/` của PostgREST cũng phục vụ schema của mọi ứng dụng đã cài đặt. Lời gọi qua địa chỉ này chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Schema `api` nhận access token của mọi client.
+
+Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
+
+Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+
+### Giao diện của ứng dụng
+
+Service `core` phục vụ các file trong thư mục `ui` của ứng dụng đã cài đặt tại địa chỉ `/apps/<tên ứng dụng>/`. Ví dụ, file `ui/app.js` của ứng dụng `nghi-phep` nằm ở địa chỉ `/apps/nghi-phep/app.js`. Địa chỉ `/apps/nghi-phep` chuyển hướng về `/apps/nghi-phep/`. Service `core` đọc thư mục `apps` của thư mục làm việc ở chế độ chỉ đọc.
+
+Các quy tắc sau áp dụng cho giao diện:
+
+- Địa chỉ không khớp file nào và không có phần mở rộng trả về file `index.html`. Nhờ đó, ứng dụng một trang (single-page application) tự xử lý các địa chỉ như `/apps/nghi-phep/don/12`. Địa chỉ có phần mở rộng mà không khớp file nào nhận mã 404.
+- File `index.html` không được cache. Các file khác được cache nhưng trình duyệt phải hỏi lại service `core` trước mỗi lần dùng. File không đổi thì service trả mã 304 và trình duyệt dùng bản đã cache.
+- Mỗi trả lời có các header `Content-Security-Policy`, `X-Content-Type-Options: nosniff` và `Referrer-Policy: same-origin`. Chính sách `Content-Security-Policy` chỉ cho trang tải script, ảnh, font và gọi API từ chính địa chỉ của hệ thống. Script viết trực tiếp trong file HTML không chạy, nên mọi script phải nằm trong file `.js` riêng.
+- Địa chỉ có `..`, kể cả ở dạng mã hóa như `%2e%2e`, nhận mã 404. File và thư mục có tên bắt đầu bằng dấu chấm, symlink và địa chỉ bắt đầu bằng `/apps/<tên ứng dụng>/api` không được phục vụ như file của giao diện.
+- Ứng dụng chưa cài đặt, kể cả khi thư mục đã được chép vào thư mục `apps`, nhận mã 404.
 
 ## Cập nhật phiên bản
 
