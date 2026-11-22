@@ -409,6 +409,13 @@ Hàm `core.send_email` và hàm `core.check_message` được tạo trong file `
 
 Máy chủ SMTP giả nằm trong file `tests/integration/fake_smtp.py` và chỉ dùng thư viện chuẩn của Python. Unit test trong `tests/core/test_smtp.py` nạp file này theo đường dẫn và chạy máy chủ trong cùng tiến trình. Fixture `mail_server` của integration test chạy file này trong một container từ image của service `core`, gắn container vào mạng `default` của bộ thử với tên `smtp-gia`. Hàm `make_certificates` dùng thư viện `cryptography` để tạo một CA thử và chứng chỉ của máy chủ giả. Chứng chỉ có đủ các extension mà Python 3.13 trở lên đòi hỏi khi kiểm tra chứng chỉ. Fixture ghi file `compose.override.yaml` để service `core` tin CA thử qua biến `SSL_CERT_FILE`. Kiểm thử `test_email_is_skipped_while_smtp_is_not_configured` phải đứng trước các kiểm thử dùng fixture `mail_server`. `smtplib` của Python 3.14 gửi `mail from:` và `rcpt to:` bằng chữ thường, nên máy chủ giả ghi lại hai lệnh này bằng chữ hoa.
 
+## OPA
+
+Luật của lõi nằm trong thư mục `src/saigonos/stack/config/opa`. Unit test của luật nằm trong thư mục `tests/opa`, mỗi file luật có một file `_test.rego`. Lệnh `make opa-test` chạy `opa fmt`, `opa check --strict` và `opa test` bằng image `openpolicyagent/opa` ghi trong `compose.yaml`. Độ phủ của unit test phải đạt 100%.
+
+- Quyết định cho API Gateway nằm ở tài liệu `decision` trong một package con của `saigonos`, ví dụ `data.saigonos.admin.decision`. File `system.rego` chỉ cho API của OPA nhận lời gọi `POST` tới các tài liệu này và lời gọi `GET /health`.
+- Image của OPA không có shell. Healthcheck dùng lệnh `opa eval` với hàm `http.send` để gọi `/health`. Khi đổi phiên bản OPA, kiểm tra lại healthcheck này và tùy chọn tắt việc kiểm tra phiên bản mới của lệnh `opa run`.
+
 ## Ứng dụng
 
 Model của bản khai `saigonos-app.json` nằm trong `saigonos_core/manifest.py` của service `core`. Lệnh của service `apps` nằm trong `saigonos_core/apps.py`. Service `apps` chạy với thư mục làm việc `/app` của image và tự ghép tên ứng dụng với thư mục `/apps`. Do đó, file trong thư mục `apps` không nằm trên `sys.path` của Python.
