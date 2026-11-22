@@ -49,7 +49,7 @@ def test_apps_service_uses_build_of_core_and_runs_only_when_called():
 
 
 def test_only_apps_service_gets_admin_secrets_for_installing_apps():
-    secrets = ("POSTGRES_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD")
+    secrets = ("POSTGRES_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD", "APISIX_ADMIN_KEY")
 
     for secret in secrets:
         assert any(f"${{{secret}:?}}" in line for line in services()["apps"])

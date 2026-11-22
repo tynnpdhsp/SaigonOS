@@ -7,12 +7,20 @@ import sys
 from pathlib import Path
 
 from saigonos_core.app_database import ApplyError, apply_database
+from saigonos_core.app_gateway import Apisix, apply_gateway, check_route
 from saigonos_core.app_keycloak import Keycloak, apply_keycloak, check_names
-from saigonos_core.manifest import NAME_PATTERN, Problem, check_app, schema_text
+from saigonos_core.manifest import NAME_PATTERN, Manifest, Problem, check_app, schema_text
 
 APPS = Path("/apps")
 INSTALLED = "Đã cài đặt ứng dụng {name} {version}."
-SETTINGS = ("KEYCLOAK_URL", "KEYCLOAK_ADMIN_USERNAME", "KEYCLOAK_ADMIN_PASSWORD", "SAIGONOS_URL")
+SETTINGS = (
+    "KEYCLOAK_URL",
+    "KEYCLOAK_ADMIN_USERNAME",
+    "KEYCLOAK_ADMIN_PASSWORD",
+    "SAIGONOS_URL",
+    "APISIX_ADMIN_URL",
+    "APISIX_ADMIN_KEY",
+)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -56,12 +64,19 @@ def check(folder: str) -> int:
     return 0
 
 
-def keycloak_settings() -> tuple[Keycloak, str]:
+def admin_settings() -> tuple[Keycloak, str, Apisix]:
     missing = [name for name in SETTINGS if not os.environ.get(name)]
     if missing:
         raise ApplyError(f"Service apps thiếu biến môi trường {', '.join(missing)}.")
-    url, username, password, site_url = (os.environ[name] for name in SETTINGS)
-    return Keycloak(url, username, password), site_url
+    url, username, password, site_url, gateway, key = (os.environ[name] for name in SETTINGS)
+    return Keycloak(url, username, password), site_url, Apisix(gateway, key)
+
+
+def configure_services(
+    keycloak: Keycloak, apisix: Apisix, manifest: Manifest, site_url: str
+) -> None:
+    apply_keycloak(keycloak, manifest, site_url, print)
+    apply_gateway(apisix, manifest, print)
 
 
 def apply(name: str) -> int:
@@ -82,14 +97,15 @@ def apply(name: str) -> int:
         )
         return 1
     try:
-        keycloak, site_url = keycloak_settings()
+        keycloak, site_url, apisix = admin_settings()
         check_names(keycloak, manifest)
+        check_route(apisix, manifest)
         asyncio.run(
             apply_database(
                 manifest,
                 folder,
                 print,
-                lambda: apply_keycloak(keycloak, manifest, site_url, print),
+                lambda: configure_services(keycloak, apisix, manifest, site_url),
             )
         )
     except ApplyError as error:

@@ -86,6 +86,8 @@ SETTINGS = {
     "KEYCLOAK_ADMIN_USERNAME": "admin",
     "KEYCLOAK_ADMIN_PASSWORD": "mat-khau-quan-tri",
     "SAIGONOS_URL": "https://dx.example.com",
+    "APISIX_ADMIN_URL": "http://apisix:9180",
+    "APISIX_ADMIN_KEY": "khoa-quan-tri",
 }
 
 
@@ -96,6 +98,7 @@ class FakeApply:
         self.failure = None
         self.taken = None
         self.refusal = None
+        self.route_taken = None
 
     async def database(self, manifest, folder, say, before_finish):
         self.calls.append((manifest.name, folder))
@@ -119,6 +122,17 @@ class FakeApply:
             raise self.refusal
         return True
 
+    def check_route(self, apisix, manifest):
+        admin = (apisix.host, apisix.port, apisix.base, apisix.key)
+        self.events.append(("check route", *admin, manifest.name))
+        if self.route_taken:
+            raise self.route_taken
+
+    def apply_gateway(self, apisix, manifest, say):
+        self.events.append(("gateway", manifest.name))
+        say("Đã tạo route app-don-tu.")
+        return True
+
 
 @pytest.fixture
 def applied(monkeypatch):
@@ -128,6 +142,8 @@ def applied(monkeypatch):
     monkeypatch.setattr(apps, "apply_database", fake.database)
     monkeypatch.setattr(apps, "check_names", fake.check_names)
     monkeypatch.setattr(apps, "apply_keycloak", fake.apply_keycloak)
+    monkeypatch.setattr(apps, "check_route", fake.check_route)
+    monkeypatch.setattr(apps, "apply_gateway", fake.apply_gateway)
     return fake
 
 
@@ -136,12 +152,23 @@ def test_apply_plugs_checked_app(folder, applied, capsys):
     assert applied.calls == [("don-tu", folder)]
     assert applied.events == [
         ("check", "keycloak", 8080, "/auth", "admin", "mat-khau-quan-tri", "don-tu"),
+        ("check route", "apisix", 9180, "", "khoa-quan-tri", "don-tu"),
         ("keycloak", "https://dx.example.com", "don-tu"),
+        ("gateway", "don-tu"),
         "finish",
     ]
     assert capsys.readouterr().out == (
-        "Đã chạy file 0001_don.sql.\nĐã tạo client don-tu.\nĐã cài đặt ứng dụng don-tu 1.2.0.\n"
+        "Đã chạy file 0001_don.sql.\nĐã tạo client don-tu.\nĐã tạo route app-don-tu.\n"
+        "Đã cài đặt ứng dụng don-tu 1.2.0.\n"
     )
+
+
+def test_route_taken_on_apisix_stops_apply_before_database(folder, applied, capsys):
+    applied.route_taken = ApplyError("Route app-don-tu đã có trong APISIX.")
+
+    assert apps.main(["apply", "don-tu"]) == 1
+    assert applied.calls == []
+    assert capsys.readouterr().out == "Route app-don-tu đã có trong APISIX.\n"
 
 
 def test_names_taken_on_keycloak_stop_apply_before_database(folder, applied, capsys):
@@ -157,6 +184,7 @@ def test_error_of_keycloak_stops_apply_before_finish(folder, applied, capsys):
 
     assert apps.main(["apply", "don-tu"]) == 1
     assert "finish" not in applied.events
+    assert ("gateway", "don-tu") not in applied.events
     assert capsys.readouterr().out.splitlines() == [
         "Đã chạy file 0001_don.sql.",
         "Đã tạo client don-tu.",
@@ -164,14 +192,16 @@ def test_error_of_keycloak_stops_apply_before_finish(folder, applied, capsys):
     ]
 
 
-def test_apply_needs_settings_of_keycloak(folder, applied, capsys, monkeypatch):
+def test_apply_needs_settings_of_keycloak_and_apisix(folder, applied, capsys, monkeypatch):
     monkeypatch.delenv("KEYCLOAK_ADMIN_PASSWORD")
     monkeypatch.setenv("SAIGONOS_URL", "")
+    monkeypatch.delenv("APISIX_ADMIN_KEY")
 
     assert apps.main(["apply", "don-tu"]) == 1
     assert (applied.calls, applied.events) == ([], [])
     assert capsys.readouterr().out == (
-        "Service apps thiếu biến môi trường KEYCLOAK_ADMIN_PASSWORD, SAIGONOS_URL.\n"
+        "Service apps thiếu biến môi trường KEYCLOAK_ADMIN_PASSWORD, SAIGONOS_URL, "
+        "APISIX_ADMIN_KEY.\n"
     )
 
 

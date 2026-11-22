@@ -475,6 +475,8 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
       SAIGONOS_URL: ${SAIGONOS_URL:?}
+      APISIX_ADMIN_URL: http://apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
     volumes:
       - ./apps:/apps:ro
 
