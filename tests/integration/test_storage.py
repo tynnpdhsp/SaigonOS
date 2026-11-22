@@ -154,7 +154,9 @@ def test_admin_ui_requires_password(stack):
 def test_only_seaweedfs_and_core_join_storage_network(stack):
     services = json.loads(stack.compose("config", "--format", "json"))["services"]
 
-    members = {name for name, service in services.items() if "storage" in service["networks"]}
+    members = {
+        name for name, service in services.items() if "storage" in service.get("networks", {})
+    }
 
     assert members == {"seaweedfs", "core"}
     assert set(services["seaweedfs"]["networks"]) == {"storage"}
@@ -230,7 +232,9 @@ def test_clamav_keeps_one_database_in_memory(stack):
 
 def test_clamav_and_freshclam_run_in_own_networks(stack):
     config = json.loads(stack.compose("config", "--format", "json"))
-    networks = {name: set(service["networks"]) for name, service in config["services"].items()}
+    networks = {
+        name: set(service.get("networks", {})) for name, service in config["services"].items()
+    }
 
     members = {name for name, joined in networks.items() if joined & {"scan", "updates"}}
 
