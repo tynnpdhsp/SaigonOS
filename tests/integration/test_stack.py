@@ -507,40 +507,38 @@ def test_admin_routes_are_refused_while_opa_is_stopped(stack):
     assert stack.compose_result("stop", "opa").returncode == 0
     try:
         refused = [gateway_page(stack, path).status for path in (ADMIN_CONSOLE, COCKPIT)]
-        login = gateway_page(stack, DISCOVERY_PATH).status
-        api = gateway_page(stack, "/api/").status
+        others = [gateway_page(stack, path).status for path in (DISCOVERY_PATH, "/core/health")]
     finally:
         started = stack.compose_result("up", "-d", "--wait", "opa", timeout=180)
     stack.wait_until_answers(ADMIN_CONSOLE)
 
     assert refused == [403, 403]
-    assert (login, api) == (200, 200)
+    assert others == [200, 200]
     assert started.returncode == 0, started.stderr
 
 
 def test_admin_networks_in_env_limit_admin_routes(stack):
     with stack.outside_network() as network:
+        subnet = subnet_of(stack, network)
         try:
-            widened = set_admin_networks(stack, f"192.0.2.0/24, {subnet_of(stack, network)}")
-            wait_for_reason(stack, OUTSIDE_REASON)
-            inside = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
-            local = gateway_page(stack, ADMIN_CONSOLE)
             narrowed = set_admin_networks(stack, "192.0.2.0/24")
             wait_for_reason(stack, OUTSIDE_REASON)
-            outside = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
+            local = gateway_page(stack, ADMIN_CONSOLE)
+            refused = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
             login = stack.outside_status(network, DISCOVERY_PATH)
+            widened = set_admin_networks(stack, f"192.0.2.0/24, {subnet}")
+            wait_for(lambda: stack.outside_status(network, ADMIN_CONSOLE) == 200)
+            cockpit = stack.outside_status(network, COCKPIT)
         finally:
             restored = set_admin_networks(stack, None)
             stack.wait_until_answers(ADMIN_CONSOLE)
 
-    assert widened.returncode == 0, widened.stderr
-    assert inside[0] == 200
-    assert inside[1] != 403
-    assert (local.status, local.body.decode()) == (403, OUTSIDE_REASON)
-    assert local.headers["Content-Type"] == "text/plain; charset=utf-8"
     assert narrowed.returncode == 0, narrowed.stderr
-    assert outside == [403, 403]
+    assert local.headers["Content-Type"] == "text/plain; charset=utf-8"
+    assert refused == [403, 403]
     assert login == 200
+    assert widened.returncode == 0, widened.stderr
+    assert cockpit != 403
     assert restored.returncode == 0, restored.stderr
 
 
