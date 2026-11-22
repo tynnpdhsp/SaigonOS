@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.6.0] - 2026-11-22
+
 ### Thêm
 
 - Bản khai ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai.
@@ -223,7 +225,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.5.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0
