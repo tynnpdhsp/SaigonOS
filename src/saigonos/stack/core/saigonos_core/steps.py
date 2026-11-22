@@ -24,7 +24,7 @@ WAIT = 10
 RETRY_DELAYS = (5, 30, 120)
 PLAIN = frozenset({"String", "Long", "Integer", "Short", "Double", "Boolean", "Null", "Date"})
 RESULT = TypeAdapter(dict[Name, Value])
-CLAIMS = json.dumps({"role": ROLE})
+CLAIMS = {"role": ROLE}
 LIMIT = "SELECT set_config('statement_timeout', '20s', true)"
 CLAIM = """
 INSERT INTO core.step_runs (external_task_id, process_instance_id, activity_id, function)
@@ -233,7 +233,8 @@ class Steps:
                 return result_of(await connection.fetchval(STORED, task["id"]), rules, label)
             variables = plain(task["variables"])
             procedure = procedure_of(await connection.fetch(FIND, schema, name), label, tenant)
-            await connection.execute(SET_CALLER, ROLE, CLAIMS)
+            claims = CLAIMS if tenant is None else CLAIMS | {"azp": tenant}
+            await connection.execute(SET_CALLER, ROLE, json.dumps(claims))
             await connection.execute(SEAL_CLAIMS)
             try:
                 returned = await connection.fetchval(CALL, procedure, json.dumps(variables))

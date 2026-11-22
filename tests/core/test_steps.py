@@ -492,3 +492,13 @@ def test_worker_is_named_after_container(database, operaton):
     steps = Steps(database, operaton, Processes(operaton))
 
     assert steps.worker == f"saigonos-core-{socket.gethostname()}"
+
+
+def test_step_of_app_names_app_in_sealed_claims(steps, database, operaton):
+    database.catalog[FUNCTION] = [DECLARED | {"app": "ung-dung"}]
+
+    handle(steps, external(tenantId="ung-dung"))
+
+    [caller] = [statement for statement in database.statements if statement[0] == SET_CALLER]
+    assert caller[1:] == ("workflow", json.dumps({"role": "workflow", "azp": "ung-dung"}))
+    assert database.statements.index(caller) + 1 == database.statements.index((SEAL_CLAIMS,))
