@@ -902,17 +902,18 @@ Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong cá
 
 ### Nghe kênh
 
-Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong ba dạng sau:
+Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong bốn dạng sau:
 
 | Kênh | Người nghe được | Token kênh |
 |---|---|---|
 | `public:<tên>` | Mọi người dùng đã đăng nhập | Không cần |
 | `user:#<sub>` | Chỉ người dùng có mã `<sub>`, tức claim `sub` trong access token | Không cần |
 | `role:<realm role>` | Những người dùng có realm role `<realm role>` | Cần |
+| `user:<tên ứng dụng>.<sub>` | Chỉ người dùng có mã `<sub>`, qua access token của ứng dụng `<tên ứng dụng>` | Cần |
 
 Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
 
-Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Kênh không có dạng `role:<realm role>` nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
+Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Với kênh `user:<tên ứng dụng>.<sub>`, service `core` chỉ cấp token kênh khi access token được cấp cho client của ứng dụng đó và `<sub>` là mã của người gọi. Trường hợp khác nhận mã 403. Kênh khác hai dạng này nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
 
 Token kênh có hiệu lực 60 giây và hết hạn không muộn hơn access token dùng để lấy token kênh. Khi token kênh hết hạn, thư viện gọi hàm `getToken` của kênh để lấy token mới. Nếu không nhận được token mới, Centrifugo ngừng gửi tin của kênh trong khoảng 25 đến 52 giây sau khi token kênh hết hạn. Do đó, người dùng bị gỡ realm role ngừng nhận tin của kênh chậm nhất khoảng 2 phút sau khi bị gỡ.
 
@@ -951,19 +952,19 @@ Khi từ chối hoặc ngừng gửi tin của kênh, Centrifugo trả về mộ
 
 | Mã | Ý nghĩa |
 |---|---|
-| `102` | Kênh thuộc namespace khác ba namespace trên |
-| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` không kèm token kênh hoặc kèm token kênh giả |
+| `102` | Kênh thuộc namespace khác ba namespace `public`, `user` và `role` |
+| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` hoặc `user:<tên ứng dụng>.<sub>` không kèm token kênh hoặc kèm token kênh giả |
 | `109` | Token kênh đã hết hạn. Thư viện tự lấy token kênh mới rồi nghe lại |
 | `2501` | Kênh hết hạn vì không nhận được token kênh mới. Thư viện tự nghe lại |
 | `3500` | Token kênh của kênh khác hoặc của người dùng khác. Centrifugo đóng kết nối và thư viện không kết nối lại |
 
 ### Gửi tin từ cơ sở dữ liệu
 
-Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong ba dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
+Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong bốn dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
 
 Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới các client đang nghe kênh rồi xóa tin khỏi bảng. Khi transaction bị hủy, tin cũng bị hủy. Do đó, client chỉ nhận tin về dữ liệu đã được lưu. Các tin của cùng một transaction tới client theo đúng thứ tự gọi hàm.
 
-Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Hiện tại, chỉ role `workflow` có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình. Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
+Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Role `workflow` và các role của ứng dụng có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình hoặc trong mã của ứng dụng. Mã của ứng dụng chỉ gửi được tin vào kênh của chính ứng dụng, như mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng). Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
 
 ```sql
 CREATE FUNCTION ung_dung.bao_da_xu_ly(bien jsonb) RETURNS jsonb
@@ -1019,7 +1020,7 @@ Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết n�
 
 ## Thông báo cho người dùng
 
-Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
+Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo. Thông báo do mã của một ứng dụng gửi thuộc về ứng dụng đó, như mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng).
 
 ### Gửi thông báo
 
@@ -1038,9 +1039,9 @@ Hàm báo lỗi khi một tham số không hợp lệ. Hàm từ chối đườn
 
 Thông báo và tin gửi Centrifugo được ghi trong cùng transaction với dữ liệu, như với hàm `core.publish` ở mục [Gửi tin từ cơ sở dữ liệu](#gửi-tin-từ-cơ-sở-dữ-liệu). Khi transaction bị hủy, thông báo và tin cũng bị hủy.
 
-Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
+Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng của mỗi ứng dụng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
 
-Hiện tại, chỉ role `workflow` có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
+Role `workflow` và các role của ứng dụng có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
 
 ```sql
 CREATE FUNCTION ung_dung.bao_tin_da_xu_ly(bien jsonb) RETURNS jsonb
@@ -1061,7 +1062,7 @@ GRANT EXECUTE ON FUNCTION ung_dung.bao_tin_da_xu_ly(jsonb) TO workflow;
 
 ### Đọc thông báo
 
-Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
+Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Access token của một ứng dụng chỉ thấy thông báo của ứng dụng đó. Access token của client khác chỉ thấy thông báo không thuộc ứng dụng nào. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
 
 | Trường | Ý nghĩa |
 |---|---|
@@ -1164,7 +1165,7 @@ $$;
 GRANT EXECUTE ON FUNCTION ung_dung.gui_email_da_nhan(jsonb) TO workflow;
 ```
 
-Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
+Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng của mỗi ứng dụng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
 
 Email chỉ có phần văn bản thuần. Phần này gồm nội dung, hoặc tiêu đề khi không có nội dung, rồi tới địa chỉ đầy đủ của đường dẫn. Email có header `Auto-Submitted: auto-generated`, nên chức năng trả lời tự động của hộp thư người nhận không trả lời email này.
 
@@ -1374,7 +1375,7 @@ Mỗi ứng dụng có một schema và hai role trong cơ sở dữ liệu. Tê
 - Bên trong hàm `SECURITY DEFINER`, PostgreSQL không cho đổi role. Hàm `set_config` cũng không được cấp cho mã của ứng dụng. Do đó, mã của một ứng dụng không chuyển được sang role của ứng dụng khác.
 - Các lệnh DDL như `CREATE`, `ALTER`, `DROP` và `GRANT` chỉ chạy được trong file SQL khi cài đặt. Mã của ứng dụng chạy trong lúc phục vụ lời gọi không dùng được các lệnh này, kể cả `CREATE TEMP TABLE`.
 - Role sở hữu schema dùng được hàm `core.audit()` để ghi audit log cho bảng và hàm `core.append_only()` để chặn sửa, xóa dòng của bảng.
-- Hàm của ứng dụng gọi được `core.send_email` để gửi email như mục [Gửi email](#gửi-email). Mã của ứng dụng chưa gọi được `core.notify` và `core.publish`.
+- Hàm của ứng dụng gọi được `core.notify`, `core.publish` và `core.send_email` theo mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng).
 - Các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` chỉ đọc claims do PostgREST hoặc service `core` đặt cho lời gọi. Khi một hàm của ứng dụng đổi `request.jwt.claims` bằng `SET LOCAL`, các hàm này trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác.
 - Trong chính sách RLS, viết `(SELECT core.uid())` thay cho `core.uid()`. Khi đó, PostgreSQL chỉ tính giá trị một lần cho mỗi câu truy vấn thay vì một lần cho mỗi dòng.
 
@@ -1441,6 +1442,50 @@ Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng
 Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
 
 Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+
+### Thông báo và kênh của ứng dụng
+
+Mã của ứng dụng gọi được các hàm `core.notify`, `core.publish` và `core.send_email`. Mã của ứng dụng gồm hàm, trigger và file SQL của ứng dụng, kể cả hàm của bước máy làm. Các hàm này nhận ra ứng dụng đang gọi theo các quy tắc sau:
+
+- Lời gọi API vào schema của ứng dụng chạy bằng role `<schema>_user` của ứng dụng đó.
+- Bước máy làm của quy trình trong tenant của ứng dụng mang tên ứng dụng trong claim `azp` của claims đã niêm phong.
+- File SQL chạy bằng role sở hữu schema của ứng dụng.
+
+Khi mã của bước máy làm sửa `request.jwt.claims`, ba hàm trên báo lỗi `Claims của lời gọi đã bị sửa`.
+
+Thông báo do mã của ứng dụng gửi mang tên ứng dụng trong cột `app` của bảng `core.notifications`. Thông báo này được gửi tới kênh `user:<tên ứng dụng>.<recipient>`, không gửi tới kênh `user:#<recipient>`. Khóa chống trùng của thông báo và email chỉ có hiệu lực trong một ứng dụng. Do đó, hai ứng dụng dùng cùng một khóa vẫn gửi được hai thông báo riêng.
+
+Lời gọi `GET /core/notifications` với access token của ứng dụng chỉ trả về thông báo của ứng dụng đó. Hàm SQL của ứng dụng đọc bảng `core.notifications` cũng chỉ thấy thông báo của chính ứng dụng gửi cho người gọi. Thông báo không thuộc ứng dụng nào chỉ hiện với access token của client khác.
+
+Mã của ứng dụng chỉ gửi được tin vào các kênh sau:
+
+- `role:<tên ứng dụng>.<vai trò>`, ví dụ `role:nghi-phep.quan-ly`.
+- `public:<tên ứng dụng>.<tên>`, ví dụ `public:nghi-phep.bang-tin`.
+- `user:<tên ứng dụng>.<sub>`, tức kênh cá nhân của người dùng trong ứng dụng.
+
+Tin gửi vào kênh khác bị từ chối với mã lỗi `42501`. Ví dụ, mã của ứng dụng `nghi-phep` không gửi được tin vào kênh `role:admin` hay `user:#<sub>`.
+
+Để nghe kênh `user:<tên ứng dụng>.<sub>`, giao diện của ứng dụng lấy token kênh như mục [Nghe kênh](#nghe-kênh). Centrifugo chỉ nhận token kênh do service `core` cấp, và service `core` chỉ cấp cho access token của chính ứng dụng. Do đó, giao diện của ứng dụng khác không nghe được kênh này. Kênh `user:#<sub>` không cần token kênh nên giao diện của mọi ứng dụng đều nghe được. Vì vậy, kênh này chỉ mang thông báo không thuộc ứng dụng nào. Ví dụ, tiếp theo ví dụ ở mục [Nhận thông báo mới](#nhận-thông-báo-mới):
+
+```js
+const channel = `user:nghi-phep.${keycloak.subject}`;
+const sub = centrifuge.newSubscription(channel, {
+  getToken: async () => {
+    await keycloak.updateToken(30);
+    const res = await fetch("/core/realtime/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keycloak.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel }),
+    });
+    return (await res.json()).token;
+  },
+});
+sub.on("publication", (ctx) => ctx.data.notification && showNotification(ctx.data.notification));
+sub.subscribe();
+```
 
 ### Quy trình của ứng dụng
 
