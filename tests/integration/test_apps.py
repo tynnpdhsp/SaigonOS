@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import base64
+import copy
 import json
 import re
 import secrets
@@ -105,6 +106,10 @@ BEGIN
 END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO authenticated;
 """
+PAGE = '<!doctype html><title>Ghi chú</title><script src="app.js"></script>\n'
+SCRIPT = "console.log('ghi chú');\n"
+UI = {"index.html": PAGE, "app.js": SCRIPT, "css/site.css": "body { margin: 0; }\n"}
+UI |= {".bi-mat": "không phục vụ\n"}
 REFUSED_FILES = {
     "doc-ung-dung-khac": "SELECT * FROM {other}.notes;",
     "doc-audit-log": "SELECT * FROM core.audit_log;",
@@ -230,7 +235,7 @@ def schema_of(name):
     return name.replace("-", "_")
 
 
-def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",)):
+def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",), ui=None):
     manifest = {
         "name": name,
         "title": "Ghi chú thử",
@@ -238,6 +243,11 @@ def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",)):
         "roles": [{"name": f"{name}.{role}", "description": f"Vai trò {role}"} for role in roles],
         "database": "database",
     }
+    if ui is not None:
+        manifest["ui"] = "giao-dien"
+        for file, text in ui.items():
+            (folder / "giao-dien" / file).parent.mkdir(parents=True, exist_ok=True)
+            (folder / "giao-dien" / file).write_text(text, encoding="utf-8")
     (folder / "database").mkdir(parents=True, exist_ok=True)
     notes = NOTES_SQL.format(schema=schema_of(name))
     (folder / "database" / "0001_notes.sql").write_text(notes, encoding="utf-8")
@@ -305,6 +315,13 @@ def keycloak_state(stack, name):
     }
 
 
+def route_state(stack, name):
+    reply = stack.gateway_admin("GET", f"/routes/app-{name}")
+    assert reply.status == 200, reply.body
+    value = json.loads(reply.body)["value"]
+    return {key: item for key, item in value.items() if key not in ("create_time", "update_time")}
+
+
 def user_with_roles(stack, *roles):
     user = stack.new_user()
     for role in roles:
@@ -357,6 +374,7 @@ def test_apply_plugs_app_and_gateway_serves_its_table(stack, tmp_path):
         "Đã chạy file 0001_notes.sql.\n"
         f"Đã tạo realm role {name}.nguoi-dung.\n"
         f"Đã tạo client {name}.\n"
+        f"Đã tạo route app-{name}.\n"
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     wait_until_served(stack, name, token)
@@ -379,7 +397,7 @@ def test_apply_again_changes_nothing(stack, tmp_path):
     name = new_name()
     app = notes_app(tmp_path / name, name)
     assert plug(stack, app).returncode == 0
-    state = database_state(stack, name), keycloak_state(stack, name)
+    state = database_state(stack, name), keycloak_state(stack, name), route_state(stack, name)
 
     result = plug(stack, app)
 
@@ -388,9 +406,14 @@ def test_apply_again_changes_nothing(stack, tmp_path):
         result.stdout,
         "Không có file SQL mới.\n"
         "Không có thay đổi trên Keycloak.\n"
+        "Không có thay đổi trên APISIX.\n"
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
-    assert (database_state(stack, name), keycloak_state(stack, name)) == state
+    assert (
+        database_state(stack, name),
+        keycloak_state(stack, name),
+        route_state(stack, name),
+    ) == state
 
 
 def test_files_run_as_role_of_app_which_logs_in_only_during_apply(stack, tmp_path):
@@ -689,6 +712,7 @@ def test_client_and_role_edited_in_admin_console_are_put_back_by_apply(stack, tm
         "Không có file SQL mới.\n"
         f"Đã cập nhật realm role {name}.nguoi-dung.\n"
         f"Đã cập nhật client {name}.\n"
+        "Không có thay đổi trên APISIX.\n"
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     assert keycloak_state(stack, name) == state
@@ -729,7 +753,8 @@ def test_role_left_out_of_new_version_is_kept_but_leaves_tokens_of_app(stack, tm
     assert result.returncode == 0, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        f"Không có file SQL mới.\nĐã cập nhật client {name}.\nĐã cài đặt ứng dụng {name} 0.2.0.\n",
+        f"Không có file SQL mới.\nĐã cập nhật client {name}.\n"
+        f"Không có thay đổi trên APISIX.\nĐã cài đặt ứng dụng {name} 0.2.0.\n",
     )
     roles = sorted(claims_of(stack.app_token(user, name))["realm_access"]["roles"])
     assert roles == ["authenticated", f"{name}.nguoi-dung"]
@@ -794,6 +819,156 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
     assert granted == [["authenticator", "core.pre_config()"]]
 
 
+def app_call(stack, method, name, path, token=None, body=None, headers=None):
+    url = f"{stack.url}/apps/{name}/{path}"
+    return stack.call(method, url, token=token, body=body, headers=headers)
+
+
+@pytest.fixture(scope="module")
+def with_ui(stack, tmp_path_factory):
+    name = new_name()
+    folder = notes_app(tmp_path_factory.mktemp("giao-dien") / name, name, ui=UI)
+    result = plug(stack, folder)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return SimpleNamespace(name=name, folder=folder)
+
+
+def test_api_of_app_answers_at_its_own_address_without_profile_headers(stack, plugged):
+    user = stack.new_user()
+    token = stack.app_token(user, plugged.name)
+    wait_until_served(stack, plugged.name, token)
+    elsewhere = {"Accept-Profile": schema_of(plugged.other), "Content-Profile": "api"}
+
+    created = app_call(stack, "POST", plugged.name, "api/notes", token, {"body": "Route riêng"})
+    listed = app_call(stack, "GET", plugged.name, "api/notes", token)
+    pointed = app_call(stack, "GET", plugged.name, "api/notes", token, headers=elsewhere)
+    foreign = app_call(
+        stack, "GET", plugged.name, "api/notes", stack.app_token(user, plugged.other)
+    )
+    forged = app_call(stack, "GET", plugged.name, "api/notes", "khong.phai.token")
+
+    assert created.status == 201, created.body
+    assert [note["body"] for note in json.loads(listed.body)] == ["Route riêng"]
+    assert listed.headers["X-RateLimit-Limit"] == "300"
+    assert json.loads(pointed.body) == json.loads(listed.body)
+    assert (foreign.status, json.loads(foreign.body)["code"]) == (403, "SGN02")
+    assert forged.status == 401
+
+
+def test_api_document_of_app_lists_only_its_own_tables(stack, plugged):
+    token = stack.app_token(stack.new_user(), plugged.name)
+    wait_until_served(stack, plugged.name, token)
+
+    reply = app_call(stack, "GET", plugged.name, "api/", token)
+
+    document = json.loads(reply.body)
+    assert reply.status == 200, reply.body
+    assert set(document["paths"]) == {"/", "/notes"}
+    assert set(document["definitions"]) == {"notes"}
+    assert document["basePath"] == f"/apps/{plugged.name}/api"
+    assert json.loads(stack.api(token).body)["basePath"] == "/api"
+
+
+def test_route_edited_by_hand_is_put_back_by_apply(stack, tmp_path):
+    name = new_name()
+    app = notes_app(tmp_path / name, name)
+    assert plug(stack, app).returncode == 0
+    state = route_state(stack, name)
+    edited = copy.deepcopy(state)
+    del edited["plugins"]["openid-connect"]
+    edited["plugins"]["limit-count"]["count"] = 100000
+    edited["plugins"]["proxy-rewrite"]["headers"]["set"]["Accept-Profile"] = "api"
+    edited["uris"].append("/khac/*")
+    assert stack.gateway_admin("PUT", f"/routes/app-{name}", edited).status == 200
+    assert route_state(stack, name) != state
+
+    result = plug(stack, app)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        "Không có file SQL mới.\n"
+        "Không có thay đổi trên Keycloak.\n"
+        f"Đã cập nhật route app-{name}.\n"
+        f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
+    )
+    assert route_state(stack, name) == state
+
+
+def test_route_made_by_hand_is_not_taken_over(stack, tmp_path):
+    name = new_name()
+    upstream = {"type": "roundrobin", "nodes": {"core:8000": 1}}
+    route = {"uris": [f"/apps/{name}/api/*"], "upstream": upstream}
+    made = stack.gateway_admin("PUT", f"/routes/app-{name}", route)
+    assert made.status == 201, made.body
+
+    result = plug(stack, notes_app(tmp_path / name, name))
+
+    stack.gateway_admin("DELETE", f"/routes/app-{name}")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Route app-{name} đã có trong APISIX nhưng không do SaigonOS tạo "
+        f"cho ứng dụng {name}. Hãy đặt tên khác cho ứng dụng.\n",
+    )
+    assert stack.sql(f"SELECT count(*) FROM core.apps WHERE name = '{name}'") == [["0"]]
+    assert keycloak_client(stack, name) == []
+
+
+def test_ui_of_app_is_served_with_security_headers(stack, with_ui):
+    page = app_call(stack, "GET", with_ui.name, "")
+    script = app_call(stack, "GET", with_ui.name, "app.js")
+    again = app_call(
+        stack, "GET", with_ui.name, "app.js", headers={"If-None-Match": script.headers["ETag"]}
+    )
+    deep = app_call(stack, "GET", with_ui.name, "ghi-chu/12")
+    missing = app_call(stack, "GET", with_ui.name, "thieu.js")
+    hidden = app_call(stack, "GET", with_ui.name, ".bi-mat")
+    bare = stack.call("GET", f"{stack.url}/apps/{with_ui.name}")
+
+    assert (page.status, page.body.decode()) == (200, PAGE)
+    assert page.headers["Content-Type"] == "text/html; charset=utf-8"
+    assert page.headers["Cache-Control"] == "no-store"
+    assert page.headers["Content-Security-Policy"].startswith("default-src 'self'; ")
+    assert page.headers["X-Content-Type-Options"] == "nosniff"
+    assert page.headers["Referrer-Policy"] == "same-origin"
+    assert (script.status, script.body.decode()) == (200, SCRIPT)
+    assert script.headers["Content-Type"] == "text/javascript; charset=utf-8"
+    assert script.headers["Cache-Control"] == "no-cache"
+    assert again.status == 304
+    assert (deep.status, deep.body.decode()) == (200, PAGE)
+    assert (missing.status, hidden.status) == (404, 404)
+    assert (bare.status, bare.headers["Location"]) == (308, f"/apps/{with_ui.name}/")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "..%2fsaigonos-app.json",
+        "%2e%2e/saigonos-app.json",
+        "%2e%2e%2fsaigonos-app.json",
+        ".%2e/saigonos-app.json",
+        "css/%2e%2e/%2e%2e/saigonos-app.json",
+        "css/..%2f..%2fsaigonos-app.json",
+    ],
+)
+def test_path_with_dot_dot_is_not_found(stack, with_ui, path):
+    reply = app_call(stack, "GET", with_ui.name, path)
+
+    assert reply.status == 404, reply.body
+    assert with_ui.name.encode() not in reply.body
+
+
+def test_ui_of_app_not_installed_is_not_found(stack):
+    name = new_name()
+    notes_app(stack.home / "apps" / name, name, ui=UI)
+
+    copied = app_call(stack, "GET", name, "")
+    unknown = app_call(stack, "GET", new_name(), "index.html")
+
+    assert (copied.status, unknown.status) == (404, 404)
+
+
 def readme_block(language, marker):
     blocks = re.findall(rf"```{language}\n(.*?)```", README, re.DOTALL)
     return next(block for block in blocks if marker in block)
@@ -814,11 +989,9 @@ def test_readme_example_app_is_plugged_and_serves_its_table(stack, tmp_path):
     token = stack.app_token(user, "nghi-phep")
     wait_until_served(stack, "nghi-phep", token, table="don")
     body = {"ly_do": "Việc gia đình"}
-    created = profile_call(stack, "POST", "nghi-phep", token, body, table="don")
-    mine = json.loads(profile_call(stack, "GET", "nghi-phep", token, table="don").body)
-    theirs = profile_call(
-        stack, "GET", "nghi-phep", stack.app_token(other, "nghi-phep"), table="don"
-    )
+    created = app_call(stack, "POST", "nghi-phep", "api/don", token, body)
+    mine = json.loads(app_call(stack, "GET", "nghi-phep", "api/don", token).body)
+    theirs = app_call(stack, "GET", "nghi-phep", "api/don", stack.app_token(other, "nghi-phep"))
     assert created.status == 201, created.body
     assert [(item["ly_do"], item["nguoi_gui"]) for item in mine] == [("Việc gia đình", user.id)]
     assert json.loads(theirs.body) == []

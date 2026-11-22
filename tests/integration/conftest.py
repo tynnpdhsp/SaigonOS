@@ -323,6 +323,11 @@ class Stack:
             method, f"{self.keycloak}/admin/realms/{realm}{path}", token=token, body=body
         )
 
+    def gateway_admin(self, method, path, body=None):
+        url = f"http://127.0.0.1:{self.env['SAIGONOS_ADMIN_PORT']}/apisix/admin{path}"
+        headers = {"X-API-KEY": self.env["APISIX_ADMIN_KEY"]}
+        return self.call(method, url, body=body, headers=headers)
+
     def create_client(self):
         client = {
             "clientId": CLIENT,
