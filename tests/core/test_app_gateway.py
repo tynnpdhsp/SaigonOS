@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
 import json
+import re
 import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
@@ -108,9 +109,19 @@ def test_route_checks_token_and_limits_calls_like_api_route():
     api = json.loads((ROUTES / "api.json").read_text())
     plugins = wanted_route(MANIFEST)["plugins"]
 
-    assert set(plugins) == set(api["plugins"])
+    assert set(plugins) == set(api["plugins"]) | {"response-rewrite"}
     for name in ("openid-connect", "limit-count"):
         assert plugins[name] == api["plugins"][name]
+
+
+def test_api_document_of_app_points_to_address_of_app():
+    rewrite = wanted_route(MANIFEST)["plugins"]["response-rewrite"]
+    [change] = rewrite["filters"]
+
+    assert rewrite["vars"] == [["uri", "~~", "^/apps/nghi-phep/api/?$"]]
+    assert re.sub(change["regex"], change["replace"], '{"basePath" : "/api"}') == (
+        '{"basePath":"/apps/nghi-phep/api"}'
+    )
 
 
 def test_apply_again_changes_nothing(apisix):

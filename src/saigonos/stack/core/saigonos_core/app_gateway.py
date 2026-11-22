@@ -105,6 +105,16 @@ def wanted_route(manifest: Manifest) -> dict[str, Any]:
                 "regex_uri": [f"^/apps/{app}/api/?(.*)$", "/$1"],
                 "headers": {"set": {"Accept-Profile": schema, "Content-Profile": schema}},
             },
+            "response-rewrite": {
+                "vars": [["uri", "~~", f"^/apps/{app}/api/?$"]],
+                "filters": [
+                    {
+                        "regex": '"basePath"\\s*:\\s*"/api"',
+                        "scope": "once",
+                        "replace": f'"basePath":"/apps/{app}/api"',
+                    }
+                ],
+            },
         },
         "upstream": UPSTREAM,
     }
