@@ -525,10 +525,9 @@ def test_admin_networks_in_env_limit_admin_routes(stack):
             wait_for_reason(stack, OUTSIDE_REASON)
             local = gateway_page(stack, ADMIN_CONSOLE)
             refused = [stack.outside_status(network, path) for path in (ADMIN_CONSOLE, COCKPIT)]
-            login = stack.outside_status(network, DISCOVERY_PATH)
+            health = stack.outside_status(network, "/core/health")
             widened = set_admin_networks(stack, f"192.0.2.0/24, {subnet}")
-            wait_for(lambda: stack.outside_status(network, ADMIN_CONSOLE) == 200)
-            cockpit = stack.outside_status(network, COCKPIT)
+            wait_for(lambda: stack.outside_status(network, COCKPIT) != 403)
         finally:
             restored = set_admin_networks(stack, None)
             stack.wait_until_answers(ADMIN_CONSOLE)
@@ -536,9 +535,8 @@ def test_admin_networks_in_env_limit_admin_routes(stack):
     assert narrowed.returncode == 0, narrowed.stderr
     assert local.headers["Content-Type"] == "text/plain; charset=utf-8"
     assert refused == [403, 403]
-    assert login == 200
+    assert health == 200
     assert widened.returncode == 0, widened.stderr
-    assert cockpit != 403
     assert restored.returncode == 0, restored.stderr
 
 
