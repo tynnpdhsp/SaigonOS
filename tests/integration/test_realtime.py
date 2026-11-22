@@ -457,6 +457,7 @@ def quoted(value):
 def as_caller(stack, role, subject, query):
     claims = literal(json.dumps({"sub": subject}))
     prefix = f"SELECT set_config('request.jwt.claims', {claims}, false) IS NULL; SET ROLE {role}; "
+    prefix += "SELECT core.seal_claims() IS NULL; "
     return stack.sql(prefix + query)[-1]
 
 

@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from saigonos_core import __version__, files, notifications, processes, realtime, tasks
+from saigonos_core import __version__, files, notifications, processes, realtime, tasks, ui
 from saigonos_core.api import UNAUTHORIZED, UNAVAILABLE, User
 from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
@@ -22,6 +22,7 @@ from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
 from saigonos_core.realtime import SubscriptionTokens
 from saigonos_core.scans import Scans
+from saigonos_core.scopes import Scopes
 from saigonos_core.smtp import SmtpSettingsError
 from saigonos_core.smtp import configured as smtp_configured
 from saigonos_core.steps import Steps
@@ -179,6 +180,7 @@ def create_app(
     operaton: Operaton | None = None,
     steps: Steps | None = None,
     deliveries: Sequence[Deliveries] | None = None,
+    scopes: Scopes | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     database = database or Database()
@@ -221,9 +223,11 @@ def create_app(
     app.state.downloads = DownloadLinks(settings.download_key)
     app.state.operaton = operaton
     app.state.processes = definitions
+    app.state.scopes = scopes or Scopes(database)
     app.state.steps = steps
     app.state.deliveries = deliveries
     app.state.subscription_tokens = SubscriptionTokens(settings.subscription_key)
+    app.state.apps_folder = ui.APPS
     app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)
     app.include_router(files.router)
@@ -231,4 +235,5 @@ def create_app(
     app.include_router(tasks.router)
     app.include_router(realtime.router)
     app.include_router(notifications.router)
+    app.include_router(ui.router)
     return app

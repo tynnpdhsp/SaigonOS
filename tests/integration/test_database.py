@@ -448,14 +448,22 @@ def test_postgrest_serves_view_from_new_file_without_restart(stack):
     assert stack.inspect(postgrest, "{{.State.StartedAt}}") == started
 
 
-def test_claim_functions_return_nothing_outside_api(stack):
+def test_claim_functions_trust_only_sealed_claims(stack):
     query = "SELECT core.uid() IS NULL, core.unit() IS NULL, core.has_role('authenticated')"
 
     unset = stack.sql(query)
     empty = stack.sql(f"SET request.jwt.claims = ''; {query}")
+    claims = '{"sub": "ai-do", "unit": "khoa-a", "realm_access": {"roles": ["authenticated"]}}'
+    unsealed = stack.sql(f"SET ROLE authenticated; SET request.jwt.claims = '{claims}'; {query}")
+    sealed = stack.sql(
+        f"SET ROLE authenticated; SET request.jwt.claims = '{claims}'; "
+        f"SELECT core.seal_claims(); SELECT core.uid(), core.unit(), core.has_role('authenticated')"
+    )
 
     assert unset == [["t", "t", "f"]]
     assert empty[-1] == ["t", "t", "f"]
+    assert unsealed[-1] == ["t", "t", "f"]
+    assert sealed[-1] == ["ai-do", "khoa-a", "t"]
 
 
 def test_claim_functions_return_claims_of_caller(stack, notes):

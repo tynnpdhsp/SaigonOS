@@ -7,6 +7,40 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.6.0] - 2026-11-22
+
+### Thêm
+
+- Bản khai ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai.
+- Lệnh `saigonos apply --check <thư mục>` soát bản khai và các thư mục của một ứng dụng mà không cần hệ thống đang chạy. Lệnh in mọi lỗi tìm thấy bằng tiếng Việt kèm vị trí trong bản khai, rồi kết thúc với mã thoát 1. Tên trùng tên mà lõi đã dùng, đường dẫn ra ngoài thư mục ứng dụng, symlink và file không đọc được đều bị báo lỗi.
+- Service `apps` dùng image của service `core` và chỉ chạy khi được gọi bằng `docker compose run`. Lệnh `docker compose run --rm apps check <tên>` soát ứng dụng trong thư mục `apps` của thư mục làm việc. Lệnh `saigonos init` tạo thư mục này.
+- Lệnh `saigonos apply <thư mục>` cài đặt ứng dụng vào hệ thống đang chạy. Lệnh soát ứng dụng, chép bản khai và các thư mục đã khai vào thư mục `apps/<tên>` của thư mục làm việc, rồi chạy `docker compose run --rm apps apply <tên>`. Khi cài đặt lỗi, thư mục `apps/<tên>` được trả về bản đã cài đặt thành công gần nhất.
+- Mỗi ứng dụng có schema và role riêng trong cơ sở dữ liệu, cùng tên với ứng dụng nhưng dấu gạch ngang đổi thành dấu gạch dưới. Các file SQL của ứng dụng chạy theo thứ tự tên bằng role này, không bằng superuser. Role chỉ đăng nhập được trong lúc cài đặt, với mật khẩu sinh mới mỗi lần. Mỗi file chạy trong một transaction và được ghi vào `core.migrations` với `scope` là tên ứng dụng. File đã chạy mà bị sửa thì lệnh cài đặt dừng.
+- Role của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, không đổi được sang role khác. File SQL của ứng dụng không dùng được `COMMIT` hay `ROLLBACK`. Hàm do ứng dụng tạo chưa được cấp cho `PUBLIC`.
+- Bảng `core.apps` ghi các ứng dụng đã cài đặt và có audit log. PostgREST đọc bảng này qua hàm `core.pre_config()` để phục vụ schema của ứng dụng tại `/api/`, với header `Accept-Profile` và `Content-Profile`. Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại.
+- Lệnh cài đặt tạo trên Keycloak các realm role của ứng dụng theo bản khai, kèm mô tả, và một public client trùng tên ứng dụng. Client chỉ dùng luồng Authorization Code với PKCE `S256` và chỉ chuyển hướng về địa chỉ `/apps/<tên>/`. Client tắt Full scope allowed, nên access token của ứng dụng chỉ mang realm role `authenticated` và các role của chính ứng dụng. Service `apps` giữ mật khẩu của tài khoản `admin` trong realm master, service `core` không có mật khẩu này.
+- Mỗi lần cài đặt, client và realm role của ứng dụng được đặt lại theo bản khai, kể cả khi đã bị sửa trong Admin Console. Khi Keycloak đã có client hoặc realm role trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu.
+- Lời gọi API vào schema của một ứng dụng chỉ nhận access token được cấp cho client của ứng dụng đó. Access token của client khác nhận mã 403. Lời gọi không có access token vẫn chạy với role `anon`.
+- Lệnh cài đặt tạo trên APISIX route `app-<tên>` cho API của ứng dụng tại địa chỉ `/apps/<tên>/api/`. Route tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng, kiểm tra access token và giới hạn tần suất như địa chỉ `/api/`. Tài liệu OpenAPI ở địa chỉ `/apps/<tên>/api/` chỉ có bảng và hàm của ứng dụng. Mỗi lần cài đặt, route được đặt lại theo bản khai. Khi APISIX đã có route trùng tên mà không do SaigonOS tạo, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu. Service `apps` giữ thêm khóa Admin API của APISIX.
+- Service `core` phục vụ giao diện của ứng dụng đã cài đặt tại địa chỉ `/apps/<tên>/`. Địa chỉ không khớp file nào và không có phần mở rộng trả về `index.html`. Mỗi trả lời có header `Content-Security-Policy`, `X-Content-Type-Options` và `Referrer-Policy`. File `index.html` không được cache, các file khác được hỏi lại bằng `ETag`. Địa chỉ có `..`, file có tên bắt đầu bằng dấu chấm, symlink và ứng dụng chưa cài đặt đều nhận mã 404.
+- PostgREST và service `core` niêm phong claims của mỗi lời gọi bằng HMAC-SHA256. Khi hàm SQL của ứng dụng đổi `request.jwt.claims`, các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác để đọc dữ liệu của ứng dụng khác.
+- Mỗi ứng dụng có thêm role `<schema>_user` để chạy lời gọi API mang access token của ứng dụng. Schema của ứng dụng chỉ được cấp cho role này và role `anon`. Hàm của ứng dụng được đổi thành hàm `SECURITY DEFINER` của role này và giữ quyền `EXECUTE` như file SQL đã cấp. Bên trong hàm như vậy, PostgreSQL không cho đổi role. Do đó, hàm của một ứng dụng không đọc được dữ liệu của ứng dụng khác, kể cả dữ liệu của chính người gọi.
+- Lệnh cài đặt triển khai các file BPMN của ứng dụng vào Operaton, trong tenant trùng tên ứng dụng và với nguồn `app:<tên>`. File không thay đổi thì không tạo phiên bản mới. File đã sửa tạo một phiên bản mới, còn quy trình đang chạy vẫn dùng phiên bản cũ. Service `apps` dùng tài khoản `core` của Operaton để triển khai.
+- Lệnh soát ứng dụng kiểm tra các file BPMN. Mã quy trình có dạng `<schema>.<tên quy trình>`. Nhóm ứng viên của việc và nhóm được bắt đầu quy trình chỉ gồm role của ứng dụng. Bước máy làm chỉ gọi hàm trong schema của ứng dụng. File chạy mã bên trong Operaton bị từ chối, ví dụ script task, listener, class Java, delegate expression và connector. Expression chỉ được gồm tên biến, giá trị, phép so sánh và phép logic. Mỗi lỗi có tên file và số dòng. File thiếu phần hình vẽ (BPMNDI) nhận cảnh báo, vì Cockpit không vẽ được quy trình.
+- Service `core` lọc quy trình và việc theo client của access token. Access token của một ứng dụng chỉ thấy, nhận, hoàn thành và bắt đầu quy trình của ứng dụng đó. Access token của client khác, kể cả của ứng dụng khác, nhận mã 404 khi gọi tới quy trình hoặc việc của ứng dụng.
+- Bước máy làm của quy trình trong một ứng dụng chỉ gọi được hàm trong schema của ứng dụng đó. Quy trình không thuộc ứng dụng nào không gọi được hàm của ứng dụng. Bước máy làm sai quy tắc này trở thành incident. Hàm của ứng dụng được khai báo cho bước máy làm bằng lệnh `GRANT EXECUTE` cho role `workflow`.
+- Mã của ứng dụng gọi được `core.notify`, `core.publish` và `core.send_email`. Thông báo do ứng dụng gửi thuộc về ứng dụng đó và được gửi tới kênh `user:<tên ứng dụng>.<sub>`. Access token của ứng dụng chỉ thấy thông báo của ứng dụng đó, access token của client khác chỉ thấy thông báo không thuộc ứng dụng nào. Hàm SQL của ứng dụng cũng chỉ đọc được thông báo của chính ứng dụng. Khóa chống trùng của thông báo và email có hiệu lực riêng trong từng ứng dụng.
+- Mã của ứng dụng chỉ gửi được tin vào kênh `role:<tên ứng dụng>.<vai trò>`, `public:<tên ứng dụng>.<tên>` và `user:<tên ứng dụng>.<sub>`. Lời gọi `POST /core/realtime/token` cấp token kênh cho kênh `user:<tên ứng dụng>.<sub>` khi access token được cấp cho client của ứng dụng đó và `<sub>` là mã của người gọi. Do đó, giao diện của ứng dụng khác không nghe được kênh này.
+- Lệnh cài đặt ứng dụng chỉ in những gì đã thay đổi. Chạy lại khi ứng dụng không đổi thì lệnh in `Không có gì thay đổi.`
+- Lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt sau khi các service sẵn sàng. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai. Service `apps` có lệnh `apply --all` cho việc này.
+- Lệnh `saigonos remove <tên>` gỡ route, client, giao diện và quy trình của ứng dụng, rồi bỏ schema của ứng dụng khỏi API. Schema, dữ liệu, role và việc gán role được giữ lại. Cài đặt lại thì dùng tiếp dữ liệu cũ và chạy lại các quy trình đã tạm dừng. Tùy chọn `--purge` xóa hẳn ứng dụng sau khi hỏi lại.
+- Lệnh `saigonos doctor` có thêm một dòng cho mỗi ứng dụng, kiểm tra API và giao diện của ứng dụng.
+
+### Thay đổi
+
+- Hàm `set_config` của PostgreSQL chỉ còn được cấp cho role `authenticator` của PostgREST và role `core_service`. Hàm trong cơ sở dữ liệu đổi giá trị cấu hình bằng lệnh `SET LOCAL`.
+- Lệnh DDL trong cơ sở dữ liệu `saigonos` chỉ chạy được bằng superuser hoặc trong file SQL khi cài đặt ứng dụng.
+
 ## [0.5.0] - 2026-11-21
 
 ### Thêm
@@ -191,7 +225,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.5.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.3.0

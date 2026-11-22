@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, suppress
 import asyncpg
 import pytest
 
-from saigonos_core.database import SET_CALLER
+from saigonos_core.database import SEAL_CLAIMS, SET_CALLER
 from saigonos_core.operaton import OperatonError, OperatonUnavailableError
 from saigonos_core.processes import Processes
 from saigonos_core.steps import (
@@ -37,7 +37,7 @@ PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
-DECLARED = {"oid": OID, "takes_jsonb": True, "gives_jsonb": True, "declared": True}
+DECLARED = {"oid": OID, "takes_jsonb": True, "gives_jsonb": True, "declared": True, "app": None}
 
 
 class FakeConnection:
@@ -50,6 +50,8 @@ class FakeConnection:
         self.database.statements.append((query, *arguments))
         if query == SET_CALLER:
             self.role = arguments[0]
+        elif query == SEAL_CLAIMS:
+            assert self.role == "workflow"
         elif query == AS_SERVICE:
             self.role = "core_service"
         elif query == SAVE:
@@ -175,8 +177,12 @@ def test_step_calls_declared_function_with_variables_as_workflow(steps, database
         }
     }
     queries = [statement[0] for statement in database.statements]
-    assert queries == [LIMIT, CLAIM, FIND, SET_CALLER, CALL, AS_SERVICE, SAVE]
+    assert queries == [LIMIT, CLAIM, FIND, SET_CALLER, SEAL_CLAIMS, CALL, AS_SERVICE, SAVE]
     assert database.statements[3][1:] == ("workflow", json.dumps({"role": "workflow"}))
+
+
+def test_step_returns_to_service_role_without_set_config():
+    assert AS_SERVICE == "SET LOCAL ROLE NONE"
 
 
 def test_step_that_already_ran_completes_with_stored_result(steps, database, operaton):
@@ -246,6 +252,50 @@ def test_function_that_cannot_run_becomes_incident_without_call(
     database.catalog[FUNCTION] = rows
 
     handle(steps, external())
+
+    assert incident(operaton) == message
+    assert database.calls == []
+    assert database.runs == {}
+
+
+def test_step_of_app_runs_function_in_schema_of_app(steps, database, operaton):
+    database.catalog["ung_dung.cap_nhat"] = [DECLARED | {"app": "ung-dung"}]
+
+    handle(steps, external(tenantId="ung-dung"))
+
+    assert [procedure for procedure, _ in database.calls] == [OID]
+    assert operaton.failed == []
+
+
+def test_step_of_app_calling_function_of_another_schema_becomes_incident(steps, database, operaton):
+    handle(steps, external("khac.cap_nhat", tenantId="ung-dung"))
+
+    assert incident(operaton) == (
+        "Quy trình của ứng dụng ung-dung chỉ gọi được hàm trong schema ung_dung. "
+        "Hàm khac.cap_nhat nằm ngoài schema này"
+    )
+    assert database.statements == []
+
+
+@pytest.mark.parametrize(
+    ("tenant", "owner", "message"),
+    [
+        (
+            None,
+            "ung-dung",
+            "Quy trình không thuộc ứng dụng nào nên không gọi được hàm ung_dung.cap_nhat "
+            "của ứng dụng ung-dung",
+        ),
+        ("ung-dung", None, "Hàm ung_dung.cap_nhat không thuộc ứng dụng ung-dung"),
+    ],
+    ids=["quy-trinh-cua-he-thong", "ung-dung-da-mat"],
+)
+def test_function_of_other_owner_becomes_incident(
+    steps, database, operaton, tenant, owner, message
+):
+    database.catalog[FUNCTION] = [DECLARED | {"app": owner}]
+
+    handle(steps, external(tenantId=tenant))
 
     assert incident(operaton) == message
     assert database.calls == []
@@ -442,3 +492,13 @@ def test_worker_is_named_after_container(database, operaton):
     steps = Steps(database, operaton, Processes(operaton))
 
     assert steps.worker == f"saigonos-core-{socket.gethostname()}"
+
+
+def test_step_of_app_names_app_in_sealed_claims(steps, database, operaton):
+    database.catalog[FUNCTION] = [DECLARED | {"app": "ung-dung"}]
+
+    handle(steps, external(tenantId="ung-dung"))
+
+    [caller] = [statement for statement in database.statements if statement[0] == SET_CALLER]
+    assert caller[1:] == ("workflow", json.dumps({"role": "workflow", "azp": "ung-dung"}))
+    assert database.statements.index(caller) + 1 == database.statements.index((SEAL_CLAIMS,))

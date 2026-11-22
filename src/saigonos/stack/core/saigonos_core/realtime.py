@@ -12,19 +12,22 @@ from saigonos_core.api import UNAUTHORIZED, Message, User
 LIFETIME = 60
 ALGORITHM = "HS256"
 ROLE_PREFIX = "role:"
-ROLE_CHANNEL = r"^role:[A-Za-z0-9_.-]+$"
+USER_PREFIX = "user:"
+CHANNEL = r"^(?:role:[A-Za-z0-9_.-]+|user:[a-z][a-z0-9-]*\.[A-Za-z0-9_.-]+)$"
 MAX_CHANNEL = 255
 FORBIDDEN = "Người gọi không có realm role của kênh này"
+NOT_OWN = "Kênh cá nhân này không thuộc người gọi hoặc không thuộc ứng dụng của access token"
+DENIED = "Người gọi không được nghe kênh này"
 
 router = APIRouter(prefix="/realtime")
 
 
 class TokenRequest(BaseModel):
     channel: str = Field(
-        pattern=ROLE_CHANNEL,
+        pattern=CHANNEL,
         max_length=MAX_CHANNEL,
-        description="Kênh cần nghe, có dạng role:<realm role>",
-        examples=["role:quan-ly"],
+        description="Kênh cần nghe, có dạng role:<realm role> hoặc user:<tên ứng dụng>.<sub>",
+        examples=["role:quan-ly", "user:nghi-phep.4f1b0c0e-nguoi-dung"],
     )
 
 
@@ -46,18 +49,27 @@ class SubscriptionTokens:
 
 @router.post(
     "/token",
-    summary="Cấp token kênh để nghe kênh role:<realm role>",
+    summary="Cấp token kênh để nghe kênh role:<realm role> hoặc kênh cá nhân của ứng dụng",
     description=(
-        "Người gọi cần có realm role ghi sau role: trong tên kênh. Token kênh có hiệu lực "
-        "60 giây và hết hạn không muộn hơn access token của lời gọi"
+        "Với kênh role:<realm role>, người gọi cần có realm role ghi sau role: trong tên kênh. "
+        "Với kênh user:<tên ứng dụng>.<sub>, access token phải được cấp cho client của ứng dụng "
+        "đó và sub phải là của người gọi. Token kênh có hiệu lực 60 giây và hết hạn không muộn "
+        "hơn access token của lời gọi"
     ),
-    responses=UNAUTHORIZED | {403: {"model": Message, "description": FORBIDDEN}},
+    responses=UNAUTHORIZED | {403: {"model": Message, "description": DENIED}},
 )
 async def subscription_token(
     request: Request, user: User, wanted: TokenRequest
 ) -> SubscriptionToken:
-    if wanted.channel.removeprefix(ROLE_PREFIX) not in user.realm_roles:
-        raise HTTPException(403, FORBIDDEN)
+    channel = wanted.channel
+    if channel.startswith(ROLE_PREFIX):
+        if channel.removeprefix(ROLE_PREFIX) not in user.realm_roles:
+            raise HTTPException(403, FORBIDDEN)
+    else:
+        app, _, subject = channel.removeprefix(USER_PREFIX).partition(".")
+        scope = await request.app.state.scopes.of(user)
+        if (app, subject) != (scope.app, user.claims["sub"]):
+            raise HTTPException(403, NOT_OWN)
     tokens = request.app.state.subscription_tokens
-    token = tokens.issue(user.claims["sub"], wanted.channel, int(user.claims["exp"]))
+    token = tokens.issue(user.claims["sub"], channel, int(user.claims["exp"]))
     return SubscriptionToken(token=token)

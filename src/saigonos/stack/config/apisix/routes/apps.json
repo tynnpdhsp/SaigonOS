@@ -1,0 +1,11 @@
+{
+  "name": "apps",
+  "desc": "Service core: giao diện của các ứng dụng đã cài đặt. API của mỗi ứng dụng nằm ở route app-<tên> do lệnh apply tạo",
+  "uris": ["/apps/*"],
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "core:8000": 1
+    }
+  }
+}

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: check lint format test integration lock dependencies dist clean
+.PHONY: check lint format test integration lock dependencies schema dist clean
 
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 UV_COMPILE = uv pip compile --quiet --custom-compile-command "make lock"
 CORE_LOCK = src/saigonos/stack/core/requirements.txt
+APP_SCHEMA = schemas/saigonos-app.schema.json
 SPDX_TAG = SPDX-License-Identifier
 
 check: lint test
@@ -32,6 +33,9 @@ lock:
 
 dependencies:
 	python scripts/dependencies.py
+
+schema:
+	PYTHONPATH=src/saigonos/stack/core python -m saigonos_core.apps schema > $(APP_SCHEMA)
 
 dist:
 	rm -rf dist

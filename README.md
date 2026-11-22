@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Mục lục
 
@@ -31,6 +31,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Quy trình](#quy-trình)
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
 - [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
+- [Ứng dụng](#ứng-dụng)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -69,7 +70,7 @@ Mã nguồn của từng phiên bản cũng có ở trang [Releases](https://git
 saigonos init
 ```
 
-Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config` và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
+Lệnh này tạo thư mục làm việc `~/saigonos`. Thư mục bao gồm file `compose.yaml`, thư mục `config`, thư mục `apps` chứa các ứng dụng và file `.env`. File `.env` chứa các mật khẩu được tạo ngẫu nhiên.
 
 Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một trong các cổng này đang được chương trình khác sử dụng, hãy chọn cổng khác theo mục [Cấu hình](#cấu-hình).
 
@@ -116,6 +117,8 @@ BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API c�
 Hệ thống hoạt động bình thường.
 ```
 
+Khi đã cài đặt ứng dụng, lệnh có thêm một dòng cho mỗi ứng dụng trong thư mục `apps`. Dòng này kiểm tra API của ứng dụng tại `/apps/<tên ứng dụng>/api/` và giao diện tại `/apps/<tên ứng dụng>/` khi bản khai có thư mục `ui`.
+
 ## Truy cập hệ thống
 
 Với cấu hình mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt và có các địa chỉ sau:
@@ -131,6 +134,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9080/api/ | REST API của PostgREST và [tài liệu API](#tài-liệu-api) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được các bảng và hàm đã cấp cho role `anon` |
 | http://localhost:9080/core/openapi.json | Tài liệu OpenAPI của [service core](#api-của-service-core) | Không cần đăng nhập. Các API trong tài liệu cần access token do Keycloak cấp, trừ `/core/health` và [đường dẫn tải về](#tải-file-về) |
 | ws://localhost:9080/realtime/connection/websocket | Kết nối WebSocket của Centrifugo, dùng để nhận [cập nhật tức thời](#cập-nhật-tức-thời) | Access token do Keycloak cấp, gửi trong lệnh connect |
+| http://localhost:9080/apps/<tên ứng dụng>/ | [Giao diện](#giao-diện-của-ứng-dụng) và [API](#gọi-api-của-ứng-dụng) của từng ứng dụng đã cài đặt | Giao diện không cần đăng nhập. API cần access token do client của ứng dụng cấp |
 
 Các giá trị trên nằm trong file `~/saigonos/.env`. Ví dụ, để xem mật khẩu quản trị của Keycloak:
 
@@ -345,9 +349,11 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 
 | Thao tác | Lệnh `saigonos` | Lệnh Docker Compose trong `~/saigonos` |
 |---|---|---|
-| Khởi động | `saigonos up` | `docker compose up -d --wait` |
+| Khởi động | `saigonos up` | `docker compose up -d --wait` rồi `docker compose run --rm apps apply --all` |
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
+
+Sau khi các service sẵn sàng, lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt, như mục [Cài đặt ứng dụng](#cài-đặt-ứng-dụng). Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai. Mỗi dòng kết quả bắt đầu bằng tên ứng dụng. Khi chưa có ứng dụng nào trong thư mục `apps`, lệnh bỏ qua bước này.
 
 ## Triển khai trên máy chủ chưa có reverse proxy
 
@@ -560,7 +566,7 @@ Operaton làm mới access token ở mỗi lời gọi của ba trang. Do đó, 
 
 Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operaton` của realm `saigonos` và luồng đăng nhập riêng của client này. Khi luồng đăng nhập bị thay đổi, service tạo lại luồng này. Các thiết lập bảo mật của client cũng được đặt lại, ví dụ địa chỉ chuyển hướng sau khi đăng nhập.
 
-REST API của Operaton không mở qua API Gateway. Chỉ hai service `core` và `processes` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
+REST API của Operaton không mở qua API Gateway. Chỉ ba service `core`, `processes` và `apps` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
 
 Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần Operaton từ chối tài khoản `core`. Trong thời gian này, các lời gọi cần Operaton nhận mã 503 và các bước máy làm chưa được chạy. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại, và log của service ghi cách khắc phục. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD` trong file `.env`, chạy lại lệnh `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core` bằng lệnh sau:
 
@@ -592,7 +598,7 @@ cd ~/saigonos
 docker compose logs --tail 20 processes
 ```
 
-File BPMN có thể chứa mã chạy bên trong Operaton, ví dụ script task. Do đó, chỉ đặt vào thư mục này các file từ nguồn đáng tin cậy.
+File BPMN có thể chứa mã chạy bên trong Operaton, ví dụ script task. Do đó, chỉ đặt vào thư mục này các file từ nguồn đáng tin cậy. File BPMN của ứng dụng được soát như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng), nên không chứa được mã như vậy.
 
 Ví dụ sau là một quy trình đơn giản gồm điểm bắt đầu và điểm kết thúc. Nội dung được lưu trong file `thu-nghiem.bpmn`:
 
@@ -772,8 +778,8 @@ Các mã lỗi của các lời gọi về quy trình và việc:
 | 403 | Bắt đầu quy trình | Người gọi không có realm role nằm trong `candidateStarterGroups`, hoặc quy trình không khai báo thuộc tính này |
 | 403 | Nhận việc | Người gọi không có realm role nằm trong nhóm ứng viên của việc |
 | 403 | Hoàn thành việc | Người gọi không phải là người nhận việc |
-| 404 | Bắt đầu quy trình | Không có quy trình với mã này |
-| 404 | Nhận việc, hoàn thành việc | Không có việc với mã này, ví dụ việc đã được hoàn thành |
+| 404 | Bắt đầu quy trình | Không có quy trình với mã này, hoặc quy trình nằm ngoài phạm vi của access token như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng) |
+| 404 | Nhận việc, hoàn thành việc | Không có việc với mã này, ví dụ việc đã được hoàn thành, hoặc việc nằm ngoài phạm vi của access token |
 | 409 | Bắt đầu quy trình | Quy trình đang tạm ngưng trong Cockpit |
 | 409 | Nhận việc | Việc đã có người khác nhận |
 | 409 | Nhận việc, hoàn thành việc | Việc đang tạm ngưng vì quy trình chứa việc bị tạm ngưng trong Cockpit |
@@ -801,7 +807,7 @@ Bước máy làm là một service task trong file BPMN. Bước này gọi m�
 
 Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình, ví dụ `{"ma_yeu_cau": "YC-01", "ket_qua": "Đã thay cáp màn hình"}`. Biến kiểu ngày giờ được truyền dưới dạng chuỗi theo giờ UTC, ví dụ `2026-11-20T02:00:00.000+0000`. Quy trình có biến thuộc kiểu khác chuỗi, số, ngày giờ, `true`, `false` và `null` thì bước máy làm không chạy được. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình. Tên biến theo quy tắc của thuộc tính `id` ở mục [Form](#form). Giá trị là chuỗi tối đa 4.000 ký tự, số nguyên, số thực, `true`, `false` hoặc `null`. Hàm không ghi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
 
-Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Ví dụ, ứng dụng khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
+Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Hàm của ứng dụng chạy với quyền khác, như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng). Ví dụ, một schema do quản trị viên tạo khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
 
 ```sql
 GRANT USAGE ON SCHEMA ung_dung TO workflow;
@@ -900,17 +906,18 @@ Khi từ chối hoặc đóng kết nối, Centrifugo trả về một trong cá
 
 ### Nghe kênh
 
-Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong ba dạng sau:
+Sau khi kết nối, ứng dụng nghe một kênh bằng lệnh subscribe. Tên kênh có một trong bốn dạng sau:
 
 | Kênh | Người nghe được | Token kênh |
 |---|---|---|
 | `public:<tên>` | Mọi người dùng đã đăng nhập | Không cần |
 | `user:#<sub>` | Chỉ người dùng có mã `<sub>`, tức claim `sub` trong access token | Không cần |
 | `role:<realm role>` | Những người dùng có realm role `<realm role>` | Cần |
+| `user:<tên ứng dụng>.<sub>` | Chỉ người dùng có mã `<sub>`, qua access token của ứng dụng `<tên ứng dụng>` | Cần |
 
 Tên, `sub` và realm role chỉ gồm chữ cái không dấu, chữ số và các dấu `_`, `.`, `-`. Tên kênh dài tối đa 255 ký tự. Kênh không có namespace hoặc thuộc namespace khác bị từ chối.
 
-Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Kênh không có dạng `role:<realm role>` nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
+Để nghe kênh `role:<realm role>`, ứng dụng lấy token kênh (subscription token) bằng lời gọi `POST /core/realtime/token`, với nội dung `{"channel": "role:<realm role>"}`. Service `core` trả về `{"token": "..."}` khi access token của người gọi có realm role này. Người gọi không có realm role nhận mã 403. Với kênh `user:<tên ứng dụng>.<sub>`, service `core` chỉ cấp token kênh khi access token được cấp cho client của ứng dụng đó và `<sub>` là mã của người gọi. Trường hợp khác nhận mã 403. Kênh khác hai dạng này nhận mã 422. Token kênh được ký bằng khóa `CENTRIFUGO_SUBSCRIPTION_KEY` trong file `.env` và chỉ dùng được cho đúng kênh, đúng người dùng đã lấy token.
 
 Token kênh có hiệu lực 60 giây và hết hạn không muộn hơn access token dùng để lấy token kênh. Khi token kênh hết hạn, thư viện gọi hàm `getToken` của kênh để lấy token mới. Nếu không nhận được token mới, Centrifugo ngừng gửi tin của kênh trong khoảng 25 đến 52 giây sau khi token kênh hết hạn. Do đó, người dùng bị gỡ realm role ngừng nhận tin của kênh chậm nhất khoảng 2 phút sau khi bị gỡ.
 
@@ -949,19 +956,19 @@ Khi từ chối hoặc ngừng gửi tin của kênh, Centrifugo trả về mộ
 
 | Mã | Ý nghĩa |
 |---|---|
-| `102` | Kênh thuộc namespace khác ba namespace trên |
-| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` không kèm token kênh hoặc kèm token kênh giả |
+| `102` | Kênh thuộc namespace khác ba namespace `public`, `user` và `role` |
+| `103` | Không có quyền nghe kênh, ví dụ kênh không có namespace, kênh `user:#<sub>` của người khác, kênh `role:` hoặc `user:<tên ứng dụng>.<sub>` không kèm token kênh hoặc kèm token kênh giả |
 | `109` | Token kênh đã hết hạn. Thư viện tự lấy token kênh mới rồi nghe lại |
 | `2501` | Kênh hết hạn vì không nhận được token kênh mới. Thư viện tự nghe lại |
 | `3500` | Token kênh của kênh khác hoặc của người dùng khác. Centrifugo đóng kết nối và thư viện không kết nối lại |
 
 ### Gửi tin từ cơ sở dữ liệu
 
-Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong ba dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
+Hàm `core.publish(channel, data)` của cơ sở dữ liệu `saigonos` gửi một tin tới một kênh của Centrifugo. Tham số `channel` là tên kênh, có một trong bốn dạng ở mục [Nghe kênh](#nghe-kênh). Tham số `data` là nội dung của tin, có kiểu `jsonb`. Hàm trả về mã của tin, có kiểu `uuid`. Hàm báo lỗi khi kênh sai dạng hoặc nội dung là `NULL`.
 
 Hàm ghi tin vào bảng `core.outbox` trong cùng transaction với dữ liệu. Ngay khi transaction được commit, Centrifugo đọc tin, gửi tới các client đang nghe kênh rồi xóa tin khỏi bảng. Khi transaction bị hủy, tin cũng bị hủy. Do đó, client chỉ nhận tin về dữ liệu đã được lưu. Các tin của cùng một transaction tới client theo đúng thứ tự gọi hàm.
 
-Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Hiện tại, chỉ role `workflow` có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình. Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
+Chỉ role được cấp quyền `EXECUTE` mới gọi được hàm. Role `workflow` và các role của ứng dụng có quyền này. Do đó, hàm được gọi trong [bước máy làm](#bước-máy-làm) của quy trình hoặc trong mã của ứng dụng. Mã của ứng dụng chỉ gửi được tin vào kênh của chính ứng dụng, như mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng). Ví dụ, hàm sau cập nhật một yêu cầu rồi báo cho người đã bắt đầu quy trình, tức người có mã trong biến `initiator`:
 
 ```sql
 CREATE FUNCTION ung_dung.bao_da_xu_ly(bien jsonb) RETURNS jsonb
@@ -1017,7 +1024,7 @@ Admin web ở địa chỉ http://127.0.0.1:9480/ dùng để xem số kết n�
 
 ## Thông báo cho người dùng
 
-Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo.
+Thông báo cho người dùng được lưu trong bảng `core.notifications` của cơ sở dữ liệu `saigonos`. Mỗi thông báo gửi cho một người dùng. Người nhận đọc thông báo của mình qua service `core` và nhận thông báo mới tức thời qua kênh `user:#<sub>` của Centrifugo. Thông báo do mã của một ứng dụng gửi thuộc về ứng dụng đó, như mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng).
 
 ### Gửi thông báo
 
@@ -1036,9 +1043,9 @@ Hàm báo lỗi khi một tham số không hợp lệ. Hàm từ chối đườn
 
 Thông báo và tin gửi Centrifugo được ghi trong cùng transaction với dữ liệu, như với hàm `core.publish` ở mục [Gửi tin từ cơ sở dữ liệu](#gửi-tin-từ-cơ-sở-dữ-liệu). Khi transaction bị hủy, thông báo và tin cũng bị hủy.
 
-Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
+Mỗi người nhận chỉ có một thông báo cho mỗi khóa chống trùng của mỗi ứng dụng. Khi hàm được gọi lại với cùng người nhận và cùng khóa, hàm không ghi thêm thông báo, không gửi thêm tin và trả về mã của thông báo đã có. Nội dung của thông báo đã có được giữ nguyên. Quy tắc này vẫn đúng khi hai transaction gọi hàm cùng lúc. Do đó, khóa chống trùng nên nêu sự việc mà thông báo nói tới, ví dụ `yeu-cau:YC-001:da-xu-ly`. Khi một sự việc được báo cho nhiều người, mọi người nhận dùng chung một khóa.
 
-Hiện tại, chỉ role `workflow` có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
+Role `workflow` và các role của ứng dụng có quyền gọi hàm. Ví dụ, hàm sau của một [bước máy làm](#bước-máy-làm) báo cho người đã bắt đầu quy trình rằng yêu cầu đã được xử lý:
 
 ```sql
 CREATE FUNCTION ung_dung.bao_tin_da_xu_ly(bien jsonb) RETURNS jsonb
@@ -1059,7 +1066,7 @@ GRANT EXECUTE ON FUNCTION ung_dung.bao_tin_da_xu_ly(jsonb) TO workflow;
 
 ### Đọc thông báo
 
-Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
+Lời gọi `GET /core/notifications` trả về các thông báo gửi cho người gọi. Access token của một ứng dụng chỉ thấy thông báo của ứng dụng đó. Access token của client khác chỉ thấy thông báo không thuộc ứng dụng nào. Thông báo mới nhất đứng đầu. Tham số `limit` đặt số thông báo tối đa được trả về, mặc định là 50 và tối đa là 200. Tham số `offset` đặt số thông báo được bỏ qua ở đầu danh sách. Mỗi thông báo gồm các trường sau:
 
 | Trường | Ý nghĩa |
 |---|---|
@@ -1162,7 +1169,7 @@ $$;
 GRANT EXECUTE ON FUNCTION ung_dung.gui_email_da_nhan(jsonb) TO workflow;
 ```
 
-Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
+Email được ghi trong cùng transaction với dữ liệu. Khi transaction bị hủy, email cũng bị hủy. Mỗi địa chỉ chỉ nhận một email cho mỗi khóa chống trùng của mỗi ứng dụng. Khi hàm được gọi lại với cùng địa chỉ và cùng khóa, hàm không ghi thêm email và trả về mã của email đã có.
 
 Email chỉ có phần văn bản thuần. Phần này gồm nội dung, hoặc tiêu đề khi không có nội dung, rồi tới địa chỉ đầy đủ của đường dẫn. Email có header `Auto-Submitted: auto-generated`, nên chức năng trả lời tự động của hộp thư người nhận không trả lời email này.
 
@@ -1232,6 +1239,430 @@ docker compose exec postgres psql -U postgres -d saigonos -c "UPDATE core.delive
 Khi file `.env` chưa có cấu hình Telegram hoặc SMTP, tin của kênh đó chuyển sang `skipped` và hệ thống vẫn chạy bình thường. Khi cấu hình chưa đúng, ví dụ thiếu `TELEGRAM_CHAT_ID` hoặc thiếu `SMTP_FROM`, service `core` ghi lý do vào log lúc khởi động và tin cũng chuyển sang `skipped`. Tin đã `skipped` không được gửi khi kênh được cấu hình sau đó.
 
 Bảng `core.deliveries` giữ địa chỉ email, tiêu đề và nội dung của tin sau khi gửi.
+
+## Ứng dụng
+
+Mỗi ứng dụng là một thư mục có file bản khai `saigonos-app.json`. Bản khai cho biết tên, phiên bản, các realm role của ứng dụng và các thư mục chứa file SQL, file BPMN và giao diện.
+
+### Bản khai
+
+Ví dụ bản khai của một ứng dụng xin nghỉ phép:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/tynnpdhsp/SaigonOS/main/schemas/saigonos-app.schema.json",
+  "name": "nghi-phep",
+  "title": "Nghỉ phép",
+  "version": "0.1.0",
+  "roles": [
+    { "name": "nghi-phep.nhan-vien", "description": "Gửi đơn và xem đơn của mình" },
+    { "name": "nghi-phep.quan-ly", "description": "Duyệt đơn của nhân viên" }
+  ],
+  "database": "database",
+  "processes": "processes",
+  "ui": "ui"
+}
+```
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `$schema` | Không | Địa chỉ JSON Schema của bản khai. Trình soạn thảo như VS Code dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai |
+| `name` | Có | Tên ứng dụng |
+| `title` | Có | Tên hiển thị của ứng dụng |
+| `version` | Có | Phiên bản của ứng dụng theo [Semantic Versioning](https://semver.org/lang/vi/), ví dụ `1.2.0` |
+| `roles` | Có | Danh sách realm role của ứng dụng, có ít nhất một role. Mỗi role gồm tên `name` và mô tả `description` |
+| `database` | Không | Thư mục chứa file SQL, có ít nhất một file `.sql` |
+| `processes` | Không | Thư mục chứa file BPMN, có ít nhất một file `.bpmn` |
+| `ui` | Không | Thư mục chứa giao diện, có file `index.html` |
+
+Bản khai tuân theo các quy tắc sau:
+
+- Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `nghi-phep`, `don-tu-2`.
+- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
+- Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `nghi-phep.quan-ly`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
+- Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
+- Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`. Mỗi cấp gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và không bắt đầu bằng dấu chấm. Do đó, đường dẫn không trỏ ra ngoài thư mục ứng dụng được. Ba thư mục không trùng nhau và không nằm trong nhau.
+- Bản khai và các thư mục đã khai không chứa symlink, pipe, socket hay file thiết bị. Mọi file và thư mục con đều phải đọc được.
+- Bản khai chỉ có các trường trong bảng trên. Trường viết sai chính tả bị báo lỗi.
+
+JSON Schema của bản khai nằm trong file [schemas/saigonos-app.schema.json](schemas/saigonos-app.schema.json).
+
+### Soát ứng dụng
+
+Lệnh sau soát bản khai và các thư mục của ứng dụng trong thư mục `./nghi-phep`:
+
+```bash
+saigonos apply --check ./nghi-phep
+```
+
+Thư mục làm việc phải được tạo bằng lệnh `saigonos init` trước đó, nhưng hệ thống không cần đang chạy. Lệnh chạy service `apps` bằng Docker Compose. Service này dùng image của service `core` và chỉ chạy khi được gọi. Mỗi lần chạy, Docker Compose build lại image này. Nhờ cache của Docker, việc build chỉ mất vài giây. Lần build đầu tiên phải tải các thư viện của service `core` nên lâu hơn.
+
+Khi không có lỗi, lệnh in một dòng như sau:
+
+```text
+Ứng dụng nghi-phep 0.1.0 không có lỗi.
+```
+
+Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã thoát 1. Mỗi dòng bắt đầu bằng vị trí của lỗi trong bản khai, ví dụ:
+
+```text
+Ứng dụng có 3 lỗi:
+- version: Phiên bản phải theo Semantic Versioning, ví dụ 1.0.0 hoặc 1.0.0-beta.1.
+- roles[1].name: Tên role phải bắt đầu bằng "nghi-phep.".
+- ui: Thư mục "ui" không có file index.html.
+```
+
+Lệnh soát cả các file BPMN trong thư mục `processes` theo mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng). Lỗi trong file BPMN có tên file và số dòng, ví dụ `- processes: "processes/duyet.bpmn", dòng 12: Thẻ scriptTask chạy script trong Operaton nên không được dùng.` Cảnh báo được in trước dòng kết quả và không làm lệnh kết thúc với mã thoát 1.
+
+Lệnh soát ở trên chạy service `apps` bằng tài khoản đang dùng. Cũng có thể soát bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc:
+
+```bash
+cp -r ./nghi-phep ~/saigonos/apps/
+cd ~/saigonos
+docker compose run --rm apps check nghi-phep
+```
+
+Khi gọi theo cách này, service `apps` chạy bằng tài khoản `nobody` của container. Do đó, mọi file của ứng dụng cần quyền đọc cho mọi tài khoản, ví dụ quyền `644`, và mọi thư mục cần quyền `755`.
+
+### Cài đặt ứng dụng
+
+Khi hệ thống đang chạy, lệnh sau cài đặt ứng dụng trong thư mục `./nghi-phep` vào hệ thống:
+
+```bash
+saigonos apply ./nghi-phep
+```
+
+Lệnh thực hiện các bước sau:
+
+1. Soát ứng dụng như mục [Soát ứng dụng](#soát-ứng-dụng). Khi có lỗi, lệnh dừng và không thay đổi gì.
+2. Chép bản khai và các thư mục đã khai vào thư mục `apps/<tên ứng dụng>` của thư mục làm việc. Các file khác trong thư mục ứng dụng, ví dụ thư mục `.git`, không được chép.
+3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng), vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng), vào APISIX như mục [Gọi API của ứng dụng](#gọi-api-của-ứng-dụng) và vào Operaton như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng).
+
+Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
+
+```text
+Đã tạo schema nghi_phep, role nghi_phep và role nghi_phep_user của ứng dụng.
+Đã chạy file 0001_don.sql.
+Đã chạy file 0002_duyet.sql.
+Đã tạo realm role nghi-phep.nhan-vien.
+Đã tạo realm role nghi-phep.quan-ly.
+Đã tạo client nghi-phep.
+Đã tạo route app-nghi-phep.
+Đã triển khai file duyet.bpmn: quy trình nghi_phep.duyet, phiên bản 1.
+Đã cài đặt ứng dụng nghi-phep 0.1.0.
+```
+
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Mỗi lần chạy, lệnh chỉ in những gì đã thay đổi. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak, APISIX và Operaton không thay đổi, và lệnh chỉ in dòng `Không có gì thay đổi.`
+
+Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
+
+```bash
+cp -r ./nghi-phep ~/saigonos/apps/
+cd ~/saigonos
+docker compose run --rm apps apply nghi-phep
+```
+
+Service `apps` giữ mật khẩu superuser của PostgreSQL, mật khẩu của tài khoản `admin` trong realm master của Keycloak và khóa Admin API của APISIX. Service này chỉ chạy khi được gọi. Service `core` không có ba giá trị này. Để triển khai file BPMN, service `apps` dùng tài khoản `core` của Operaton giống service `core`.
+
+### Gỡ ứng dụng
+
+Lệnh sau gỡ ứng dụng `nghi-phep` khỏi hệ thống:
+
+```bash
+saigonos remove nghi-phep
+```
+
+Lệnh gỡ route của ứng dụng trên APISIX và client trên Keycloak, tạm dừng các quy trình của ứng dụng cùng các quy trình đang chạy trên Operaton, rồi bỏ schema của ứng dụng khỏi API. Giao diện của ứng dụng không còn được phục vụ. Bản chép của ứng dụng trong thư mục `apps` bị xóa. Schema, dữ liệu, các role và việc gán role cho người dùng được giữ lại. Cài đặt lại ứng dụng thì dùng tiếp dữ liệu cũ, các file SQL đã chạy không chạy lại và các quy trình đã tạm dừng được chạy lại.
+
+Để xóa hẳn ứng dụng cùng schema, dữ liệu, role, thông báo, hàng đợi gửi tin và các bản triển khai trên Operaton, thêm tùy chọn `--purge`:
+
+```bash
+saigonos remove nghi-phep --purge
+```
+
+Lệnh hỏi lại và chỉ xóa khi người dùng gõ đúng tên ứng dụng. Khi chạy trong script, thêm tùy chọn `--yes` để bỏ qua câu hỏi. Lịch sử của quy trình cũng bị xóa. Audit log của các bảng của ứng dụng được giữ lại.
+
+Cũng có thể gỡ bằng Docker Compose. Khi đó, xóa bản chép trong thư mục `apps` bằng tay:
+
+```bash
+cd ~/saigonos
+docker compose run --rm apps remove nghi-phep
+rm -r apps/nghi-phep
+```
+
+### File SQL của ứng dụng
+
+Mỗi ứng dụng có một schema và hai role trong cơ sở dữ liệu. Tên schema là tên ứng dụng với dấu gạch ngang đổi thành dấu gạch dưới, ví dụ `nghi_phep`. Role cùng tên sở hữu schema và chạy các file SQL. Role có thêm hậu tố `_user`, ví dụ `nghi_phep_user`, chạy các lời gọi API như mục [Gọi API của ứng dụng](#gọi-api-của-ứng-dụng). Lệnh cài đặt chạy các file `.sql` trong thư mục `database` của ứng dụng theo các quy tắc sau:
+
+- File chạy theo thứ tự tên, bằng role sở hữu schema, không bằng superuser. Role này chỉ đăng nhập được trong lúc lệnh cài đặt chạy, với mật khẩu sinh mới mỗi lần.
+- Schema của ứng dụng là `search_path` của file. Do đó, lệnh `CREATE TABLE don (...)` tạo bảng `nghi_phep.don`.
+- Mỗi file chạy trong một transaction. Khi một câu lệnh bị lỗi, mọi thay đổi của file bị hủy. File không được dùng `BEGIN`, `COMMIT`, `ROLLBACK` hay `SAVEPOINT`.
+- Bảng `core.migrations` ghi tên và mã băm của từng file đã chạy, với cột `scope` là tên ứng dụng. File đã chạy thì không chạy lại. File đã chạy mà bị sửa thì lệnh cài đặt dừng và báo lỗi. Để thay đổi cơ sở dữ liệu, hãy thêm một file mới.
+- Role sở hữu schema không đọc được schema của ứng dụng khác và các bảng của lõi, ví dụ `core.audit_log`. Role này cũng không đổi được sang role khác bằng `SET ROLE`.
+- Bảng, view và hàm mới chưa được cấp cho role nào, kể cả `PUBLIC`. File SQL cấp quyền cho role `nghi_phep_user` và `anon` bằng `GRANT`. Quyền `USAGE` trên schema đã được cấp sẵn cho role `nghi_phep_user` và role `workflow` của bước máy làm.
+- Schema của ứng dụng chỉ được cấp quyền `USAGE` cho role `nghi_phep_user` và `anon`. File cấp quyền trên schema cho role khác, ví dụ `authenticated`, bị từ chối.
+- Sau mỗi file, hàm không khai `SECURITY DEFINER` được đổi thành hàm `SECURITY DEFINER` của role `nghi_phep_user`. Quyền `EXECUTE` của hàm được giữ như file đã cấp. Do đó, hàm luôn chạy bằng role `nghi_phep_user`, kể cả khi lời gọi không có access token. Hàm khai `SECURITY DEFINER` chạy bằng role sở hữu schema.
+- Bên trong hàm `SECURITY DEFINER`, PostgreSQL không cho đổi role. Hàm `set_config` cũng không được cấp cho mã của ứng dụng. Do đó, mã của một ứng dụng không chuyển được sang role của ứng dụng khác.
+- Các lệnh DDL như `CREATE`, `ALTER`, `DROP` và `GRANT` chỉ chạy được trong file SQL khi cài đặt. Mã của ứng dụng chạy trong lúc phục vụ lời gọi không dùng được các lệnh này, kể cả `CREATE TEMP TABLE`.
+- Role sở hữu schema dùng được hàm `core.audit()` để ghi audit log cho bảng và hàm `core.append_only()` để chặn sửa, xóa dòng của bảng.
+- Hàm của ứng dụng gọi được `core.notify`, `core.publish` và `core.send_email` theo mục [Thông báo và kênh của ứng dụng](#thông-báo-và-kênh-của-ứng-dụng).
+- Các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` chỉ đọc claims do PostgREST hoặc service `core` đặt cho lời gọi. Khi một hàm của ứng dụng đổi `request.jwt.claims` bằng `SET LOCAL`, các hàm này trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác.
+- Trong chính sách RLS, viết `(SELECT core.uid())` thay cho `core.uid()`. Khi đó, PostgreSQL chỉ tính giá trị một lần cho mỗi câu truy vấn thay vì một lần cho mỗi dòng.
+
+Khi cơ sở dữ liệu đã có role hoặc schema trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng và không đụng tới role hoặc schema đó.
+
+Ví dụ file `database/0001_don.sql` tạo bảng đơn xin nghỉ phép. Mỗi người chỉ thấy đơn của mình:
+
+```sql
+CREATE TABLE don (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nguoi_gui text NOT NULL DEFAULT core.uid(),
+    ly_do text NOT NULL
+);
+ALTER TABLE don ENABLE ROW LEVEL SECURITY;
+CREATE POLICY cua_minh ON don USING (nguoi_gui = (SELECT core.uid()));
+CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON don
+    FOR EACH ROW EXECUTE FUNCTION core.audit();
+GRANT SELECT, INSERT ON don TO nghi_phep_user;
+```
+
+### Đăng nhập vào ứng dụng
+
+Lệnh cài đặt tạo các mục sau trong realm `saigonos` của Keycloak:
+
+- Mỗi role trong bản khai trở thành một realm role, với mô tả lấy từ bản khai.
+- Một client trùng tên ứng dụng, ví dụ `nghi-phep`. Đây là public client, chỉ dùng luồng Authorization Code với PKCE `S256`. Password grant, luồng implicit, service account và device grant đều tắt. Địa chỉ chuyển hướng chỉ gồm `<địa chỉ truy cập>/apps/<tên ứng dụng>/` và các đường dẫn bên dưới.
+- Thiết lập Full scope allowed của client bị tắt. Scope mapping của client chỉ gồm realm role `authenticated` và các role của ứng dụng. Client có các client scope mặc định `acr`, `basic`, `email`, `profile`, `roles`, `web-origins` và không có client scope tùy chọn.
+
+Nhờ đó, access token do client cấp chỉ mang realm role `authenticated` và các role của chính ứng dụng, kể cả khi người dùng có role của ứng dụng khác hoặc role `admin`. Ứng dụng cũng không xin được scope `offline_access`.
+
+Ứng dụng đăng nhập theo các địa chỉ trong tài liệu discovery `/auth/realms/saigonos/.well-known/openid-configuration`, với `client_id` là tên ứng dụng.
+
+Để gán role của ứng dụng cho người dùng, mở Admin Console của realm `saigonos`, chọn **Users**, chọn người dùng, mở tab **Role mapping**, bấm **Assign role** rồi chọn role của ứng dụng.
+
+Mỗi lần cài đặt, client được đặt lại theo bản khai. Thiết lập, mapper, scope mapping và client scope đã sửa trong Admin Console đều trở về như trên. Mô tả của realm role cũng được đặt lại, composite role thêm vào role của ứng dụng bị gỡ. Role bị bỏ khỏi bản khai vẫn được giữ cùng với việc gán role, nhưng không còn trong scope mapping. Do đó, access token của ứng dụng không mang role đó nữa.
+
+SaigonOS ghi tên ứng dụng vào thuộc tính `saigonos.app` của client và realm role. Khi Keycloak đã có client hoặc realm role trùng tên mà không mang thuộc tính này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới client hoặc role đó.
+
+Địa chỉ chuyển hướng lấy từ giá trị `SAIGONOS_URL` trong file `.env`. Sau khi đổi địa chỉ truy cập, hãy chạy lại lệnh cài đặt cho từng ứng dụng, ví dụ `saigonos apply ./nghi-phep`.
+
+### Gọi API của ứng dụng
+
+Lệnh cài đặt tạo trên APISIX route `app-<tên ứng dụng>` cho API của ứng dụng. API nằm ở địa chỉ `/apps/<tên ứng dụng>/api/` của API Gateway, ví dụ `/apps/nghi-phep/api/don`. Route chuyển lời gọi tới PostgREST và tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng. Header do ứng dụng gửi bị ghi đè, nên lời gọi qua địa chỉ này chỉ tới được schema của ứng dụng đó. Route kiểm tra access token khi lời gọi có header `Authorization` và giới hạn tần suất như địa chỉ `/api/`.
+
+Lời gọi vào schema của một ứng dụng phải kèm access token được cấp cho client của ứng dụng đó, tức claim `azp` của access token là tên ứng dụng. Access token của client khác, kể cả của ứng dụng khác, nhận mã 403 với mã lỗi `SGN02`. Lời gọi có access token của ứng dụng chạy với role `<schema>_user` của ứng dụng đó, ví dụ `nghi_phep_user`. Role này có các quyền của role `authenticated` và các quyền do file SQL của ứng dụng cấp. Lời gọi không có access token vẫn chạy với role `anon`. Ví dụ:
+
+```js
+const headers = {
+  Authorization: `Bearer ${accessToken}`,
+  "Content-Type": "application/json",
+};
+await fetch("/apps/nghi-phep/api/don", {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ ly_do: "Việc gia đình" }),
+});
+const don = await (await fetch("/apps/nghi-phep/api/don", { headers })).json();
+```
+
+Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng dụng>/api/`. Tài liệu chỉ có bảng và hàm trong schema của ứng dụng, với `basePath` là địa chỉ API của ứng dụng.
+
+Địa chỉ `/api/` của PostgREST cũng phục vụ schema của mọi ứng dụng đã cài đặt. Lời gọi qua địa chỉ này chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Schema `api` nhận access token của mọi client.
+
+Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
+
+Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+
+### Thông báo và kênh của ứng dụng
+
+Mã của ứng dụng gọi được các hàm `core.notify`, `core.publish` và `core.send_email`. Mã của ứng dụng gồm hàm, trigger và file SQL của ứng dụng, kể cả hàm của bước máy làm. Các hàm này nhận ra ứng dụng đang gọi theo các quy tắc sau:
+
+- Lời gọi API vào schema của ứng dụng chạy bằng role `<schema>_user` của ứng dụng đó.
+- Bước máy làm của quy trình trong tenant của ứng dụng mang tên ứng dụng trong claim `azp` của claims đã niêm phong.
+- File SQL chạy bằng role sở hữu schema của ứng dụng.
+
+Khi mã của bước máy làm sửa `request.jwt.claims`, ba hàm trên báo lỗi `Claims của lời gọi đã bị sửa`.
+
+Thông báo do mã của ứng dụng gửi mang tên ứng dụng trong cột `app` của bảng `core.notifications`. Thông báo này được gửi tới kênh `user:<tên ứng dụng>.<recipient>`, không gửi tới kênh `user:#<recipient>`. Khóa chống trùng của thông báo và email chỉ có hiệu lực trong một ứng dụng. Do đó, hai ứng dụng dùng cùng một khóa vẫn gửi được hai thông báo riêng.
+
+Lời gọi `GET /core/notifications` với access token của ứng dụng chỉ trả về thông báo của ứng dụng đó. Hàm SQL của ứng dụng đọc bảng `core.notifications` cũng chỉ thấy thông báo của chính ứng dụng gửi cho người gọi. Thông báo không thuộc ứng dụng nào chỉ hiện với access token của client khác.
+
+Mã của ứng dụng chỉ gửi được tin vào các kênh sau:
+
+- `role:<tên ứng dụng>.<vai trò>`, ví dụ `role:nghi-phep.quan-ly`.
+- `public:<tên ứng dụng>.<tên>`, ví dụ `public:nghi-phep.bang-tin`.
+- `user:<tên ứng dụng>.<sub>`, tức kênh cá nhân của người dùng trong ứng dụng.
+
+Tin gửi vào kênh khác bị từ chối với mã lỗi `42501`. Ví dụ, mã của ứng dụng `nghi-phep` không gửi được tin vào kênh `role:admin` hay `user:#<sub>`.
+
+Để nghe kênh `user:<tên ứng dụng>.<sub>`, giao diện của ứng dụng lấy token kênh như mục [Nghe kênh](#nghe-kênh). Centrifugo chỉ nhận token kênh do service `core` cấp, và service `core` chỉ cấp cho access token của chính ứng dụng. Do đó, giao diện của ứng dụng khác không nghe được kênh này. Kênh `user:#<sub>` không cần token kênh nên giao diện của mọi ứng dụng đều nghe được. Vì vậy, kênh này chỉ mang thông báo không thuộc ứng dụng nào. Ví dụ, tiếp theo ví dụ ở mục [Nhận thông báo mới](#nhận-thông-báo-mới):
+
+```js
+const channel = `user:nghi-phep.${keycloak.subject}`;
+const sub = centrifuge.newSubscription(channel, {
+  getToken: async () => {
+    await keycloak.updateToken(30);
+    const res = await fetch("/core/realtime/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keycloak.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel }),
+    });
+    return (await res.json()).token;
+  },
+});
+sub.on("publication", (ctx) => ctx.data.notification && showNotification(ctx.data.notification));
+sub.subscribe();
+```
+
+### Quy trình của ứng dụng
+
+Lệnh cài đặt triển khai các file `.bpmn` trong thư mục `processes` của ứng dụng vào Operaton. Quy tắc chung của file BPMN, form và bước máy làm được trình bày ở mục [Quy trình](#quy-trình). Quy trình của ứng dụng tuân theo thêm các quy tắc sau:
+
+- Mỗi file là một bản triển khai riêng. Tên của bản triển khai là tên file, nguồn (deployment source) là `app:<tên ứng dụng>`. File không thay đổi thì không tạo phiên bản mới. File đã sửa tạo một phiên bản mới, còn các quy trình đang chạy vẫn dùng phiên bản cũ.
+- Quy trình của ứng dụng nằm trong tenant của Operaton có tên là tên ứng dụng. Do đó, quy trình của ứng dụng không trùng mã được với quy trình của ứng dụng khác hay quy trình trong thư mục `config/operaton/processes`.
+- Mã quy trình có dạng `<schema>.<tên quy trình>`, ví dụ `nghi_phep.duyet`. Tên quy trình gồm chữ thường không dấu, chữ số và dấu gạch dưới. Mỗi quy trình chỉ được khai báo trong một file.
+- Thuộc tính `operaton:candidateStarterGroups` của quy trình và `operaton:candidateGroups` của việc chỉ gồm role của ứng dụng, không dùng expression.
+- Bước máy làm chỉ gọi hàm trong schema của ứng dụng. Call activity chỉ gọi quy trình có trong các file BPMN của chính ứng dụng.
+- Tên file chỉ gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và kết thúc bằng `.bpmn`.
+
+Lệnh soát từ chối file BPMN chạy mã bên trong Operaton. Script task, business rule task, send task, listener, class Java, delegate expression, connector và ràng buộc `validator` của form đều bị từ chối. Expression chỉ được gồm tên biến, giá trị, phép so sánh và phép logic, ví dụ `${so_ngay > 3 && !khan}`. Expression gọi hàm như `${now()}` hoặc đọc thuộc tính như `${don.so_ngay}` bị từ chối.
+
+File chỉ được dùng các thẻ sau:
+
+- Sự kiện bắt đầu, kết thúc, sự kiện trung gian và sự kiện biên. Sự kiện dùng được hẹn giờ, error, escalation, terminate, link và conditional.
+- Việc của người dùng (`userTask`), bước máy làm, `task`, `manualTask`, call activity và subprocess.
+- Các gateway, luồng (`sequenceFlow`) và multi-instance.
+- Lane, pool, chú thích và phần hình vẽ.
+
+Message và signal chưa được hỗ trợ. File thiếu phần hình vẽ (BPMNDI), hoặc có phần hình vẽ thiếu một số phần tử, vẫn được cài đặt. Khi đó, lệnh soát in cảnh báo, vì Cockpit không vẽ được quy trình hoặc các phần tử đó.
+
+Ứng dụng bắt đầu quy trình và xử lý việc qua service `core` như mục [Bắt đầu quy trình](#bắt-đầu-quy-trình) và [Nhận việc và hoàn thành việc](#nhận-việc-và-hoàn-thành-việc), với access token của ứng dụng. Ví dụ, lời gọi `POST /core/processes/nghi_phep.duyet/start` bắt đầu quy trình `nghi_phep.duyet`. Service `core` lọc quy trình và việc theo client của access token, tức claim `azp`:
+
+- Access token của một ứng dụng chỉ thấy, nhận, hoàn thành và bắt đầu quy trình của ứng dụng đó.
+- Access token của client khác, kể cả của ứng dụng khác, không thấy quy trình và việc của ứng dụng. Lời gọi tới quy trình hoặc việc đó nhận mã 404.
+- Access token của ứng dụng không thấy quy trình trong thư mục `config/operaton/processes`.
+
+Hàm của bước máy làm được khai báo bằng lệnh `GRANT EXECUTE` cho role `workflow` như mục [Bước máy làm](#bước-máy-làm). Hàm chạy bằng role `<schema>_user` như mọi hàm khác của ứng dụng, hoặc bằng role sở hữu schema khi khai `SECURITY DEFINER`. Hàm chỉ cấp cho role `workflow` thì người dùng không gọi được qua API của ứng dụng. Bước máy làm không có người gọi, nên `core.uid()` trả về `NULL`. Do đó, hàm cập nhật bảng có chính sách RLS theo `core.uid()` thường khai `SECURITY DEFINER`. Biến `initiator` cho biết người đã bắt đầu quy trình.
+
+Khi bước máy làm gọi hàm ngoài schema của ứng dụng sở hữu quy trình, bước này trở thành incident. Quy trình trong thư mục `config/operaton/processes` cũng không gọi được hàm của ứng dụng.
+
+Ví dụ, file `processes/duyet.bpmn` của ứng dụng nghỉ phép khai báo quy trình duyệt đơn. Người có realm role `nghi-phep.nhan-vien` tạo đơn qua API của ứng dụng rồi bắt đầu quy trình với mã đơn. Người có realm role `nghi-phep.quan-ly` duyệt đơn. Sau đó, bước máy làm ghi kết quả vào bảng `don`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="nghi_phep.duyet" name="Duyệt đơn nghỉ phép" isExecutable="true"
+                operaton:historyTimeToLive="P180D"
+                operaton:candidateStarterGroups="nghi-phep.nhan-vien">
+    <bpmn:startEvent id="gui_don" name="Gửi đơn">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="ma_don" label="Mã đơn" type="long">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="luong_1" sourceRef="gui_don" targetRef="duyet" />
+    <bpmn:userTask id="duyet" name="Duyệt đơn" operaton:candidateGroups="nghi-phep.quan-ly">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="ket_qua" label="Kết quả" type="enum">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+            <operaton:value id="dong_y" name="Đồng ý" />
+            <operaton:value id="tu_choi" name="Từ chối" />
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="luong_2" sourceRef="duyet" targetRef="ghi_ket_qua" />
+    <bpmn:serviceTask id="ghi_ket_qua" name="Ghi kết quả" operaton:type="external"
+                      operaton:topic="saigonos-function">
+      <bpmn:extensionElements>
+        <operaton:properties>
+          <operaton:property name="function" value="nghi_phep.ghi_ket_qua" />
+        </operaton:properties>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="luong_3" sourceRef="ghi_ket_qua" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" name="Đã xử lý" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="hinh_duyet">
+    <bpmndi:BPMNPlane id="mat_phang_duyet" bpmnElement="nghi_phep.duyet">
+      <bpmndi:BPMNShape id="gui_don_hinh" bpmnElement="gui_don">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="duyet_hinh" bpmnElement="duyet">
+        <dc:Bounds x="240" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ghi_ket_qua_hinh" bpmnElement="ghi_ket_qua">
+        <dc:Bounds x="400" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ket_thuc_hinh" bpmnElement="ket_thuc">
+        <dc:Bounds x="562" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="luong_1_hinh" bpmnElement="luong_1">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="240" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="luong_2_hinh" bpmnElement="luong_2">
+        <di:waypoint x="340" y="120" />
+        <di:waypoint x="400" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="luong_3_hinh" bpmnElement="luong_3">
+        <di:waypoint x="500" y="120" />
+        <di:waypoint x="562" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+```
+
+File `database/0002_duyet.sql` thêm cột trạng thái và hàm ghi kết quả. Người gửi đơn chỉ ghi được cột `ly_do`, nên không tự duyệt được đơn của mình. Người có realm role `nghi-phep.quan-ly` xem được mọi đơn. Hàm chỉ cập nhật đơn của người đã bắt đầu quy trình:
+
+```sql
+ALTER TABLE don ADD COLUMN trang_thai text NOT NULL DEFAULT 'cho_duyet'
+    CHECK (trang_thai IN ('cho_duyet', 'dong_y', 'tu_choi'));
+REVOKE INSERT ON don FROM nghi_phep_user;
+GRANT INSERT (ly_do) ON don TO nghi_phep_user;
+CREATE POLICY quan_ly_xem ON don FOR SELECT
+    USING ((SELECT core.has_role('nghi-phep.quan-ly')));
+
+CREATE FUNCTION ghi_ket_qua(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+    UPDATE nghi_phep.don SET trang_thai = bien ->> 'ket_qua'
+    WHERE id = (bien ->> 'ma_don')::bigint AND nguoi_gui = bien ->> 'initiator';
+    RETURN jsonb_build_object('da_ghi', FOUND);
+END
+$$;
+GRANT EXECUTE ON FUNCTION ghi_ket_qua(jsonb) TO workflow;
+```
+
+### Giao diện của ứng dụng
+
+Service `core` phục vụ các file trong thư mục `ui` của ứng dụng đã cài đặt tại địa chỉ `/apps/<tên ứng dụng>/`. Ví dụ, file `ui/app.js` của ứng dụng `nghi-phep` nằm ở địa chỉ `/apps/nghi-phep/app.js`. Địa chỉ `/apps/nghi-phep` chuyển hướng về `/apps/nghi-phep/`. Service `core` đọc thư mục `apps` của thư mục làm việc ở chế độ chỉ đọc.
+
+Các quy tắc sau áp dụng cho giao diện:
+
+- Địa chỉ không khớp file nào và không có phần mở rộng trả về file `index.html`. Nhờ đó, ứng dụng một trang (single-page application) tự xử lý các địa chỉ như `/apps/nghi-phep/don/12`. Địa chỉ có phần mở rộng mà không khớp file nào nhận mã 404.
+- File `index.html` không được cache. Các file khác được cache nhưng trình duyệt phải hỏi lại service `core` trước mỗi lần dùng. File không đổi thì service trả mã 304 và trình duyệt dùng bản đã cache.
+- Mỗi trả lời có các header `Content-Security-Policy`, `X-Content-Type-Options: nosniff` và `Referrer-Policy: same-origin`. Chính sách `Content-Security-Policy` chỉ cho trang tải script, ảnh, font và gọi API từ chính địa chỉ của hệ thống. Script viết trực tiếp trong file HTML không chạy, nên mọi script phải nằm trong file `.js` riêng.
+- Địa chỉ có `..`, kể cả ở dạng mã hóa như `%2e%2e`, nhận mã 404. File và thư mục có tên bắt đầu bằng dấu chấm, symlink và địa chỉ bắt đầu bằng `/apps/<tên ứng dụng>/api` không được phục vụ như file của giao diện.
+- Ứng dụng chưa cài đặt, kể cả khi thư mục đã được chép vào thư mục `apps`, nhận mã 404.
 
 ## Cập nhật phiên bản
 

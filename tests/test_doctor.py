@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import re
 import socket
 import ssl
 
@@ -7,6 +8,7 @@ import pytest
 
 from saigonos.doctor import (
     api_state,
+    app_state,
     core_state,
     gateway_checks,
     login_state,
@@ -494,3 +496,70 @@ def test_doctor_reports_api_of_centrifugo_open_through_gateway(home, cli, docker
     assert "LỖI            Centrifugo    API của Centrifugo nhận mã 405 qua API Gateway" in (
         result.output
     )
+
+
+def installed(home, name, ui=False):
+    folder = home / "apps" / name
+    folder.mkdir(parents=True)
+    manifest = {"name": name} | ({"ui": "ui"} if ui else {})
+    (folder / "saigonos-app.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_doctor_adds_one_line_for_each_installed_app(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    installed(home, "don-tu")
+    installed(home, "nghi-phep", ui=True)
+    (home / "apps" / ".nghi-phep.old").mkdir()
+    for path in ("/apps/don-tu/api/", "/apps/nghi-phep/api/", "/apps/nghi-phep/"):
+        gateway.routes[path, False] = (200, b"{}")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[-3:] == [
+        "BÌNH THƯỜNG    Ứng dụng don-tu       API của ứng dụng trả lời tại /apps/don-tu/api/",
+        "BÌNH THƯỜNG    Ứng dụng nghi-phep    "
+        "API và giao diện của ứng dụng trả lời tại /apps/nghi-phep/",
+        "Hệ thống hoạt động bình thường.",
+    ]
+
+
+def test_doctor_reports_app_that_does_not_answer(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    installed(home, "nghi-phep", ui=True)
+    gateway.routes["/apps/nghi-phep/api/", False] = (200, b"{}")
+    (home / "apps" / "hong").mkdir()
+    (home / "apps" / "hong" / "saigonos-app.json").write_text("[]", encoding="utf-8")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert re.search(
+        r"LỖI +Ứng dụng hong +không đọc được bản khai trong thư mục apps", result.output
+    )
+    assert "lời gọi /apps/nghi-phep/ nhận mã 404, đúng ra là 200" in result.output
+
+
+@pytest.mark.parametrize(
+    ("api", "page", "ok", "detail"),
+    [
+        (404, None, False, "lời gọi /apps/x/api/ nhận mã 404, đúng ra là 200"),
+        (406, 200, False, "lời gọi /apps/x/api/ nhận mã 406, đúng ra là 200"),
+        (200, None, True, "API của ứng dụng trả lời tại /apps/x/api/"),
+        (200, 500, False, "lời gọi /apps/x/ nhận mã 500, đúng ra là 200"),
+    ],
+    ids=["khong-co-route", "schema-chua-mo", "khong-giao-dien", "giao-dien-loi"],
+)
+def test_app_state_names_failing_call(api, page, ok, detail):
+    assert app_state("x", api, page) == (ok, detail)
+
+
+def test_doctor_reports_unreachable_gateway_for_apps(tmp_path, cli, docker, closed_url):
+    home = tmp_path / "home"
+    cli("init", "--home", home, "--url", closed_url)
+    docker.services(SERVICES, HEALTHY)
+    installed(home, "nghi-phep")
+
+    result = cli("doctor", "--home", home)
+
+    assert f"Ứng dụng nghi-phep    không kết nối được tới {closed_url}" in result.output

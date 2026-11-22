@@ -10,7 +10,7 @@ import asyncpg
 from pydantic import TypeAdapter, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from saigonos_core.database import SET_CALLER, Database
+from saigonos_core.database import SEAL_CLAIMS, SET_CALLER, Database
 from saigonos_core.operaton import Operaton, OperatonError, OperatonUnavailableError
 from saigonos_core.processes import Name, Processes, Rules, Value, typed
 
@@ -24,7 +24,7 @@ WAIT = 10
 RETRY_DELAYS = (5, 30, 120)
 PLAIN = frozenset({"String", "Long", "Integer", "Short", "Double", "Boolean", "Null", "Date"})
 RESULT = TypeAdapter(dict[Name, Value])
-CLAIMS = json.dumps({"role": ROLE})
+CLAIMS = {"role": ROLE}
 LIMIT = "SELECT set_config('statement_timeout', '20s', true)"
 CLAIM = """
 INSERT INTO core.step_runs (external_task_id, process_instance_id, activity_id, function)
@@ -40,13 +40,14 @@ SELECT p.oid,
        EXISTS (
            SELECT FROM pg_catalog.aclexplode(p.proacl) AS acl
            WHERE acl.grantee = 'workflow'::regrole AND acl.privilege_type = 'EXECUTE'
-       ) AS declared
+       ) AS declared,
+       (SELECT apps.name FROM core.apps WHERE apps.schema_name = n.nspname) AS app
 FROM pg_catalog.pg_proc AS p
 JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
 WHERE n.nspname = $1 AND p.proname = $2
 """
 CALL = "SELECT core.run_step($1::oid::regprocedure, $2::jsonb)"
-AS_SERVICE = "SELECT set_config('role', 'none', true)"
+AS_SERVICE = "SET LOCAL ROLE NONE"
 SAVE = "UPDATE core.step_runs SET result = $2::jsonb WHERE external_task_id = $1"
 
 logger = logging.getLogger(__name__)
@@ -85,9 +86,25 @@ def plain(variables: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {name: item["value"] for name, item in variables.items()}
 
 
-def procedure_of(rows: list[asyncpg.Record], label: str) -> int:
+def check_owner(schema: str, label: str, tenant: str | None) -> None:
+    if tenant is not None and schema != tenant.replace("-", "_"):
+        raise InvalidStepError(
+            f"Quy trình của ứng dụng {tenant} chỉ gọi được hàm trong schema "
+            f"{tenant.replace('-', '_')}. Hàm {label} nằm ngoài schema này"
+        )
+
+
+def procedure_of(rows: list[asyncpg.Record], label: str, tenant: str | None) -> int:
     if not rows:
         raise InvalidStepError(f"Không có hàm {label}")
+    owner = rows[0]["app"]
+    if owner != tenant and tenant is None:
+        raise InvalidStepError(
+            f"Quy trình không thuộc ứng dụng nào nên không gọi được hàm {label} "
+            f"của ứng dụng {owner}"
+        )
+    if owner != tenant:
+        raise InvalidStepError(f"Hàm {label} không thuộc ứng dụng {tenant}")
     matching = [row for row in rows if row["takes_jsonb"]]
     if not matching:
         raise InvalidStepError(f"Hàm {label} phải nhận đúng một tham số kiểu jsonb")
@@ -204,6 +221,8 @@ class Steps:
     async def perform(self, task: dict[str, Any]) -> dict[str, dict[str, Any]]:
         schema, name = function_of(task)
         label = f"{schema}.{name}"
+        tenant = task.get("tenantId")
+        check_owner(schema, label, tenant)
         rules = await run_in_threadpool(
             self.processes.rules, task["processDefinitionId"], task["processDefinitionKey"]
         )
@@ -213,8 +232,10 @@ class Steps:
             if not await connection.fetchval(CLAIM, *run):
                 return result_of(await connection.fetchval(STORED, task["id"]), rules, label)
             variables = plain(task["variables"])
-            procedure = procedure_of(await connection.fetch(FIND, schema, name), label)
-            await connection.execute(SET_CALLER, ROLE, CLAIMS)
+            procedure = procedure_of(await connection.fetch(FIND, schema, name), label, tenant)
+            claims = CLAIMS if tenant is None else CLAIMS | {"azp": tenant}
+            await connection.execute(SET_CALLER, ROLE, json.dumps(claims))
+            await connection.execute(SEAL_CLAIMS)
             try:
                 returned = await connection.fetchval(CALL, procedure, json.dumps(variables))
             except asyncpg.PostgresError as error:

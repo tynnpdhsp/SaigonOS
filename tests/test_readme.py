@@ -24,10 +24,25 @@ from saigonos.home import (
     LARGEST_FILE_SIZE,
     origin_pattern,
 )
+from saigonos_core import apps
+from saigonos_core.app_database import CREATED, RAN
+from saigonos_core.app_gateway import ROUTE_CREATED, route_of
+from saigonos_core.app_keycloak import CLIENT_CREATED, DEFAULT_SCOPES, OWNER, ROLE_CREATED
+from saigonos_core.app_processes import DEPLOYED
 from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.manifest import (
+    DESCRIPTION_LENGTH,
+    MANIFEST,
+    NAME_LENGTH,
+    RESERVED_NAMES,
+    RESERVED_PREFIX,
+    ROLE_LENGTH,
+    TITLE_LENGTH,
+    Manifest,
+)
 from saigonos_core.notifications import Notification
 from saigonos_core.processes import rules_of
 from saigonos_core.smtp import NONE, PORTS, STARTTLS, TLS
@@ -56,6 +71,15 @@ STACK = files("saigonos") / "stack"
 COMPOSE = (STACK / "compose.yaml").read_text(encoding="utf-8")
 DELIVERIES = (STACK / "config" / "postgres" / "migrations" / "0016_deliveries.sql").read_text(
     encoding="utf-8"
+)
+JSON_BLOCKS = re.findall(r"```json\n(.*?)```", README, re.DOTALL)
+MANIFEST_EXAMPLE = next(json.loads(block) for block in JSON_BLOCKS if '"roles"' in block)
+CHECK_SAMPLES = [sample for sample in SAMPLES if sample.startswith("Ứng dụng")]
+ROOT = Path(__file__).resolve().parent.parent
+PROCESS = next(
+    block
+    for block in re.findall(r"```xml\n(.*?)```", README, re.DOTALL)
+    if '"nghi_phep.duyet"' in block
 )
 
 
@@ -221,7 +245,7 @@ def test_readme_sample_process_accepts_values_of_examples():
         submitted(rules.task_forms["xu_ly"], completed, TASK_FORM)["ket_qua"]["value"]
         == (completed["ket_qua"])
     )
-    assert [json.loads(block) for block in re.findall(r"```json\n(.*?)```", README, re.DOTALL)] == [
+    assert [json.loads(block) for block in JSON_BLOCKS if '"detail"' in block] == [
         {"detail": refused.value.detail}
     ]
 
@@ -321,3 +345,86 @@ def test_readme_states_retry_rules_of_telegram():
     assert f"gửi lại sau {', '.join(delays[:-1])} và {delays[-1]}." in PROSE
     assert f"Sau {MAX_ATTEMPTS} lần gửi lỗi, tin chuyển sang `failed`." in PROSE
     assert f"Tin được gửi lại trong vòng {POLL} giây." in PROSE
+
+
+def write_app(folder, manifest):
+    files = {"database/0001_don.sql": "", "processes/duyet.bpmn": PROCESS, "ui/index.html": ""}
+    for name, text in files.items():
+        (folder / name).parent.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text(text, encoding="utf-8")
+    (folder / MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_readme_example_of_manifest_is_valid():
+    manifest = Manifest.model_validate(MANIFEST_EXAMPLE)
+    schema = MANIFEST_EXAMPLE["$schema"].split("/SaigonOS/main/", 1)[1]
+
+    assert manifest.ui == "ui"
+    assert (ROOT / schema).is_file()
+    assert f"]({schema})" in README
+
+
+def test_readme_lists_every_manifest_field():
+    rows = re.findall(r"^\| `([^`]+)` \| (Có|Không) \|", section("### Bản khai"), re.MULTILINE)
+
+    assert rows == [
+        (field.alias or name, "Có" if field.is_required() else "Không")
+        for name, field in Manifest.model_fields.items()
+    ]
+
+
+def test_readme_lists_names_reserved_by_core():
+    [line] = [line for line in README.splitlines() if "Các tên đó gồm" in line]
+
+    assert f"không bắt đầu bằng `{RESERVED_PREFIX}`" in line
+    assert set(re.findall(r"`([a-z-]+)`", line.split("Các tên đó gồm", 1)[1])) == RESERVED_NAMES
+
+
+def test_readme_states_limits_of_manifest():
+    assert f"Tên bắt đầu bằng chữ cái và dài tối đa {NAME_LENGTH} ký tự." in PROSE
+    assert f"Tên role dài tối đa {ROLE_LENGTH} ký tự" in PROSE
+    assert (
+        f"Tên hiển thị dài tối đa {TITLE_LENGTH} ký tự, "
+        f"mô tả của role dài tối đa {DESCRIPTION_LENGTH} ký tự."
+    ) in PROSE
+
+
+def test_readme_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(apps, "APPS", tmp_path)
+    write_app(tmp_path / "dung", MANIFEST_EXAMPLE)
+    roles = [MANIFEST_EXAMPLE["roles"][0], {"name": "don-tu.quan-ly", "description": "Duyệt đơn"}]
+    write_app(tmp_path / "sai", MANIFEST_EXAMPLE | {"version": "1.0", "roles": roles})
+    (tmp_path / "sai" / "ui" / "index.html").unlink()
+    outputs = []
+
+    for name in ("dung", "sai"):
+        apps.main(["check", name])
+        outputs.append(capsys.readouterr().out)
+
+    assert outputs == CHECK_SAMPLES
+
+
+def test_readme_shows_real_output_of_apply():
+    [sample] = [sample for sample in SAMPLES if sample.startswith("Đã tạo schema")]
+    data, sql_files = MANIFEST_EXAMPLE, ["0001_don.sql", "0002_duyet.sql"]
+    key = re.search(r'<bpmn:process id="([^"]+)"', PROCESS)[1]
+
+    assert sample.splitlines() == [
+        CREATED.format(schema=data["name"].replace("-", "_")),
+        *(RAN.format(name=sql_file) for sql_file in sql_files),
+        *(ROLE_CREATED.format(role=role["name"]) for role in data["roles"]),
+        CLIENT_CREATED.format(client=data["name"]),
+        ROUTE_CREATED.format(route=route_of(data["name"])),
+        DEPLOYED.format(file="duyet.bpmn", key=key, version=1),
+        apps.INSTALLED.format(name=data["name"], version=data["version"]),
+    ]
+    assert f"Ví dụ file `database/{sql_files[0]}`" in PROSE
+    assert f"File `database/{sql_files[1]}`" in PROSE
+    assert "Ví dụ, file `processes/duyet.bpmn`" in PROSE
+
+
+def test_readme_states_client_scopes_and_owner_attribute_of_app_clients():
+    scopes = ", ".join(f"`{scope}`" for scope in DEFAULT_SCOPES)
+
+    assert f"client scope mặc định {scopes} và không có client scope tùy chọn" in PROSE
+    assert f"thuộc tính `{OWNER}` của client và realm role" in PROSE

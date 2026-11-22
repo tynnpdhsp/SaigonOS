@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
+
 import pytest
 
 from saigonos import compose
+from saigonos.apps import app_folders
+from saigonos.cli import waiting
 
 
 @pytest.fixture
@@ -134,3 +138,103 @@ def test_capture_raises_with_reason_when_compose_fails(home, docker, error, reas
         compose.capture(home, "ps")
 
     assert str(raised.value) == f"Lệnh docker compose ps không chạy được: {reason}"
+
+
+def copied(home, name="nghi-phep", manifest=None):
+    folder = home / "apps" / name
+    folder.mkdir(parents=True)
+    content = json.dumps(manifest or {"name": name})
+    (folder / "saigonos-app.json").write_text(content, encoding="utf-8")
+    return folder
+
+
+def test_up_reapplies_installed_apps_after_services_are_ready(home, cli, docker):
+    copied(home)
+
+    result = cli("up", "--home", home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [
+        f"{home.resolve()}: compose up -d --wait",
+        f"{home.resolve()}: compose run --rm apps apply --all",
+    ]
+
+
+def test_up_skips_apps_service_without_installed_app(home, cli, docker):
+    (home / "apps" / ".nghi-phep.old").mkdir()
+    (home / "apps" / "khong-co-ban-khai").mkdir()
+
+    result = cli("up", "--home", home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [f"{home.resolve()}: compose up -d --wait"]
+
+
+def test_up_returns_exit_code_of_reapply(home, cli, docker):
+    copied(home)
+    docker.reply("run", code=1)
+
+    result = cli("up", "--home", home)
+
+    assert result.exit_code == 1
+
+
+def test_remove_runs_apps_service_then_deletes_copy(home, cli, docker):
+    copied(home)
+    copied(home, "khac")
+    for leftover in (".nghi-phep.old", ".nghi-phep.new"):
+        (home / "apps" / leftover).mkdir()
+
+    result = cli("remove", "--home", home, "nghi-phep")
+
+    assert result.exit_code == 0
+    assert docker.calls == [f"{home.resolve()}: compose run --rm apps remove nghi-phep"]
+    assert sorted(path.name for path in (home / "apps").iterdir()) == ["khac"]
+
+
+def test_remove_passes_purge_and_yes(home, cli, docker):
+    result = cli("remove", "--home", home, "nghi-phep", "--purge", "--yes")
+
+    assert result.exit_code == 0
+    assert docker.calls == [
+        f"{home.resolve()}: compose run --rm apps remove nghi-phep --purge --yes"
+    ]
+
+
+def test_failed_remove_keeps_copy(home, cli, docker):
+    folder = copied(home)
+    docker.reply("run", code=1)
+
+    result = cli("remove", "--home", home, "nghi-phep")
+
+    assert result.exit_code == 1
+    assert folder.is_dir()
+
+
+@pytest.mark.parametrize("name", ["Nghi-Phep", "../apps", "nghi_phep"], ids=["hoa", "cha", "gach"])
+def test_remove_refuses_invalid_name(home, cli, docker, name):
+    result = cli("remove", "--home", home, name)
+
+    assert result.exit_code == 1
+    assert f"Tên ứng dụng {name} không hợp lệ." in result.output
+    assert docker.calls == []
+
+
+def test_remove_needs_working_folder(tmp_path, cli, docker):
+    result = cli("remove", "--home", tmp_path / "khong-co", "nghi-phep")
+
+    assert result.exit_code == 1
+    assert "Hãy chạy lệnh saigonos init trước." in result.output
+    assert not (tmp_path / "khong-co").exists()
+
+
+def test_command_waiting_for_lock_says_so(capsys):
+    waiting()
+
+    assert capsys.readouterr().out == (
+        "Đang chờ một lệnh saigonos khác làm việc với ứng dụng chạy xong.\n"
+    )
+
+
+def test_missing_apps_folder_has_no_app(tmp_path):
+    assert app_folders(tmp_path / "apps") == []

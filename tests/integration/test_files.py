@@ -152,7 +152,8 @@ def audit_of(stack, file):
 def visible_to(stack, subject, file):
     claims = CLAIMS.format(subject=subject)
     query = f"SELECT count(*) FROM core.files WHERE id = '{file['id']}'"
-    return stack.sql(f"SET ROLE authenticated; SET request.jwt.claims = '{claims}'; {query}")[-1]
+    sealed = f"SET request.jwt.claims = '{claims}'; SELECT core.seal_claims()"
+    return stack.sql(f"SET ROLE authenticated; {sealed}; {query}")[-1]
 
 
 @pytest.fixture

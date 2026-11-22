@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
 import json
+from importlib.resources import files
 
 import asyncpg
 import pytest
 
 from saigonos_core.callers import caller_of
-from saigonos_core.database import SET_CALLER, SET_CLAIMS, Database
+from saigonos_core.database import SEAL_CLAIMS, SET_CALLER, SET_CLAIMS, Database
 
 
 class FakeTransaction:
@@ -94,6 +95,7 @@ def test_session_discards_plans_then_sets_role_and_claims_inside_transaction(poo
         "begin",
         ("DISCARD PLANS",),
         (SET_CALLER, "authenticated", json.dumps(caller.claims)),
+        (SEAL_CLAIMS,),
         ("SELECT core.uid()",),
         "commit",
         "release",
@@ -115,6 +117,7 @@ def test_service_session_keeps_role_of_service_and_sets_claims_of_caller(pool, r
         "begin",
         ("DISCARD PLANS",),
         (SET_CLAIMS, json.dumps(caller.claims)),
+        (SEAL_CLAIMS,),
         ("UPDATE core.files SET status = 'pending_scan'",),
         "commit",
         "release",
@@ -148,6 +151,15 @@ def test_session_rolls_back_when_query_fails(pool):
         asyncio.run(query())
 
     assert created.events[-2:] == ["rollback", "release"]
+
+
+def test_seal_statement_is_one_the_database_accepts():
+    folder = files("saigonos") / "stack" / "config" / "postgres" / "migrations"
+    texts = [path.read_text() for path in sorted(folder.iterdir(), key=lambda path: path.name)]
+    sealing = [text for text in texts if "FUNCTION core.seal_claims()" in text]
+
+    assert SEAL_CLAIMS == "SELECT core.seal_claims()"
+    assert f"'{SEAL_CLAIMS}'" in sealing[-1]
 
 
 def test_set_caller_statement_is_local_to_transaction():

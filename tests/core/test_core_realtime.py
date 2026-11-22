@@ -6,7 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from saigonos_core.main import create_app
-from saigonos_core.realtime import ALGORITHM, FORBIDDEN, LIFETIME, SubscriptionTokens
+from saigonos_core.realtime import (
+    ALGORITHM,
+    DENIED,
+    FORBIDDEN,
+    LIFETIME,
+    NOT_OWN,
+    SubscriptionTokens,
+)
 
 KEY = "khoa-ky-token-kenh-dung-trong-kiem-thu"
 NOW = 1_763_380_000.0
@@ -36,8 +43,10 @@ class IdleDatabase:
 
 
 @pytest.fixture
-def client(settings, scans, steps, deliveries):
-    app = create_app(settings, IdleDatabase(), scans=scans, steps=steps, deliveries=deliveries)
+def client(settings, scans, steps, deliveries, scopes):
+    app = create_app(
+        settings, IdleDatabase(), scans=scans, steps=steps, deliveries=deliveries, scopes=scopes
+    )
     with TestClient(app) as client:
         yield client
 
@@ -154,5 +163,52 @@ def test_openapi_document_describes_token_call(client):
     call = client.get("/openapi.json").json()["paths"]["/realtime/token"]["post"]
 
     assert call["security"] == [{"HTTPBearer": []}]
-    assert call["responses"]["403"]["description"] == FORBIDDEN
+    assert call["responses"]["403"]["description"] == DENIED
     assert set(call["responses"]) == {"200", "401", "403", "422"}
+
+
+APP = "nghi-phep"
+
+
+def test_token_of_app_gets_channel_token_for_own_personal_channel_of_app(
+    client, realm, settings, scopes
+):
+    scopes.apps.add(APP)
+    channel = f"user:{APP}.{realm.subject}"
+
+    reply = request_token(client, realm, channel, (), azp=APP)
+
+    assert reply.status_code == 200
+    claims = claims_of(reply.json()["token"], settings.subscription_key)
+    assert (claims["sub"], claims["channel"]) == (realm.subject, channel)
+
+
+@pytest.mark.parametrize(
+    ("channel", "client_id"),
+    [
+        (f"user:{APP}.4f1b0c0e-nguoi-dung", "khac"),
+        (f"user:{APP}.4f1b0c0e-nguoi-dung", "kiem-thu"),
+        (f"user:{APP}.nguoi-khac", APP),
+        ("user:khac.4f1b0c0e-nguoi-dung", APP),
+    ],
+    ids=["ung-dung-khac", "client-khac", "nguoi-khac", "kenh-cua-ung-dung-khac"],
+)
+def test_personal_channel_of_app_needs_token_of_that_app_and_user(
+    client, realm, scopes, channel, client_id
+):
+    scopes.apps |= {APP, "khac"}
+
+    reply = request_token(client, realm, channel, (), azp=client_id)
+
+    assert (reply.status_code, reply.json()) == (403, {"detail": NOT_OWN})
+
+
+@pytest.mark.parametrize(
+    "channel",
+    ["user:Nghi-Phep.a", "user:nghi_phep.a", "user:nghi-phep", "user:nghi-phep.", "user:.a"],
+    ids=["chu-hoa", "gach-duoi", "thieu-sub", "sub-rong", "thieu-ung-dung"],
+)
+def test_personal_channel_of_app_follows_name_rules(client, realm, channel):
+    reply = request_token(client, realm, channel, (), azp=APP)
+
+    assert reply.status_code == 422
