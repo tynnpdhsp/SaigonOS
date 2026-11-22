@@ -117,6 +117,8 @@ BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API c�
 Hệ thống hoạt động bình thường.
 ```
 
+Khi đã cài đặt ứng dụng, lệnh có thêm một dòng cho mỗi ứng dụng trong thư mục `apps`. Dòng này kiểm tra API của ứng dụng tại `/apps/<tên ứng dụng>/api/` và giao diện tại `/apps/<tên ứng dụng>/` khi bản khai có thư mục `ui`.
+
 ## Truy cập hệ thống
 
 Với cấu hình mặc định, hệ thống chỉ truy cập được từ chính máy cài đặt và có các địa chỉ sau:
@@ -347,9 +349,11 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 
 | Thao tác | Lệnh `saigonos` | Lệnh Docker Compose trong `~/saigonos` |
 |---|---|---|
-| Khởi động | `saigonos up` | `docker compose up -d --wait` |
+| Khởi động | `saigonos up` | `docker compose up -d --wait` rồi `docker compose run --rm apps apply --all` |
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
+
+Sau khi các service sẵn sàng, lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt, như mục [Cài đặt ứng dụng](#cài-đặt-ứng-dụng). Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai. Mỗi dòng kết quả bắt đầu bằng tên ứng dụng. Khi chưa có ứng dụng nào trong thư mục `apps`, lệnh bỏ qua bước này.
 
 ## Triển khai trên máy chủ chưa có reverse proxy
 
@@ -1348,7 +1352,7 @@ Lệnh thực hiện các bước sau:
 Đã cài đặt ứng dụng nghi-phep 0.1.0.
 ```
 
-Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak, APISIX và Operaton không thay đổi.
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Mỗi lần chạy, lệnh chỉ in những gì đã thay đổi. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak, APISIX và Operaton không thay đổi, và lệnh chỉ in dòng `Không có gì thay đổi.`
 
 Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
 
@@ -1359,6 +1363,32 @@ docker compose run --rm apps apply nghi-phep
 ```
 
 Service `apps` giữ mật khẩu superuser của PostgreSQL, mật khẩu của tài khoản `admin` trong realm master của Keycloak và khóa Admin API của APISIX. Service này chỉ chạy khi được gọi. Service `core` không có ba giá trị này. Để triển khai file BPMN, service `apps` dùng tài khoản `core` của Operaton giống service `core`.
+
+### Gỡ ứng dụng
+
+Lệnh sau gỡ ứng dụng `nghi-phep` khỏi hệ thống:
+
+```bash
+saigonos remove nghi-phep
+```
+
+Lệnh gỡ route của ứng dụng trên APISIX và client trên Keycloak, tạm dừng các quy trình của ứng dụng cùng các quy trình đang chạy trên Operaton, rồi bỏ schema của ứng dụng khỏi API. Giao diện của ứng dụng không còn được phục vụ. Bản chép của ứng dụng trong thư mục `apps` bị xóa. Schema, dữ liệu, các role và việc gán role cho người dùng được giữ lại. Cài đặt lại ứng dụng thì dùng tiếp dữ liệu cũ, các file SQL đã chạy không chạy lại và các quy trình đã tạm dừng được chạy lại.
+
+Để xóa hẳn ứng dụng cùng schema, dữ liệu, role, thông báo, hàng đợi gửi tin và các bản triển khai trên Operaton, thêm tùy chọn `--purge`:
+
+```bash
+saigonos remove nghi-phep --purge
+```
+
+Lệnh hỏi lại và chỉ xóa khi người dùng gõ đúng tên ứng dụng. Khi chạy trong script, thêm tùy chọn `--yes` để bỏ qua câu hỏi. Lịch sử của quy trình cũng bị xóa. Audit log của các bảng của ứng dụng được giữ lại.
+
+Cũng có thể gỡ bằng Docker Compose. Khi đó, xóa bản chép trong thư mục `apps` bằng tay:
+
+```bash
+cd ~/saigonos
+docker compose run --rm apps remove nghi-phep
+rm -r apps/nghi-phep
+```
 
 ### File SQL của ứng dụng
 
