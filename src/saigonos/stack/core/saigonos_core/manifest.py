@@ -42,6 +42,7 @@ RESERVED_NAMES = frozenset(
         "api",
         "apps",
         "auth",
+        "auth-admin",
         "authenticated",
         "authenticator",
         "broker",

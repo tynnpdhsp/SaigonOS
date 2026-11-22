@@ -54,6 +54,7 @@
               "api",
               "apps",
               "auth",
+              "auth-admin",
               "authenticated",
               "authenticator",
               "broker",
