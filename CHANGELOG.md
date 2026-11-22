@@ -19,6 +19,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh cài đặt tạo trên Keycloak các realm role của ứng dụng theo bản khai, kèm mô tả, và một public client trùng tên ứng dụng. Client chỉ dùng luồng Authorization Code với PKCE `S256` và chỉ chuyển hướng về địa chỉ `/apps/<tên>/`. Client tắt Full scope allowed, nên access token của ứng dụng chỉ mang realm role `authenticated` và các role của chính ứng dụng. Service `apps` giữ mật khẩu của tài khoản `admin` trong realm master, service `core` không có mật khẩu này.
 - Mỗi lần cài đặt, client và realm role của ứng dụng được đặt lại theo bản khai, kể cả khi đã bị sửa trong Admin Console. Khi Keycloak đã có client hoặc realm role trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu.
 - Lời gọi API vào schema của một ứng dụng chỉ nhận access token được cấp cho client của ứng dụng đó. Access token của client khác nhận mã 403. Lời gọi không có access token vẫn chạy với role `anon`.
+- PostgREST và service `core` niêm phong claims của mỗi lời gọi bằng HMAC-SHA256. Khi hàm SQL của ứng dụng đổi `request.jwt.claims`, các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác để đọc dữ liệu của ứng dụng khác.
 
 ## [0.5.0] - 2026-11-21
 
