@@ -1,6 +1,6 @@
 {
   "name": "operaton",
-  "desc": "Operaton: Cockpit, Tasklist và Admin, đăng nhập bằng Keycloak. REST của Operaton không mở qua API Gateway. Nút đăng xuất của Operaton trỏ tới /operaton/logout",
+  "desc": "Operaton: Cockpit, Tasklist và Admin, đăng nhập bằng Keycloak. OPA kiểm tra dải IP trước khi chuyển lời gọi. REST của Operaton không mở qua API Gateway. Nút đăng xuất của Operaton trỏ tới /operaton/logout",
   "uris": [
     "/operaton",
     "/operaton/",
@@ -15,6 +15,10 @@
   ],
   "vars": [["uri", "!", "~~", ";"]],
   "plugins": {
+    "opa": {
+      "host": "http://opa:8181",
+      "policy": "saigonos/admin/decision"
+    },
     "proxy-rewrite": {
       "regex_uri": ["^(.*)$", "$1"]
     }

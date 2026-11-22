@@ -1,0 +1,29 @@
+{
+  "name": "auth-admin",
+  "desc": "Keycloak: Admin Console và Admin REST API của realm saigonos. OPA kiểm tra dải IP và việc đăng nhập bằng OTP trước khi chuyển lời gọi",
+  "uris": ["/auth/admin", "/auth/admin/*"],
+  "vars": [["uri", "!", "~~", "^/auth/admin/(realms/)?master(/.*)?$"]],
+  "plugins": {
+    "openid-connect": {
+      "_meta": {
+        "filter": [["http_authorization", "~~", "."]]
+      },
+      "client_id": "apisix",
+      "discovery": "http://keycloak:8080/auth/realms/saigonos/.well-known/openid-configuration",
+      "realm": "saigonos",
+      "bearer_only": true,
+      "use_jwks": true,
+      "iat_slack": 0
+    },
+    "opa": {
+      "host": "http://opa:8181",
+      "policy": "saigonos/admin/decision"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "keycloak:8080": 1
+    }
+  }
+}
