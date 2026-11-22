@@ -46,7 +46,7 @@ JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
 WHERE n.nspname = $1 AND p.proname = $2
 """
 CALL = "SELECT core.run_step($1::oid::regprocedure, $2::jsonb)"
-AS_SERVICE = "SELECT set_config('role', 'none', true)"
+AS_SERVICE = "SET LOCAL ROLE NONE"
 SAVE = "UPDATE core.step_runs SET result = $2::jsonb WHERE external_task_id = $1"
 
 logger = logging.getLogger(__name__)

@@ -181,6 +181,10 @@ def test_step_calls_declared_function_with_variables_as_workflow(steps, database
     assert database.statements[3][1:] == ("workflow", json.dumps({"role": "workflow"}))
 
 
+def test_step_returns_to_service_role_without_set_config():
+    assert AS_SERVICE == "SET LOCAL ROLE NONE"
+
+
 def test_step_that_already_ran_completes_with_stored_result(steps, database, operaton):
     database.runs["buoc-1"] = {"result": json.dumps({"da_xu_ly": True})}
 
