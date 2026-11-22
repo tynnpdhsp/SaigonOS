@@ -456,6 +456,13 @@ Khi sửa phần quy trình của ứng dụng, cần tuân theo các quy tắc 
 - Chính sách RLS `recipient_only` của bảng `core.notifications` so cột `app` với `core.calling_app()`. Lời gọi `GET /core/notifications` không tự lọc theo ứng dụng mà dựa vào chính sách này. Khóa chống trùng của `core.notifications` và `core.deliveries` có cả cột `app`.
 - Mã của ứng dụng chỉ gửi tin vào kênh `role:<tên>.`, `public:<tên>.` và `user:<tên>.`. Kênh `user:#<sub>` không cần token kênh nên giao diện của mọi ứng dụng nghe được. Do đó, kênh này chỉ mang thông báo không thuộc ứng dụng nào.
 
+Khi sửa việc gỡ ứng dụng, cần tuân theo các quy tắc sau:
+
+- Lệnh `remove` của service `apps` gỡ theo thứ tự route, client, quy trình rồi cơ sở dữ liệu. Mỗi bước bỏ qua phần đã gỡ. Do đó, chạy lại lệnh sau một lần lỗi thì lệnh làm tiếp phần còn lại.
+- Hàm `core.remove_app` đặt `applied_at` về `NULL` và ghi `removed_at`. Ở lần cài đặt sau, `apply_database` báo cho `configure_services` rằng ứng dụng vừa bị gỡ, và chỉ khi đó quy trình mới được chạy lại. Không chạy lại quy trình ở mọi lần cài đặt, vì quản trị viên có thể đã tạm dừng một quy trình trong Cockpit.
+- Hàm `core.purge_app` xóa dòng của ứng dụng trong `core.deliveries`, `core.notifications`, `core.step_runs` và `core.migrations`, rồi xóa schema và hai role. Khi lõi thêm bảng lưu dữ liệu theo ứng dụng, thêm bảng đó vào hàm này. Không xóa `core.audit_log`.
+- Lệnh `apply --all` lấy danh sách ứng dụng từ `core.apps`, không từ thư mục `apps`. Lệnh `saigonos up` chỉ gọi `apply --all` khi thư mục `apps` có ứng dụng, còn `saigonos doctor` kiểm tra từng ứng dụng trong thư mục này. Do đó, lệnh `saigonos remove` xóa cả bản chép của ứng dụng.
+
 Service `core` phục vụ giao diện của ứng dụng bằng `saigonos_core/ui.py`. Khi sửa phần này, cần tuân theo các quy tắc sau:
 
 - Ứng dụng đã cài đặt là ứng dụng có `applied_at` trong bảng `core.apps`. Role `core_service` chỉ đọc được các cột `name`, `schema_name`, `manifest` và `applied_at` của bảng này.
