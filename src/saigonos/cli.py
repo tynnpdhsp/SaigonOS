@@ -9,7 +9,17 @@ import click
 from click.core import ParameterSource
 
 from saigonos import __version__, compose
-from saigonos.apps import AppFolderError, app_name, keep_new, locked, put_in_place, restore_old
+from saigonos.apps import (
+    NAME,
+    AppFolderError,
+    app_folders,
+    app_name,
+    keep_new,
+    locked,
+    put_in_place,
+    remove_copy,
+    restore_old,
+)
 from saigonos.audit import verify as verify_chain
 from saigonos.doctor import run_checks
 from saigonos.home import (
@@ -244,13 +254,25 @@ def remove_disabled_services(home: Path) -> None:
         raise click.ClickException(str(error)) from error
 
 
-@main.command(help="Khởi động các service bằng Docker Compose và chờ đến khi sẵn sàng.")
+def waiting() -> None:
+    click.echo("Đang chờ một lệnh saigonos khác làm việc với ứng dụng chạy xong.")
+
+
+@main.command(
+    help=(
+        "Khởi động các service bằng Docker Compose và chờ đến khi sẵn sàng. "
+        "Sau đó, cài đặt lại các ứng dụng đã cài đặt."
+    )
+)
 @home_option
 @click.pass_context
 def up(ctx: click.Context, home: Path) -> None:
     remove_disabled_services(home)
     run_compose(ctx, home, "up", "-d", "--wait")
     click.echo(f"Địa chỉ truy cập: {read_url(home)}")
+    if app_folders(home / APPS_FOLDER):
+        with locked(home, waiting):
+            run_compose(ctx, home, "run", "--rm", "apps", "apply", "--all")
 
 
 @main.command(help="Dừng và xóa các container. Dữ liệu được giữ lại.")
@@ -268,7 +290,7 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
     except (OSError, ValueError, AppFolderError) as error:
         raise click.ClickException(f"Không đọc được bản khai của ứng dụng: {error}") from error
     apps = home / APPS_FOLDER
-    with locked(home, lambda: click.echo("Đang chờ một lệnh saigonos apply khác chạy xong.")):
+    with locked(home, waiting):
         try:
             put_in_place(folder, apps, name)
         except (OSError, ValueError, AppFolderError) as error:
@@ -331,7 +353,37 @@ def apply(ctx: click.Context, home: Path, check: bool, folder: Path) -> None:
         install(ctx, home, folder)
 
 
-@main.command(help="Kiểm tra trạng thái các service và API Gateway.")
+@main.command(
+    short_help="Gỡ một ứng dụng khỏi hệ thống.",
+    help=(
+        "Gỡ client, route, giao diện và quy trình của ứng dụng TÊN rồi xóa bản chép của ứng dụng "
+        "trong thư mục apps. Schema, dữ liệu, role và việc gán role được giữ lại. "
+        "Cài đặt lại ứng dụng thì dùng tiếp dữ liệu cũ."
+    ),
+)
+@home_option
+@click.option(
+    "--purge",
+    is_flag=True,
+    help="Xóa hẳn ứng dụng cùng schema, dữ liệu, role và quy trình. Lệnh hỏi lại trước khi xóa.",
+)
+@click.option("--yes", is_flag=True, help="Không hỏi lại khi dùng --purge.")
+@click.argument("name", metavar="TÊN")
+@click.pass_context
+def remove(ctx: click.Context, home: Path, purge: bool, yes: bool, name: str) -> None:
+    if not NAME.fullmatch(name):
+        raise click.ClickException(f"Tên ứng dụng {name} không hợp lệ.")
+    try:
+        compose.command(home)
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    flags = [*(["--purge"] if purge else []), *(["--yes"] if yes else [])]
+    with locked(home, waiting):
+        run_compose(ctx, home, "run", "--rm", "apps", "remove", name, *flags)
+        remove_copy(home / APPS_FOLDER, name)
+
+
+@main.command(help="Kiểm tra trạng thái các service, API Gateway và các ứng dụng đã cài đặt.")
 @home_option
 @click.pass_context
 def doctor(ctx: click.Context, home: Path) -> None:

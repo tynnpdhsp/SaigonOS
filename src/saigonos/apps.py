@@ -93,3 +93,19 @@ def restore_old(apps: Path, name: str) -> None:
     shutil.rmtree(target)
     if old.exists():
         old.rename(target)
+
+
+def app_folders(apps: Path) -> list[Path]:
+    if not apps.is_dir():
+        return []
+    return sorted(
+        entry
+        for entry in apps.iterdir()
+        if entry.is_dir() and not entry.name.startswith(".") and (entry / MANIFEST).is_file()
+    )
+
+
+def remove_copy(apps: Path, name: str) -> None:
+    for folder in (apps / name, apps / f".{name}.new", apps / f".{name}.old"):
+        if folder.is_dir() and not folder.is_symlink():
+            shutil.rmtree(folder)
