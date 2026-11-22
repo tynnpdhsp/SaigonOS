@@ -553,6 +553,20 @@ def test_schema_made_by_hand_is_not_taken_over(stack, tmp_path):
     assert keycloak_client(stack, name) == []
 
 
+def test_app_named_after_user_role_of_another_app_is_refused(stack, plugged, tmp_path):
+    name = f"{plugged.name}-user"
+
+    result = plug(stack, notes_app(tmp_path / name, name))
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert printed_last(
+        result.stdout,
+        f"Role hoặc schema {schema_of(name)} đã có trong cơ sở dữ liệu nhưng không do SaigonOS "
+        f"tạo cho ứng dụng {name}. Hãy đặt tên khác cho ứng dụng.\n",
+    )
+    assert stack.sql(f"SELECT count(*) FROM core.apps WHERE name = '{name}'") == [["0"]]
+
+
 def test_apply_creates_roles_and_public_client_with_code_flow_and_pkce_only(stack, tmp_path):
     name = new_name()
     roles = [f"{name}.nguoi-dung", f"{name}.quan-ly"]
