@@ -287,7 +287,9 @@ def schema_of(name):
     return name.replace("-", "_")
 
 
-def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",), ui=None):
+def notes_app(
+    folder, name, version="0.1.0", files=None, roles=("nguoi-dung",), ui=None, access=None
+):
     manifest = {
         "name": name,
         "title": "Ghi chú thử",
@@ -295,6 +297,8 @@ def notes_app(folder, name, version="0.1.0", files=None, roles=("nguoi-dung",), 
         "roles": [{"name": f"{name}.{role}", "description": f"Vai trò {role}"} for role in roles],
         "database": "database",
     }
+    if access is not None:
+        manifest["access"] = access
     if ui is not None:
         manifest["ui"] = "giao-dien"
         for file, text in ui.items():
@@ -314,14 +318,13 @@ def plug(stack, folder):
     return stack.saigonos("apply", str(folder))
 
 
-def profile_call(stack, method, name, token, body=None, table="notes"):
-    headers = {"Accept-Profile": schema_of(name), "Content-Profile": schema_of(name)}
-    return stack.call(method, f"{stack.url}/api/{table}", token=token, body=body, headers=headers)
+def table_call(stack, method, name, token, body=None, table="notes"):
+    return stack.call(method, f"{stack.url}/apps/{name}/api/{table}", token=token, body=body)
 
 
 def wait_until_served(stack, name, token, table="notes"):
     deadline = time.monotonic() + 15
-    while profile_call(stack, "GET", name, token, table=table).status != 200:
+    while table_call(stack, "GET", name, token, table=table).status != 200:
         assert time.monotonic() < deadline, "PostgREST chưa phục vụ schema của ứng dụng"
         time.sleep(0.2)
 
@@ -430,10 +433,10 @@ def test_apply_plugs_app_and_gateway_serves_its_table(stack, tmp_path):
         f"Đã cài đặt ứng dụng {name} 0.1.0.\n",
     )
     wait_until_served(stack, name, token)
-    created = profile_call(stack, "POST", name, token, {"body": "Xin chào"})
+    created = table_call(stack, "POST", name, token, {"body": "Xin chào"})
     assert created.status == 201, created.body
-    mine = json.loads(profile_call(stack, "GET", name, token).body)
-    theirs = json.loads(profile_call(stack, "GET", name, stack.app_token(other, name)).body)
+    mine = json.loads(table_call(stack, "GET", name, token).body)
+    theirs = json.loads(table_call(stack, "GET", name, stack.app_token(other, name)).body)
     assert [(note["body"], note["owner"]) for note in mine] == [("Xin chào", user.id)]
     assert theirs == []
     assert started(stack, "postgrest") == before
@@ -647,7 +650,7 @@ def test_schema_of_app_takes_only_access_token_of_its_client(stack, plugged):
     wait_until_served(stack, plugged.name, own)
 
     replies = {
-        (source, method): profile_call(
+        (source, method): table_call(
             stack, method, plugged.name, token, {"body": "Ghi lén"} if method == "POST" else None
         )
         for source, token in tokens.items()
@@ -662,7 +665,7 @@ def test_schema_of_app_takes_only_access_token_of_its_client(stack, plugged):
         for key, reply in replies.items()
     }
     assert refused == dict.fromkeys(replies, (403, "SGN02", details))
-    assert profile_call(stack, "GET", plugged.name, own).status == 200
+    assert table_call(stack, "GET", plugged.name, own).status == 200
     assert stack.api(tokens["ung-dung-khac"]).status == 200
     written = f"SELECT count(*) FROM {schema_of(plugged.name)}.notes WHERE body = 'Ghi lén'"
     assert stack.sql(written) == [["0"]]
@@ -674,15 +677,15 @@ def test_call_without_token_into_schema_of_app_still_runs_as_anon(stack, tmp_pat
     assert plug(stack, notes_app(tmp_path / name, name, files=files)).returncode == 0
     wait_until_served(stack, name, None, table="board")
 
-    anonymous = profile_call(stack, "GET", name, None, table="board")
-    foreign = profile_call(stack, "GET", name, stack.token(stack.new_user()), table="board")
+    anonymous = table_call(stack, "GET", name, None, table="board")
+    foreign = table_call(stack, "GET", name, stack.token(stack.new_user()), table="board")
 
     assert (anonymous.status, json.loads(anonymous.body)) == (200, [])
     assert foreign.status == 403
 
 
 def rpc(stack, name, token, function, body):
-    return profile_call(stack, "POST", name, token, body, table=f"rpc/{function}")
+    return table_call(stack, "POST", name, token, body, table=f"rpc/{function}")
 
 
 def outcome(reply):
@@ -698,7 +701,7 @@ def test_function_of_app_cannot_pass_itself_off_as_another_user(stack, tmp_path)
     victim, thief = stack.new_user(), stack.new_user()
     victim_token, thief_token = stack.app_token(victim, name), stack.app_token(thief, name)
     wait_until_served(stack, name, victim_token)
-    assert profile_call(stack, "POST", name, victim_token, {"body": "Bí mật"}).status == 201
+    assert table_call(stack, "POST", name, victim_token, {"body": "Bí mật"}).status == 201
     kept = rpc(stack, name, victim_token, "keep_claims", {})
     assert kept.status in (200, 204), kept.body
 
@@ -723,7 +726,7 @@ def test_function_of_app_cannot_pass_itself_off_as_another_user(stack, tmp_path)
         "read_after_seal": refused,
         "read_with_kept_claims": (200, 0),
     }
-    own = json.loads(profile_call(stack, "GET", name, victim_token).body)
+    own = json.loads(table_call(stack, "GET", name, victim_token).body)
     assert [(note["body"], note["owner"]) for note in own] == [("Bí mật", victim.id)]
 
 
@@ -737,14 +740,14 @@ def test_function_of_app_cannot_read_another_app_even_rows_of_caller(stack, plug
     own, theirs = stack.app_token(user, name), stack.app_token(user, plugged.other)
     wait_until_served(stack, name, own)
     wait_until_served(stack, plugged.other, theirs)
-    assert profile_call(stack, "POST", plugged.other, theirs, {"body": "Của B"}).status == 201
-    assert profile_call(stack, "POST", name, own, {"body": "Của A"}).status == 201
+    assert table_call(stack, "POST", plugged.other, theirs, {"body": "Của B"}).status == 201
+    assert table_call(stack, "POST", name, own, {"body": "Của A"}).status == 201
 
     calls = [
         ("read_other", lambda: rpc(stack, name, own, "read_other", {})),
         ("switch_role", lambda: rpc(stack, name, own, "switch_role", {})),
         ("switch_by_clause", lambda: rpc(stack, name, own, "switch_by_clause", {})),
-        ("switched", lambda: profile_call(stack, "GET", name, own, table="switched")),
+        ("switched", lambda: table_call(stack, "GET", name, own, table="switched")),
         ("make_invoker", lambda: rpc(stack, name, own, "make_invoker", {})),
         ("switch_role_again", lambda: rpc(stack, name, own, "switch_role", {})),
         ("own_count", lambda: rpc(stack, name, own, "own_count", {})),
@@ -768,7 +771,7 @@ def test_function_of_app_cannot_read_another_app_even_rows_of_caller(stack, plug
         f"SELECT prosecdef, proowner::regrole FROM pg_proc WHERE oid = '{schema}.switch_role()'"
         "::regprocedure"
     ) == [["t", f"{schema}_user"]]
-    mine = json.loads(profile_call(stack, "GET", plugged.other, theirs).body)
+    mine = json.loads(table_call(stack, "GET", plugged.other, theirs).body)
     assert [note["body"] for note in mine] == ["Của B"]
 
 
@@ -1621,7 +1624,7 @@ def test_removed_app_keeps_its_data_and_other_apps_keep_running(stack, tmp_path)
     stack.grant_role(user, f"{name}.nguoi-dung")
     token = stack.app_token(user, name)
     wait_until_served(stack, name, token)
-    assert profile_call(stack, "POST", name, token, {"body": "Giữ lại"}).status == 201
+    assert table_call(stack, "POST", name, token, {"body": "Giữ lại"}).status == 201
 
     result = stack.saigonos("remove", name)
 
@@ -1654,7 +1657,7 @@ def test_removed_app_keeps_its_data_and_other_apps_keep_running(stack, tmp_path)
     )
     token = stack.app_token(user, name)
     wait_until_served(stack, name, token)
-    notes = json.loads(profile_call(stack, "GET", name, token).body)
+    notes = json.loads(table_call(stack, "GET", name, token).body)
     assert [note["body"] for note in notes] == ["Giữ lại"]
     assert app_call(stack, "GET", name, "").status == 200
 
@@ -1734,3 +1737,116 @@ def test_remove_of_app_never_installed_fails(stack):
 
     assert result.returncode == 1
     assert "chưa được cài đặt." in result.stdout
+
+
+def guarded_app(stack, tmp_path, name, access):
+    folder = notes_app(tmp_path / name, name, roles=("nguoi-dung", "quan-ly"), access=access)
+    result = plug(stack, folder)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return folder
+
+
+def refusal(reply):
+    error = json.loads(reply.body)
+    return reply.status, error["code"], error["message"]
+
+
+def app_login_with_otp(stack, user, name):
+    actions = {"requiredActions": ["CONFIGURE_TOTP"]}
+    assert stack.admin("PUT", f"/users/{user.id}", actions).status == 204
+    redirect = f"{stack.url}/apps/{name}/"
+    first, otp = stack.browser_login(name, redirect, user)
+    second, _ = stack.browser_login(name, redirect, user, otp)
+    assert first.status == 200, first.body
+    assert second.status == 200, second.body
+    return json.loads(first.body)["access_token"], json.loads(second.body)["access_token"]
+
+
+def test_general_api_address_does_not_reach_schema_of_app(stack, plugged):
+    token = stack.app_token(stack.new_user(), plugged.name)
+    wait_until_served(stack, plugged.name, token)
+    headers = {
+        "Accept-Profile": schema_of(plugged.name),
+        "Content-Profile": schema_of(plugged.name),
+    }
+
+    read = stack.call("GET", f"{stack.url}/api/notes", token=token, headers=headers)
+    write = stack.call("POST", f"{stack.url}/api/notes", token=token, headers=headers, body={})
+
+    assert (read.status, write.status) == (404, 404)
+
+
+def test_access_rules_of_app_are_checked_at_gateway_and_follow_apply(stack, tmp_path):
+    name = new_name()
+    rule = {"methods": ["POST"], "paths": ["/notes"], "roles": [f"{name}.quan-ly"]}
+    folder = guarded_app(stack, tmp_path, name, [rule])
+    staff = stack.app_token(user_with_roles(stack, f"{name}.nguoi-dung"), name)
+    manager = stack.app_token(user_with_roles(stack, f"{name}.quan-ly"), name)
+    wait_until_served(stack, name, manager)
+
+    refused = table_call(stack, "POST", name, staff, {"body": "Nhân viên"})
+    allowed = table_call(stack, "POST", name, manager, {"body": "Quản lý"})
+    read = table_call(stack, "GET", name, staff)
+    anonymous = table_call(stack, "POST", name, None, {"body": "Ẩn danh"})
+    route = route_state(stack, name)
+    notes_app(folder, name, roles=("nguoi-dung", "quan-ly"))
+    replugged = plug(stack, folder)
+    opened = table_call(stack, "POST", name, staff, {"body": "Sau khi bỏ luật"})
+
+    message = f"Lời gọi này cần một trong các role: {name}.quan-ly."
+    assert refusal(refused) == (403, "SGN03", message)
+    assert refused.headers["Content-Type"] == "application/json; charset=utf-8"
+    assert allowed.status == 201, allowed.body
+    assert read.status == 200
+    assert refusal(anonymous) == (401, "SGN03", "Lời gọi này cần access token.")
+    assert anonymous.headers["WWW-Authenticate"] == "Bearer"
+    assert route["labels"]["saigonos.access.1"] == json.dumps(rule, separators=(",", ":"))
+    assert route["plugins"]["opa"]["policy"] == "saigonos/apps/decision"
+    assert replugged.returncode == 0, replugged.stdout + replugged.stderr
+    assert f"Đã cập nhật route app-{name}." in replugged.stdout.splitlines()
+    assert "opa" not in route_state(stack, name)["plugins"]
+    assert opened.status == 201, opened.body
+
+
+def test_access_rule_with_otp_needs_login_with_otp(stack, tmp_path):
+    name = new_name()
+    guarded_app(stack, tmp_path, name, [{"methods": ["POST"], "otp": True}])
+    user = user_with_roles(stack, f"{name}.nguoi-dung")
+    without, with_otp = app_login_with_otp(stack, user, name)
+    wait_until_served(stack, name, with_otp)
+
+    refused = table_call(stack, "POST", name, without, {"body": "Chưa nhập OTP"})
+    allowed = table_call(stack, "POST", name, with_otp, {"body": "Đã nhập OTP"})
+
+    assert claims_of(without)["amr"] == ["pwd"]
+    assert claims_of(with_otp)["amr"] == ["pwd", "otp"]
+    message = "Lời gọi này cần đăng nhập bằng mật khẩu và mã OTP."
+    assert refusal(refused) == (403, "SGN03", message)
+    assert allowed.status == 201, allowed.body
+
+
+def test_access_rule_with_networks_refuses_other_addresses(stack, tmp_path):
+    name = new_name()
+    guarded_app(stack, tmp_path, name, [{"networks": ["192.0.2.0/24"]}])
+    token = stack.app_token(user_with_roles(stack, f"{name}.nguoi-dung"), name)
+
+    reply = table_call(stack, "GET", name, token)
+
+    message = "Địa chỉ IP này không được gọi đường dẫn này của ứng dụng."
+    assert refusal(reply) == (403, "SGN03", message)
+
+
+def test_app_with_rules_is_refused_while_opa_is_stopped(stack, plugged, tmp_path):
+    name = new_name()
+    guarded_app(stack, tmp_path, name, [{"otp": True}])
+    open_token = stack.app_token(stack.new_user(), plugged.name)
+    wait_until_served(stack, plugged.name, open_token)
+    assert stack.compose_result("stop", "opa").returncode == 0
+    try:
+        guarded = table_call(stack, "GET", name, None).status
+        unguarded = table_call(stack, "GET", plugged.name, open_token).status
+    finally:
+        started = stack.compose_result("up", "-d", "--wait", "opa", timeout=180)
+
+    assert (guarded, unguarded) == (403, 200)
+    assert started.returncode == 0, started.stderr
