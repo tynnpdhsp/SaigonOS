@@ -1364,6 +1364,8 @@ Mỗi ứng dụng có một schema và một role riêng trong cơ sở dữ li
 - Role của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, ví dụ `core.audit_log`. Role này cũng không đổi được sang role khác bằng `SET ROLE`.
 - Bảng, view và hàm mới chưa được cấp cho role nào, kể cả `PUBLIC`. File SQL cấp quyền cho role `authenticated` và `anon` bằng `GRANT`, gồm cả quyền `USAGE` trên schema của ứng dụng.
 - Role của ứng dụng dùng được hàm `core.audit()` để ghi audit log cho bảng và hàm `core.append_only()` để chặn sửa, xóa dòng của bảng.
+- Các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` chỉ đọc claims do PostgREST hoặc service `core` đặt cho lời gọi. Khi một hàm của ứng dụng đổi `request.jwt.claims` bằng `set_config` hay `SET LOCAL`, các hàm này trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác.
+- Trong chính sách RLS, viết `(SELECT core.uid())` thay cho `core.uid()`. Khi đó, PostgreSQL chỉ tính giá trị một lần cho mỗi câu truy vấn thay vì một lần cho mỗi dòng.
 
 Khi cơ sở dữ liệu đã có role hoặc schema trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng và không đụng tới role hoặc schema đó.
 
@@ -1376,7 +1378,7 @@ CREATE TABLE don (
     ly_do text NOT NULL
 );
 ALTER TABLE don ENABLE ROW LEVEL SECURITY;
-CREATE POLICY cua_minh ON don USING (nguoi_gui = core.uid());
+CREATE POLICY cua_minh ON don USING (nguoi_gui = (SELECT core.uid()));
 CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON don
     FOR EACH ROW EXECUTE FUNCTION core.audit();
 GRANT USAGE ON SCHEMA nghi_phep TO authenticated;
