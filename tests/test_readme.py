@@ -28,6 +28,7 @@ from saigonos_core import apps
 from saigonos_core.app_database import CREATED, RAN
 from saigonos_core.app_gateway import ROUTE_CREATED, route_of
 from saigonos_core.app_keycloak import CLIENT_CREATED, DEFAULT_SCOPES, OWNER, ROLE_CREATED
+from saigonos_core.app_processes import DEPLOYED
 from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
@@ -75,24 +76,11 @@ JSON_BLOCKS = re.findall(r"```json\n(.*?)```", README, re.DOTALL)
 MANIFEST_EXAMPLE = next(json.loads(block) for block in JSON_BLOCKS if '"roles"' in block)
 CHECK_SAMPLES = [sample for sample in SAMPLES if sample.startswith("Ứng dụng")]
 ROOT = Path(__file__).resolve().parent.parent
-PROCESS = """<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
-                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
-  <bpmn:process id="nghi_phep.duyet" isExecutable="true" operaton:historyTimeToLive="P30D">
-    <bpmn:startEvent id="bat_dau" />
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="hinh">
-    <bpmndi:BPMNPlane id="mat_phang" bpmnElement="nghi_phep.duyet">
-      <bpmndi:BPMNShape id="bat_dau_hinh" bpmnElement="bat_dau">
-        <dc:Bounds x="100" y="80" width="36" height="36" />
-      </bpmndi:BPMNShape>
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>
-"""
+PROCESS = next(
+    block
+    for block in re.findall(r"```xml\n(.*?)```", README, re.DOTALL)
+    if '"nghi_phep.duyet"' in block
+)
 
 
 def section(title):
@@ -418,17 +406,21 @@ def test_readme_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
 
 def test_readme_shows_real_output_of_apply():
     [sample] = [sample for sample in SAMPLES if sample.startswith("Đã tạo schema")]
-    data, sql_file = MANIFEST_EXAMPLE, "0001_don.sql"
+    data, sql_files = MANIFEST_EXAMPLE, ["0001_don.sql", "0002_duyet.sql"]
+    key = re.search(r'<bpmn:process id="([^"]+)"', PROCESS)[1]
 
     assert sample.splitlines() == [
         CREATED.format(schema=data["name"].replace("-", "_")),
-        RAN.format(name=sql_file),
+        *(RAN.format(name=sql_file) for sql_file in sql_files),
         *(ROLE_CREATED.format(role=role["name"]) for role in data["roles"]),
         CLIENT_CREATED.format(client=data["name"]),
         ROUTE_CREATED.format(route=route_of(data["name"])),
+        DEPLOYED.format(file="duyet.bpmn", key=key, version=1),
         apps.INSTALLED.format(name=data["name"], version=data["version"]),
     ]
-    assert f"Ví dụ file `database/{sql_file}`" in PROSE
+    assert f"Ví dụ file `database/{sql_files[0]}`" in PROSE
+    assert f"File `database/{sql_files[1]}`" in PROSE
+    assert "Ví dụ, file `processes/duyet.bpmn`" in PROSE
 
 
 def test_readme_states_client_scopes_and_owner_attribute_of_app_clients():

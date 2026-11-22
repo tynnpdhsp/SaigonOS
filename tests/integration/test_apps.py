@@ -1093,27 +1093,51 @@ def readme_block(language, marker):
     return next(block for block in blocks if marker in block)
 
 
-def test_readme_example_app_is_plugged_and_serves_its_table(stack, tmp_path):
-    manifest = json.loads(readme_block("json", '"roles"')) | {"processes": None, "ui": None}
+def test_readme_example_app_is_plugged_and_runs_its_process(stack, tmp_path):
+    manifest = json.loads(readme_block("json", '"roles"')) | {"ui": None}
     app = tmp_path / manifest["name"]
-    (app / "database").mkdir(parents=True)
-    sql = readme_block("sql", "CREATE TABLE don")
-    (app / "database" / "0001_don.sql").write_text(sql, encoding="utf-8")
+    files = {
+        "database/0001_don.sql": readme_block("sql", "CREATE TABLE don"),
+        "database/0002_duyet.sql": readme_block("sql", "CREATE FUNCTION ghi_ket_qua"),
+        "processes/duyet.bpmn": readme_block("xml", '"nghi_phep.duyet"'),
+    }
+    for name, text in files.items():
+        (app / name).parent.mkdir(parents=True, exist_ok=True)
+        (app / name).write_text(text, encoding="utf-8")
     (app / "saigonos-app.json").write_text(json.dumps(manifest), encoding="utf-8")
-    user, other = stack.new_user(), stack.new_user()
+    employee, manager, other = stack.new_user(), stack.new_user(), stack.new_user()
 
     result = plug(stack, app)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    token = stack.app_token(user, "nghi-phep")
+    assert printed_last(result.stdout, readme_block("text", "Đã tạo schema nghi_phep"))
+    stack.grant_role(employee, "nghi-phep.nhan-vien")
+    stack.grant_role(manager, "nghi-phep.quan-ly")
+    token, boss = stack.app_token(employee, "nghi-phep"), stack.app_token(manager, "nghi-phep")
     wait_until_served(stack, "nghi-phep", token, table="don")
+    returned = {"Prefer": "return=representation"}
     body = {"ly_do": "Việc gia đình"}
-    created = app_call(stack, "POST", "nghi-phep", "api/don", token, body)
-    mine = json.loads(app_call(stack, "GET", "nghi-phep", "api/don", token).body)
+    created = app_call(stack, "POST", "nghi-phep", "api/don", token, body, returned)
+    forged = app_call(stack, "POST", "nghi-phep", "api/don", token, body | {"trang_thai": "dong_y"})
     theirs = app_call(stack, "GET", "nghi-phep", "api/don", stack.app_token(other, "nghi-phep"))
     assert created.status == 201, created.body
-    assert [(item["ly_do"], item["nguoi_gui"]) for item in mine] == [("Việc gia đình", user.id)]
+    [request] = json.loads(created.body)
+    assert (request["nguoi_gui"], request["trang_thai"]) == (employee.id, "cho_duyet")
+    assert forged.status == 403, forged.body
     assert json.loads(theirs.body) == []
+    variables = {"variables": {"ma_don": request["id"]}}
+    status, started = core_call(stack, "POST", "processes/nghi_phep.duyet/start", token, variables)
+    assert status == 201, started
+    task = wait_for(lambda: task_of_instance(stack, boss, started["id"]), "Chưa có việc duyệt")
+    seen = app_call(stack, "GET", "nghi-phep", f"api/don?id=eq.{request['id']}", boss)
+    assert [item["ly_do"] for item in json.loads(seen.body)] == ["Việc gia đình"]
+    assert core_call(stack, "POST", f"tasks/{task['id']}/claim", boss) == (204, None)
+    done = {"variables": {"ket_qua": "dong_y"}}
+    assert core_call(stack, "POST", f"tasks/{task['id']}/complete", boss, done) == (204, None)
+    assert finished(stack, started["id"]) == "COMPLETED"
+    assert stack.sql(f"SELECT trang_thai FROM nghi_phep.don WHERE id = {request['id']}") == [
+        ["dong_y"]
+    ]
 
 
 ENGINE = "http://127.0.0.1:8080/operaton/engine-rest"

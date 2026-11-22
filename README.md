@@ -562,7 +562,7 @@ Operaton làm mới access token ở mỗi lời gọi của ba trang. Do đó, 
 
 Mỗi khi hệ thống khởi động, service `realm` kiểm tra client `operaton` của realm `saigonos` và luồng đăng nhập riêng của client này. Khi luồng đăng nhập bị thay đổi, service tạo lại luồng này. Các thiết lập bảo mật của client cũng được đặt lại, ví dụ địa chỉ chuyển hướng sau khi đăng nhập.
 
-REST API của Operaton không mở qua API Gateway. Chỉ hai service `core` và `processes` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
+REST API của Operaton không mở qua API Gateway. Chỉ ba service `core`, `processes` và `apps` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản này ở lần khởi động đầu tiên. Do đó, đổi giá trị này trong file `.env` sau đó không đổi mật khẩu của tài khoản. Sau mỗi lần đăng nhập sai, Operaton tạm khóa tài khoản trong 3 giây. Thời gian khóa tăng gấp đôi sau mỗi lần sai tiếp theo, tối đa là 60 giây. Sau 10 lần sai liên tiếp, tài khoản bị khóa hẳn.
 
 Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần Operaton từ chối tài khoản `core`. Trong thời gian này, các lời gọi cần Operaton nhận mã 503 và các bước máy làm chưa được chạy. Sau 5 lần bị từ chối liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại, và log của service ghi cách khắc phục. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD` trong file `.env`, chạy lại lệnh `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core` bằng lệnh sau:
 
@@ -594,7 +594,7 @@ cd ~/saigonos
 docker compose logs --tail 20 processes
 ```
 
-File BPMN có thể chứa mã chạy bên trong Operaton, ví dụ script task. Do đó, chỉ đặt vào thư mục này các file từ nguồn đáng tin cậy.
+File BPMN có thể chứa mã chạy bên trong Operaton, ví dụ script task. Do đó, chỉ đặt vào thư mục này các file từ nguồn đáng tin cậy. File BPMN của ứng dụng được soát như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng), nên không chứa được mã như vậy.
 
 Ví dụ sau là một quy trình đơn giản gồm điểm bắt đầu và điểm kết thúc. Nội dung được lưu trong file `thu-nghiem.bpmn`:
 
@@ -774,8 +774,8 @@ Các mã lỗi của các lời gọi về quy trình và việc:
 | 403 | Bắt đầu quy trình | Người gọi không có realm role nằm trong `candidateStarterGroups`, hoặc quy trình không khai báo thuộc tính này |
 | 403 | Nhận việc | Người gọi không có realm role nằm trong nhóm ứng viên của việc |
 | 403 | Hoàn thành việc | Người gọi không phải là người nhận việc |
-| 404 | Bắt đầu quy trình | Không có quy trình với mã này |
-| 404 | Nhận việc, hoàn thành việc | Không có việc với mã này, ví dụ việc đã được hoàn thành |
+| 404 | Bắt đầu quy trình | Không có quy trình với mã này, hoặc quy trình nằm ngoài phạm vi của access token như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng) |
+| 404 | Nhận việc, hoàn thành việc | Không có việc với mã này, ví dụ việc đã được hoàn thành, hoặc việc nằm ngoài phạm vi của access token |
 | 409 | Bắt đầu quy trình | Quy trình đang tạm ngưng trong Cockpit |
 | 409 | Nhận việc | Việc đã có người khác nhận |
 | 409 | Nhận việc, hoàn thành việc | Việc đang tạm ngưng vì quy trình chứa việc bị tạm ngưng trong Cockpit |
@@ -803,7 +803,7 @@ Bước máy làm là một service task trong file BPMN. Bước này gọi m�
 
 Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình, ví dụ `{"ma_yeu_cau": "YC-01", "ket_qua": "Đã thay cáp màn hình"}`. Biến kiểu ngày giờ được truyền dưới dạng chuỗi theo giờ UTC, ví dụ `2026-11-20T02:00:00.000+0000`. Quy trình có biến thuộc kiểu khác chuỗi, số, ngày giờ, `true`, `false` và `null` thì bước máy làm không chạy được. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình. Tên biến theo quy tắc của thuộc tính `id` ở mục [Form](#form). Giá trị là chuỗi tối đa 4.000 ký tự, số nguyên, số thực, `true`, `false` hoặc `null`. Hàm không ghi được biến `initiator` và biến ghi trong thuộc tính `operaton:initiator`.
 
-Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Ví dụ, ứng dụng khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
+Hàm phải được khai báo cho quy trình bằng lệnh `GRANT EXECUTE` cho role `workflow` của cơ sở dữ liệu. Quyền cấp cho `PUBLIC` không được tính. Hàm chạy với quyền của role `workflow`, nên role này cần quyền trên schema và các bảng mà hàm dùng. Hàm của ứng dụng chạy với quyền khác, như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng). Ví dụ, một schema do quản trị viên tạo khai báo hàm `ung_dung.ghi_ket_qua` bằng các lệnh SQL sau:
 
 ```sql
 GRANT USAGE ON SCHEMA ung_dung TO workflow;
@@ -1307,6 +1307,8 @@ Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã tho
 - ui: Thư mục "ui" không có file index.html.
 ```
 
+Lệnh soát cả các file BPMN trong thư mục `processes` theo mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng). Lỗi trong file BPMN có tên file và số dòng, ví dụ `- processes: "processes/duyet.bpmn", dòng 12: Thẻ scriptTask chạy script trong Operaton nên không được dùng.` Cảnh báo được in trước dòng kết quả và không làm lệnh kết thúc với mã thoát 1.
+
 Lệnh soát ở trên chạy service `apps` bằng tài khoản đang dùng. Cũng có thể soát bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc:
 
 ```bash
@@ -1329,21 +1331,23 @@ Lệnh thực hiện các bước sau:
 
 1. Soát ứng dụng như mục [Soát ứng dụng](#soát-ứng-dụng). Khi có lỗi, lệnh dừng và không thay đổi gì.
 2. Chép bản khai và các thư mục đã khai vào thư mục `apps/<tên ứng dụng>` của thư mục làm việc. Các file khác trong thư mục ứng dụng, ví dụ thư mục `.git`, không được chép.
-3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng), vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng) và vào APISIX như mục [Gọi API của ứng dụng](#gọi-api-của-ứng-dụng).
+3. Chạy lệnh `apply` của service `apps`. Lệnh này soát lại bản đã chép rồi cài đặt ứng dụng vào cơ sở dữ liệu như mục [File SQL của ứng dụng](#file-sql-của-ứng-dụng), vào Keycloak như mục [Đăng nhập vào ứng dụng](#đăng-nhập-vào-ứng-dụng), vào APISIX như mục [Gọi API của ứng dụng](#gọi-api-của-ứng-dụng) và vào Operaton như mục [Quy trình của ứng dụng](#quy-trình-của-ứng-dụng).
 
 Ở lần cài đặt đầu tiên, lệnh in các dòng sau:
 
 ```text
 Đã tạo schema nghi_phep, role nghi_phep và role nghi_phep_user của ứng dụng.
 Đã chạy file 0001_don.sql.
+Đã chạy file 0002_duyet.sql.
 Đã tạo realm role nghi-phep.nhan-vien.
 Đã tạo realm role nghi-phep.quan-ly.
 Đã tạo client nghi-phep.
 Đã tạo route app-nghi-phep.
+Đã triển khai file duyet.bpmn: quy trình nghi_phep.duyet, phiên bản 1.
 Đã cài đặt ứng dụng nghi-phep 0.1.0.
 ```
 
-Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak và APISIX không thay đổi.
+Khi cài đặt lỗi, lệnh kết thúc với mã thoát 1 và thư mục `apps/nghi-phep` được trả về bản đã cài đặt thành công gần nhất. Chạy lại lệnh khi ứng dụng không đổi thì cơ sở dữ liệu, Keycloak, APISIX và Operaton không thay đổi.
 
 Cũng có thể cài đặt bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Tên thư mục phải trùng tên ứng dụng:
 
@@ -1353,7 +1357,7 @@ cd ~/saigonos
 docker compose run --rm apps apply nghi-phep
 ```
 
-Service `apps` giữ mật khẩu superuser của PostgreSQL, mật khẩu của tài khoản `admin` trong realm master của Keycloak và khóa Admin API của APISIX. Service này chỉ chạy khi được gọi. Service `core` không có ba giá trị này.
+Service `apps` giữ mật khẩu superuser của PostgreSQL, mật khẩu của tài khoản `admin` trong realm master của Keycloak và khóa Admin API của APISIX. Service này chỉ chạy khi được gọi. Service `core` không có ba giá trị này. Để triển khai file BPMN, service `apps` dùng tài khoản `core` của Operaton giống service `core`.
 
 ### File SQL của ứng dụng
 
@@ -1364,12 +1368,13 @@ Mỗi ứng dụng có một schema và hai role trong cơ sở dữ liệu. Tê
 - Mỗi file chạy trong một transaction. Khi một câu lệnh bị lỗi, mọi thay đổi của file bị hủy. File không được dùng `BEGIN`, `COMMIT`, `ROLLBACK` hay `SAVEPOINT`.
 - Bảng `core.migrations` ghi tên và mã băm của từng file đã chạy, với cột `scope` là tên ứng dụng. File đã chạy thì không chạy lại. File đã chạy mà bị sửa thì lệnh cài đặt dừng và báo lỗi. Để thay đổi cơ sở dữ liệu, hãy thêm một file mới.
 - Role sở hữu schema không đọc được schema của ứng dụng khác và các bảng của lõi, ví dụ `core.audit_log`. Role này cũng không đổi được sang role khác bằng `SET ROLE`.
-- Bảng, view và hàm mới chưa được cấp cho role nào, kể cả `PUBLIC`. File SQL cấp quyền cho role `nghi_phep_user` và `anon` bằng `GRANT`. Quyền `USAGE` trên schema đã được cấp sẵn cho role `nghi_phep_user`.
+- Bảng, view và hàm mới chưa được cấp cho role nào, kể cả `PUBLIC`. File SQL cấp quyền cho role `nghi_phep_user` và `anon` bằng `GRANT`. Quyền `USAGE` trên schema đã được cấp sẵn cho role `nghi_phep_user` và role `workflow` của bước máy làm.
 - Schema của ứng dụng chỉ được cấp quyền `USAGE` cho role `nghi_phep_user` và `anon`. File cấp quyền trên schema cho role khác, ví dụ `authenticated`, bị từ chối.
 - Sau mỗi file, hàm không khai `SECURITY DEFINER` được đổi thành hàm `SECURITY DEFINER` của role `nghi_phep_user`. Quyền `EXECUTE` của hàm được giữ như file đã cấp. Do đó, hàm luôn chạy bằng role `nghi_phep_user`, kể cả khi lời gọi không có access token. Hàm khai `SECURITY DEFINER` chạy bằng role sở hữu schema.
 - Bên trong hàm `SECURITY DEFINER`, PostgreSQL không cho đổi role. Hàm `set_config` cũng không được cấp cho mã của ứng dụng. Do đó, mã của một ứng dụng không chuyển được sang role của ứng dụng khác.
 - Các lệnh DDL như `CREATE`, `ALTER`, `DROP` và `GRANT` chỉ chạy được trong file SQL khi cài đặt. Mã của ứng dụng chạy trong lúc phục vụ lời gọi không dùng được các lệnh này, kể cả `CREATE TEMP TABLE`.
 - Role sở hữu schema dùng được hàm `core.audit()` để ghi audit log cho bảng và hàm `core.append_only()` để chặn sửa, xóa dòng của bảng.
+- Hàm của ứng dụng gọi được `core.send_email` để gửi email như mục [Gửi email](#gửi-email). Mã của ứng dụng chưa gọi được `core.notify` và `core.publish`.
 - Các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` chỉ đọc claims do PostgREST hoặc service `core` đặt cho lời gọi. Khi một hàm của ứng dụng đổi `request.jwt.claims` bằng `SET LOCAL`, các hàm này trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác.
 - Trong chính sách RLS, viết `(SELECT core.uid())` thay cho `core.uid()`. Khi đó, PostgreSQL chỉ tính giá trị một lần cho mỗi câu truy vấn thay vì một lần cho mỗi dòng.
 
@@ -1436,6 +1441,141 @@ Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng
 Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
 
 Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+
+### Quy trình của ứng dụng
+
+Lệnh cài đặt triển khai các file `.bpmn` trong thư mục `processes` của ứng dụng vào Operaton. Quy tắc chung của file BPMN, form và bước máy làm được trình bày ở mục [Quy trình](#quy-trình). Quy trình của ứng dụng tuân theo thêm các quy tắc sau:
+
+- Mỗi file là một bản triển khai riêng. Tên của bản triển khai là tên file, nguồn (deployment source) là `app:<tên ứng dụng>`. File không thay đổi thì không tạo phiên bản mới. File đã sửa tạo một phiên bản mới, còn các quy trình đang chạy vẫn dùng phiên bản cũ.
+- Quy trình của ứng dụng nằm trong tenant của Operaton có tên là tên ứng dụng. Do đó, quy trình của ứng dụng không trùng mã được với quy trình của ứng dụng khác hay quy trình trong thư mục `config/operaton/processes`.
+- Mã quy trình có dạng `<schema>.<tên quy trình>`, ví dụ `nghi_phep.duyet`. Tên quy trình gồm chữ thường không dấu, chữ số và dấu gạch dưới. Mỗi quy trình chỉ được khai báo trong một file.
+- Thuộc tính `operaton:candidateStarterGroups` của quy trình và `operaton:candidateGroups` của việc chỉ gồm role của ứng dụng, không dùng expression.
+- Bước máy làm chỉ gọi hàm trong schema của ứng dụng. Call activity chỉ gọi quy trình có trong các file BPMN của chính ứng dụng.
+- Tên file chỉ gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và kết thúc bằng `.bpmn`.
+
+Lệnh soát từ chối file BPMN chạy mã bên trong Operaton. Script task, business rule task, send task, listener, class Java, delegate expression, connector và ràng buộc `validator` của form đều bị từ chối. Expression chỉ được gồm tên biến, giá trị, phép so sánh và phép logic, ví dụ `${so_ngay > 3 && !khan}`. Expression gọi hàm như `${now()}` hoặc đọc thuộc tính như `${don.so_ngay}` bị từ chối.
+
+File chỉ được dùng các thẻ sau:
+
+- Sự kiện bắt đầu, kết thúc, sự kiện trung gian và sự kiện biên. Sự kiện dùng được hẹn giờ, error, escalation, terminate, link và conditional.
+- Việc của người dùng (`userTask`), bước máy làm, `task`, `manualTask`, call activity và subprocess.
+- Các gateway, luồng (`sequenceFlow`) và multi-instance.
+- Lane, pool, chú thích và phần hình vẽ.
+
+Message và signal chưa được hỗ trợ. File thiếu phần hình vẽ (BPMNDI), hoặc có phần hình vẽ thiếu một số phần tử, vẫn được cài đặt. Khi đó, lệnh soát in cảnh báo, vì Cockpit không vẽ được quy trình hoặc các phần tử đó.
+
+Ứng dụng bắt đầu quy trình và xử lý việc qua service `core` như mục [Bắt đầu quy trình](#bắt-đầu-quy-trình) và [Nhận việc và hoàn thành việc](#nhận-việc-và-hoàn-thành-việc), với access token của ứng dụng. Ví dụ, lời gọi `POST /core/processes/nghi_phep.duyet/start` bắt đầu quy trình `nghi_phep.duyet`. Service `core` lọc quy trình và việc theo client của access token, tức claim `azp`:
+
+- Access token của một ứng dụng chỉ thấy, nhận, hoàn thành và bắt đầu quy trình của ứng dụng đó.
+- Access token của client khác, kể cả của ứng dụng khác, không thấy quy trình và việc của ứng dụng. Lời gọi tới quy trình hoặc việc đó nhận mã 404.
+- Access token của ứng dụng không thấy quy trình trong thư mục `config/operaton/processes`.
+
+Hàm của bước máy làm được khai báo bằng lệnh `GRANT EXECUTE` cho role `workflow` như mục [Bước máy làm](#bước-máy-làm). Hàm chạy bằng role `<schema>_user` như mọi hàm khác của ứng dụng, hoặc bằng role sở hữu schema khi khai `SECURITY DEFINER`. Hàm chỉ cấp cho role `workflow` thì người dùng không gọi được qua API của ứng dụng. Bước máy làm không có người gọi, nên `core.uid()` trả về `NULL`. Do đó, hàm cập nhật bảng có chính sách RLS theo `core.uid()` thường khai `SECURITY DEFINER`. Biến `initiator` cho biết người đã bắt đầu quy trình.
+
+Khi bước máy làm gọi hàm ngoài schema của ứng dụng sở hữu quy trình, bước này trở thành incident. Quy trình trong thư mục `config/operaton/processes` cũng không gọi được hàm của ứng dụng.
+
+Ví dụ, file `processes/duyet.bpmn` của ứng dụng nghỉ phép khai báo quy trình duyệt đơn. Người có realm role `nghi-phep.nhan-vien` tạo đơn qua API của ứng dụng rồi bắt đầu quy trình với mã đơn. Người có realm role `nghi-phep.quan-ly` duyệt đơn. Sau đó, bước máy làm ghi kết quả vào bảng `don`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+                  id="duyet_dinh_nghia" targetNamespace="https://dx.example.com/bpmn">
+  <bpmn:process id="nghi_phep.duyet" name="Duyệt đơn nghỉ phép" isExecutable="true"
+                operaton:historyTimeToLive="P180D"
+                operaton:candidateStarterGroups="nghi-phep.nhan-vien">
+    <bpmn:startEvent id="gui_don" name="Gửi đơn">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="ma_don" label="Mã đơn" type="long">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="luong_1" sourceRef="gui_don" targetRef="duyet" />
+    <bpmn:userTask id="duyet" name="Duyệt đơn" operaton:candidateGroups="nghi-phep.quan-ly">
+      <bpmn:extensionElements>
+        <operaton:formData>
+          <operaton:formField id="ket_qua" label="Kết quả" type="enum">
+            <operaton:validation>
+              <operaton:constraint name="required" />
+            </operaton:validation>
+            <operaton:value id="dong_y" name="Đồng ý" />
+            <operaton:value id="tu_choi" name="Từ chối" />
+          </operaton:formField>
+        </operaton:formData>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="luong_2" sourceRef="duyet" targetRef="ghi_ket_qua" />
+    <bpmn:serviceTask id="ghi_ket_qua" name="Ghi kết quả" operaton:type="external"
+                      operaton:topic="saigonos-function">
+      <bpmn:extensionElements>
+        <operaton:properties>
+          <operaton:property name="function" value="nghi_phep.ghi_ket_qua" />
+        </operaton:properties>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="luong_3" sourceRef="ghi_ket_qua" targetRef="ket_thuc" />
+    <bpmn:endEvent id="ket_thuc" name="Đã xử lý" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="hinh_duyet">
+    <bpmndi:BPMNPlane id="mat_phang_duyet" bpmnElement="nghi_phep.duyet">
+      <bpmndi:BPMNShape id="gui_don_hinh" bpmnElement="gui_don">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="duyet_hinh" bpmnElement="duyet">
+        <dc:Bounds x="240" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ghi_ket_qua_hinh" bpmnElement="ghi_ket_qua">
+        <dc:Bounds x="400" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ket_thuc_hinh" bpmnElement="ket_thuc">
+        <dc:Bounds x="562" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="luong_1_hinh" bpmnElement="luong_1">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="240" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="luong_2_hinh" bpmnElement="luong_2">
+        <di:waypoint x="340" y="120" />
+        <di:waypoint x="400" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="luong_3_hinh" bpmnElement="luong_3">
+        <di:waypoint x="500" y="120" />
+        <di:waypoint x="562" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+```
+
+File `database/0002_duyet.sql` thêm cột trạng thái và hàm ghi kết quả. Người gửi đơn chỉ ghi được cột `ly_do`, nên không tự duyệt được đơn của mình. Người có realm role `nghi-phep.quan-ly` xem được mọi đơn. Hàm chỉ cập nhật đơn của người đã bắt đầu quy trình:
+
+```sql
+ALTER TABLE don ADD COLUMN trang_thai text NOT NULL DEFAULT 'cho_duyet'
+    CHECK (trang_thai IN ('cho_duyet', 'dong_y', 'tu_choi'));
+REVOKE INSERT ON don FROM nghi_phep_user;
+GRANT INSERT (ly_do) ON don TO nghi_phep_user;
+CREATE POLICY quan_ly_xem ON don FOR SELECT
+    USING ((SELECT core.has_role('nghi-phep.quan-ly')));
+
+CREATE FUNCTION ghi_ket_qua(bien jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+    UPDATE nghi_phep.don SET trang_thai = bien ->> 'ket_qua'
+    WHERE id = (bien ->> 'ma_don')::bigint AND nguoi_gui = bien ->> 'initiator';
+    RETURN jsonb_build_object('da_ghi', FOUND);
+END
+$$;
+GRANT EXECUTE ON FUNCTION ghi_ket_qua(jsonb) TO workflow;
+```
 
 ### Giao diện của ứng dụng
 
