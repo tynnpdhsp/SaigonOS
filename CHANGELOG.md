@@ -20,6 +20,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Lời gọi tới `/api`, `/apps` và `/core` có body lớn hơn 1 MB nhận mã 413, trừ lời gọi gửi nội dung file.
 - APISIX chỉ bật các plugin mà SaigonOS dùng và tắt các plugin stream.
+- Mức RAM nên có trong README tăng từ 3 GB lên 4 GB, vì tường lửa ứng dụng web dùng thêm khoảng 300 MB.
+- Đường dẫn có `..` đã mã hóa tới `/apps/<tên>/` nhận mã 403 của tường lửa thay cho mã 404.
 
 ## [0.7.0] - 2026-11-23
 

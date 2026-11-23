@@ -433,6 +433,8 @@ Cấu hình của tường lửa nằm trong thư mục `src/saigonos/stack/conf
 - File `saigonos-waf.lua` là plugin của SaigonOS. Plugin chạy ở pha rewrite với priority 8000, ngay trước Coraza với priority 7999.
 - File `fetch-coraza.sh` là script của service `waf`.
 
+Khi một luật CRS chặn nhầm lời gọi hợp lệ, tìm mã luật trong log của APISIX. Thêm chỉ thị `SecRuleRemoveById` với mã luật đó vào sau dòng `Include @owasp_crs/*.conf` trong file `waf.json`, rồi ghi mã luật và lý do vào mục Tường lửa ứng dụng web của README.
+
 Một số điểm cần giữ khi sửa plugin `saigonos-waf`:
 
 - APISIX chỉ đưa body cho plugin wasm khi biến `wasm_process_req_body` có giá trị. Coraza 0.6.0 không tự đặt biến này. Khi không nhận body, Coraza chỉ chạy pha 2 của CRS lúc upstream đã trả lời. Do đó, plugin đặt biến này cho mọi lời gọi, kể cả lời gọi không có body.

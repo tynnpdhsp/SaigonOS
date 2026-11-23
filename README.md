@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. Luật của OPA có thể chỉ mở trang quản trị cho một số dải mạng và luôn đòi đăng nhập có mã OTP, như mục [Luật truy cập](#luật-truy-cập). Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Bản khai cũng khai được luật truy cập API của ứng dụng theo role, dải mạng hoặc mã OTP. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. Luật của OPA có thể chỉ mở trang quản trị cho một số dải mạng và luôn đòi đăng nhập có mã OTP, như mục [Luật truy cập](#luật-truy-cập). Tường lửa ứng dụng web Coraza chặn lời gọi có dấu hiệu tấn công ngay tại API Gateway, như mục [Tường lửa ứng dụng web](#tường-lửa-ứng-dụng-web). Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Bản khai cũng khai được luật truy cập API của ứng dụng theo role, dải mạng hoặc mã OTP. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Mục lục
 
@@ -46,7 +46,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
 - Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
-- Nên có 3 GB RAM cho các service. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+- Nên có 4 GB RAM cho các service. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
 
 ### Dung lượng đĩa
 
@@ -623,6 +623,7 @@ Coraza chạy trong APISIX dưới dạng plugin wasm. Ở lần khởi động 
 
 - Coraza kiểm tra đường dẫn, query string, header và body của lời gọi. Body JSON, form và XML được tách thành từng tham số để kiểm tra.
 - Bộ luật CRS chạy ở mức paranoia 1. Lời gọi bị chặn khi tổng điểm bất thường đạt 5, tức là chỉ cần một luật mức critical khớp.
+- Bộ luật CRS chạy đầy đủ, chưa tắt luật nào. Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
 - Các phương thức được dùng là GET, HEAD, POST, OPTIONS, PUT, PATCH và DELETE.
 - Body của lời gọi tối đa 1 MB. Lời gọi có body lớn hơn nhận mã 413, vì tường lửa không kiểm tra được.
 - Body JSON không đúng định dạng không tách được thành tham số. PostgREST và service `core` từ chối body này với mã 400 hoặc 422.
