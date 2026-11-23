@@ -301,6 +301,7 @@ def test_dashboard_reads_only_provisioned_sources_and_existing_metrics():
         encoding="utf-8"
     )
     known = {"apisix_http_status", "saigonos_service_up", "saigonos_service_memory_bytes"}
+    known |= {"saigonos_service_cpu_seconds_total", "saigonos_host_cpus"}
     known |= set(re.findall(r"- record: (\S+)", rules))
 
     for panel in dashboard["panels"]:
