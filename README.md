@@ -28,6 +28,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
 - [Luật truy cập](#luật-truy-cập)
 - [Tường lửa ứng dụng web](#tường-lửa-ứng-dụng-web)
+- [Giám sát](#giám-sát)
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
@@ -184,6 +185,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 |---|---|---|
 | http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP. Cách tạo tài khoản được trình bày ở mục [Tài khoản quản trị](#tài-khoản-quản-trị) |
 | http://localhost:9080/operaton/ | Cockpit, Tasklist và Admin của [Operaton](#quy-trình), dùng để theo dõi và quản lý các quy trình | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP |
+| http://localhost:9080/grafana/ | Grafana, dùng để xem metrics và log của hệ thống khi [giám sát](#giám-sát) được bật | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP |
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
@@ -378,6 +380,7 @@ Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `sai
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
+| `--monitoring`, `--no-monitoring` | Tắt | Bật hoặc tắt [giám sát](#giám-sát) bằng Prometheus, Loki và Grafana |
 
 Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.
 
@@ -653,6 +656,85 @@ SAIGONOS_WAF_MODE=detect
 ```
 
 Ở chế độ này, các luật khớp vẫn được ghi vào log nhưng lời gọi không bị chặn. Để chặn trở lại, xóa dòng trên hoặc đặt giá trị `block`, rồi chạy `saigonos up`. Khi giá trị không hợp lệ, lệnh `saigonos up` báo lỗi ở service `routes` và tường lửa giữ chế độ đang chạy. Lệnh `saigonos doctor` cho biết tường lửa đang chặn hay chỉ ghi log.
+
+## Giám sát
+
+Giám sát gồm Prometheus, Loki, Grafana và Grafana Alloy. Prometheus thu metrics của các service. Alloy đọc log của mọi container và gửi tới Loki. Grafana hiển thị metrics và log. Giám sát mặc định tắt.
+
+### Bật giám sát
+
+```bash
+saigonos init --monitoring
+saigonos up
+```
+
+Lệnh `saigonos init` thêm `monitoring` vào dòng `COMPOSE_PROFILES` của file `.env`. Do đó, lệnh `docker compose up -d --wait` cũng khởi động các service giám sát. Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa. Các service giám sát dùng thêm khoảng 500 MB RAM, trong đó Grafana dùng khoảng 270 MB.
+
+Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng `Giám sát`. Dòng này kiểm tra Grafana qua API Gateway và kiểm tra Prometheus đọc được metrics của mọi target:
+
+```text
+BÌNH THƯỜNG    Giám sát        Grafana trả lời tại /grafana/, Prometheus đọc metrics của 8 target
+```
+
+### Grafana
+
+Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Người dùng đăng nhập bằng Keycloak qua client `grafana`. Chỉ tài khoản có realm role `admin` đăng nhập được và luôn phải nhập mã OTP, giống Operaton. Route `grafana` đi qua luật trang quản trị của OPA, nên giới hạn `SAIGONOS_ADMIN_NETWORKS` ở mục [Trang quản trị](#trang-quản-trị) cũng áp dụng cho Grafana.
+
+Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai.
+
+### Metrics
+
+Prometheus giữ metrics 7 ngày, tối đa 2 GB, trong volume `prometheus-data`. Prometheus đọc metrics của các nguồn sau:
+
+| Job | Nguồn |
+|---|---|
+| `apisix` | Plugin `prometheus` của APISIX, đếm mọi request qua API Gateway |
+| `keycloak` | Metrics có sẵn của Keycloak ở cổng quản lý 9000 |
+| `centrifugo` | Metrics có sẵn của Centrifugo ở cổng nội bộ 9000 |
+| `postgrest` | Admin server của PostgREST ở cổng 3001 |
+| `etcd` | Metrics có sẵn của etcd |
+| `loki` | Metrics của Loki |
+| `services` | Service `exporter`, cho biết trạng thái, healthcheck và RAM của từng container |
+| `prometheus` | Metrics của chính Prometheus |
+
+Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `waf` khi tường lửa ứng dụng web chặn request và `opa` khi luật OPA từ chối request. API Gateway lấy giá trị này từ header `X-SaigonOS-Denied-By` của phản hồi. Prometheus ghi các tổng sau bằng recording rule trong file `config/prometheus/rules.yml`:
+
+| Metrics | Ý nghĩa |
+|---|---|
+| `saigonos:http_requests:total` | Tổng số request qua API Gateway |
+| `saigonos:http_client_errors:total` | Số request nhận mã 4xx |
+| `saigonos:http_server_errors:total` | Số request nhận mã 5xx |
+| `saigonos:waf_denied:total` | Số request bị tường lửa ứng dụng web chặn |
+| `saigonos:opa_denied:total` | Số request bị luật OPA từ chối |
+
+Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
+
+Service `exporter` cung cấp hai metrics. Metrics `saigonos_service_up` bằng 1 khi service đang chạy và đạt healthcheck. Metrics `saigonos_service_memory_bytes` là RAM của container, tính như lệnh `docker stats`. Service chạy một lần không được tính.
+
+### Log
+
+Alloy đọc log của mọi container trong project, kể cả service chạy một lần, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày trong volume `loki-data`. Trong Grafana, mở Explore, chọn nguồn Loki rồi lọc theo service. Ví dụ, truy vấn sau tìm các request bị tường lửa chặn:
+
+```
+{service="apisix"} |= "Coraza"
+```
+
+### Docker socket
+
+Alloy và `exporter` đọc Docker API qua service `socket-proxy`. Chỉ service này giữ Docker socket. Service `socket-proxy` chạy không có capability nào, với hệ thống file chỉ đọc. Service này chỉ nhận lời gọi từ Alloy và `exporter`, và chỉ cho các đường dẫn GET để liệt kê container, đọc cấu hình, log và RAM của container. Lời gọi tạo, sửa hay xóa container đều bị từ chối. Cấu hình của container gồm cả biến môi trường. Do đó, ba service này chỉ nằm trong hai mạng nội bộ `docker` và `monitoring`, không có kết nối Internet và không mở cổng nào.
+
+### Tắt giám sát
+
+```bash
+saigonos init --no-monitoring
+saigonos up
+```
+
+Lệnh `saigonos up` xóa container của các service giám sát rồi khởi động các service còn lại. Route `grafana` và client `grafana` cũng được gỡ. Metrics, log và dữ liệu của Grafana vẫn nằm trong các volume `prometheus-data`, `loki-data` và `grafana-data`. Nếu dùng trực tiếp Docker Compose, chạy lệnh sau trước lệnh `docker compose up -d --wait`:
+
+```bash
+docker compose rm --stop --force socket-proxy exporter prometheus loki-probe loki alloy grafana
+```
 
 ## Kiểm tra audit log
 
