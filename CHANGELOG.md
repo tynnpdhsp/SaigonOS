@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.8.0] - 2026-11-23
+
 ### Thêm
 
 - Tường lửa ứng dụng web Coraza 3.3.3 với bộ luật OWASP CRS 4.14.0 chạy trong APISIX qua plugin coraza-proxy-wasm 0.6.0. Tường lửa kiểm tra lời gọi tới `/api`, `/apps` và `/core`, kể cả body JSON, và chặn lời gọi có dấu hiệu tấn công với mã 403. Lời gọi gửi nội dung file, Keycloak, Operaton và `/realtime` không đi qua tường lửa.
@@ -261,7 +263,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.7.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.0
 [0.7.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
