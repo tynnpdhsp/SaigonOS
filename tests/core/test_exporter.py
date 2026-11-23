@@ -11,8 +11,10 @@ from saigonos_core.exporter import (
     Docker,
     DockerError,
     Service,
+    cpu_seconds,
     handler,
     memory_used,
+    online_cpus,
     read_services,
     render,
 )
@@ -61,7 +63,8 @@ class FakeDocker:
             return 200, {"HostConfig": item["HostConfig"], "State": item["State"]}
         assert parse_qs(parts.query) == {"stream": ["false"], "one-shot": ["true"]}
         stats = {"usage": item["Memory"] + 200, "stats": {"inactive_file": 200}}
-        return 200, {"memory_stats": stats}
+        cpu = {"cpu_usage": {"total_usage": 2_500_000_000}, "online_cpus": 4}
+        return 200, {"memory_stats": stats, "cpu_stats": cpu}
 
 
 @pytest.fixture
@@ -110,13 +113,13 @@ def test_services_skip_one_shots_and_are_up_only_when_running_and_healthy(docker
     services = read_services(docker_api.docker, PROJECT)
 
     assert services == [
-        Service("clamav", False, 1000),
-        Service("etcd", True, 1000),
-        Service("freshclam", False, None),
-        Service("keycloak", False, 1000),
-        Service("operaton", False, 1000),
-        Service("postgres", True, 5000),
-        Service("seaweedfs", False, 1000),
+        Service("clamav", False, 1000, 2.5, 4),
+        Service("etcd", True, 1000, 2.5, 4),
+        Service("freshclam", False, None, None, None),
+        Service("keycloak", False, 1000, 2.5, 4),
+        Service("operaton", False, 1000, 2.5, 4),
+        Service("postgres", True, 5000, 2.5, 4),
+        Service("seaweedfs", False, 1000, 2.5, 4),
     ]
     asked = {path.split("/")[2] for path in docker_api.paths if "/stats?" in path}
     running = {
@@ -206,3 +209,24 @@ def test_exporter_answers_503_while_docker_api_refuses(exporter, docker_api, cap
     assert status == 503
     assert body == "Docker API trả mã 500 cho /containers/json\n"
     assert "Docker API trả mã 500" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("stats", "seconds", "cpus"),
+    [
+        ({"cpu_stats": {"cpu_usage": {"total_usage": 1_500_000_000}, "online_cpus": 2}}, 1.5, 2),
+        ({"cpu_stats": {"cpu_usage": {"total_usage": 0, "percpu_usage": [0, 0, 0]}}}, 0.0, 3),
+        ({}, None, None),
+    ],
+    ids=["co-online-cpus", "dem-percpu", "rong"],
+)
+def test_cpu_time_and_cores_are_read_from_stats(stats, seconds, cpus):
+    assert (cpu_seconds(stats), online_cpus(stats)) == (seconds, cpus)
+
+
+def test_cpu_metrics_are_rendered_only_when_known():
+    text = render([Service("apisix", True, 1, 2.5, 4), Service("core", True, 1, None, 8)])
+
+    assert 'saigonos_service_cpu_seconds_total{service="apisix"} 2.5' in text
+    assert "core" not in text.split("cpu_seconds_total counter", 1)[1].split("# HELP", 1)[0]
+    assert text.endswith("saigonos_host_cpus 8\n")

@@ -718,7 +718,7 @@ Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `w
 
 Ba tổng đầu không tính request tới route `grafana`, vì chính Grafana gửi request qua API Gateway mỗi khi bảng theo dõi làm mới. Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
 
-Service `exporter` cung cấp hai metrics. Metrics `saigonos_service_up` bằng 1 khi service đang chạy và đạt healthcheck. Metrics `saigonos_service_memory_bytes` là RAM của container, tính như lệnh `docker stats`. Service chạy một lần không được tính.
+Service `exporter` cung cấp hai metrics. Metrics `saigonos_service_up` bằng 1 khi service đang chạy và đạt healthcheck. Metrics `saigonos_service_memory_bytes` là RAM của container, tính như lệnh `docker stats`. Metrics `saigonos_service_cpu_seconds_total` là tổng thời gian CPU container đã dùng, và `saigonos_host_cpus` là số nhân CPU của máy, dùng để tính phần trăm CPU. Service chạy một lần không được tính.
 
 ### Log
 

@@ -76,6 +76,8 @@ def test_every_long_running_service_is_reported_and_a_stopped_one_is_down(monito
     memory = stack.prometheus("saigonos_service_memory_bytes")
     assert set(memory) == expected
     assert min(memory.values()) > 0
+    assert set(stack.prometheus("saigonos_service_cpu_seconds_total")) == expected
+    assert stack.prometheus("saigonos_host_cpus")[""] >= 1
 
     stack.compose("stop", "freshclam")
     try:

@@ -22,6 +22,8 @@ class Service(NamedTuple):
     name: str
     up: bool
     memory: int | None
+    cpu: float | None = None
+    cpus: int | None = None
 
 
 class Docker:
@@ -58,6 +60,20 @@ def memory_used(stats: dict[str, Any]) -> int | None:
     return max(usage - cache, 0)
 
 
+def cpu_seconds(stats: dict[str, Any]) -> float | None:
+    usage = ((stats.get("cpu_stats") or {}).get("cpu_usage") or {}).get("total_usage")
+    return None if usage is None else usage / 1e9
+
+
+def online_cpus(stats: dict[str, Any]) -> int | None:
+    cpu = stats.get("cpu_stats") or {}
+    return (
+        cpu.get("online_cpus")
+        or len((cpu.get("cpu_usage") or {}).get("percpu_usage") or [])
+        or None
+    )
+
+
 def read_services(docker: Docker, project: str) -> list[Service]:
     labels = [f"com.docker.compose.project={project}", "com.docker.compose.oneoff=False"]
     query = quote(json.dumps({"label": labels}))
@@ -69,12 +85,12 @@ def read_services(docker: Docker, project: str) -> list[Service]:
         state = info["State"]
         health = (state.get("Health") or {}).get("Status")
         running = state["Running"] and not state["Restarting"] and not state["Paused"]
-        memory = None
+        memory = cpu = cpus = None
         if state["Running"]:
-            path = f"/containers/{item['Id']}/stats?stream=false&one-shot=true"
-            memory = memory_used(docker.get(path))
+            stats = docker.get(f"/containers/{item['Id']}/stats?stream=false&one-shot=true")
+            memory, cpu, cpus = memory_used(stats), cpu_seconds(stats), online_cpus(stats)
         name = item["Labels"]["com.docker.compose.service"]
-        found[name] = Service(name, running and health in HEALTHY, memory)
+        found[name] = Service(name, running and health in HEALTHY, memory, cpu, cpus)
     return sorted(found.values())
 
 
@@ -91,6 +107,23 @@ def render(services: list[Service]) -> str:
             if item.memory is not None
         ),
     ]
+    used = [item for item in services if item.cpu is not None]
+    if used:
+        lines += [
+            "# HELP saigonos_service_cpu_seconds_total Thời gian CPU đã dùng, tính bằng giây.",
+            "# TYPE saigonos_service_cpu_seconds_total counter",
+            *(
+                f'saigonos_service_cpu_seconds_total{{service="{item.name}"}} {item.cpu}'
+                for item in used
+            ),
+        ]
+    cpus = max((item.cpus for item in services if item.cpus), default=None)
+    if cpus:
+        lines += [
+            "# HELP saigonos_host_cpus Số nhân CPU của máy cài đặt.",
+            "# TYPE saigonos_host_cpus gauge",
+            f"saigonos_host_cpus {cpus}",
+        ]
     return "\n".join(lines) + "\n"
 
 
