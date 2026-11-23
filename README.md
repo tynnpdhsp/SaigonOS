@@ -163,11 +163,13 @@ BÌNH THƯỜNG    processes     đã chạy xong
 BÌNH THƯỜNG    realm         đã chạy xong
 BÌNH THƯỜNG    routes        đã chạy xong
 BÌNH THƯỜNG    seaweedfs     đang chạy
+BÌNH THƯỜNG    waf           đã chạy xong
 BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối
 BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối
 BÌNH THƯỜNG    Operaton      Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
 BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn
+BÌNH THƯỜNG    Tường lửa     API Gateway chặn lời gọi có dấu hiệu tấn công
 Hệ thống hoạt động bình thường.
 ```
 
