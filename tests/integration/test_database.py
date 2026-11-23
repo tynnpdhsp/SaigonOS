@@ -907,7 +907,7 @@ def test_view_with_security_invoker_masks_contacts_and_keeps_row_security(stack,
         200,
         [{"owner": user, "phone": phone, "email": email} for user, [phone, email] in rows.items()],
     )
-    assert read(lead, "contacts", {"Accept-Profile": contacts})[0] == 406
+    assert read(lead, "contacts", {"Accept-Profile": contacts})[0] == 404
 
 
 def test_consent_records_caller_policy_version_and_server_time(stack, agree):

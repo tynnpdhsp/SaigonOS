@@ -195,7 +195,7 @@ async def apply_database(
             await run_files(admin, app, pending, say)
         if before_finish is not None:
             before_finish(removed)
-        content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_none=True))
+        content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_defaults=True))
         return await admin.fetchval(
             FINISH, app, manifest.title, manifest.version, content, bool(pending)
         )

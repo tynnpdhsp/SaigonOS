@@ -32,6 +32,8 @@ jobs:
           pip install --no-deps -e .
       - name: Kiểm tra giấy phép và chất lượng mã
         run: make lint
+      - name: Kiểm tra định dạng, lỗi và unit test của luật OPA
+        run: make opa-test
       - name: Kiểm tra lock file khớp với pyproject.toml
         run: |
           make lock

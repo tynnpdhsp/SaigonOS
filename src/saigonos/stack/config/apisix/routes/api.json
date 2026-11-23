@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "desc": "PostgREST: API dữ liệu, kiểm tra access token khi lời gọi có header Authorization và giới hạn tần suất theo địa chỉ IP",
+  "desc": "PostgREST: API dữ liệu của schema api, kiểm tra access token khi lời gọi có header Authorization và giới hạn tần suất theo địa chỉ IP. API của ứng dụng chỉ nằm ở route app-<tên>",
   "uris": ["/api", "/api/*"],
   "plugins": {
     "openid-connect": {
@@ -23,7 +23,13 @@
       "rejected_msg": "Gọi API quá nhiều lần, vui lòng thử lại sau"
     },
     "proxy-rewrite": {
-      "regex_uri": ["^/api/?(.*)$", "/$1"]
+      "regex_uri": ["^/api/?(.*)$", "/$1"],
+      "headers": {
+        "set": {
+          "Accept-Profile": "api",
+          "Content-Profile": "api"
+        }
+      }
     }
   },
   "upstream": {

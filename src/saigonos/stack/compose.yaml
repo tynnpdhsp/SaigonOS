@@ -89,11 +89,60 @@ services:
       - host_ip: 127.0.0.1
         published: ${SAIGONOS_ADMIN_PORT:?}
         target: 9180
+    networks:
+      - default
+      - policy
     volumes:
       - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./config/apisix/saigonos-dns.lua:/usr/local/apisix/saigonos/saigonos-dns.lua:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7085 && printf 'GET /status/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
+  policies:
+    image: openpolicyagent/opa:1.22.4
+    restart: "no"
+    network_mode: none
+    environment:
+      SAIGONOS_ADMIN_NETWORKS: ${SAIGONOS_ADMIN_NETWORKS:-}
+    volumes:
+      - ./config/opa:/policies:ro
+    command:
+      - eval
+      - --fail-defined
+      - --format=raw
+      - --ignore=.*
+      - --data=/policies
+      - data.saigonos.admin.config_errors[_]
+
+  opa:
+    image: openpolicyagent/opa:1.22.4
+    restart: unless-stopped
+    depends_on:
+      policies:
+        condition: service_completed_successfully
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --authorization=basic
+      - --watch
+      - --ignore=.*
+      - --skip-version-check
+      - --log-level=error
+      - /policies
+    environment:
+      SAIGONOS_ADMIN_NETWORKS: ${SAIGONOS_ADMIN_NETWORKS:-}
+    networks:
+      - policy
+    volumes:
+      - ./config/opa:/policies:ro
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "--fail", "http.send({\"method\": \"GET\", \"url\": \"http://127.0.0.1:8181/health\"}).status_code = 200"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -494,5 +543,7 @@ volumes:
 networks:
   storage:
   scan:
+    internal: true
+  policy:
     internal: true
   updates:

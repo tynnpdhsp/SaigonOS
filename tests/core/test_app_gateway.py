@@ -12,7 +12,9 @@ import pytest
 
 from saigonos_core.app_database import ApplyError
 from saigonos_core.app_gateway import (
+    ACCESS,
     OWNER,
+    POLICY,
     PREFIX,
     ROUTE_CREATED,
     ROUTE_REMOVED,
@@ -34,6 +36,12 @@ MANIFEST = Manifest.model_validate(
         "roles": [{"name": "nghi-phep.nhan-vien", "description": "Gửi đơn"}],
     }
 )
+RULES = [
+    {"methods": ["POST"], "paths": ["/rpc/duyet_don"], "roles": ["nghi-phep.nhan-vien"]},
+    {"networks": ["192.168.1.0/24"], "otp": True},
+]
+GUARDED = Manifest.model_validate(MANIFEST.model_dump(by_alias=True) | {"access": RULES})
+LIMIT_COUNT_PRIORITY = 1002
 ROUTE = "/routes/app-nghi-phep"
 DEFAULTS = {
     "limit-count": {"policy": "local", "allow_degradation": False},
@@ -322,3 +330,38 @@ def test_remove_leaves_route_made_by_hand(apisix):
     assert remove_gateway(apisix, "nghi-phep", [].append) is False
     assert "app-nghi-phep" in apisix.routes
     assert ("DELETE", "/routes/app-nghi-phep") not in apisix.calls
+
+
+def test_app_without_access_rules_does_not_ask_opa():
+    route = wanted_route(MANIFEST)
+
+    assert "opa" not in route["plugins"]
+    assert route["labels"] == {OWNER: "nghi-phep"}
+
+
+def test_access_rules_go_into_labels_and_opa_reads_route():
+    route = wanted_route(GUARDED)
+
+    assert route["labels"] == {
+        OWNER: "nghi-phep",
+        f"{ACCESS}1": json.dumps(RULES[0], separators=(",", ":")),
+        f"{ACCESS}2": json.dumps(RULES[1], separators=(",", ":")),
+    }
+    assert route["plugins"]["opa"] == POLICY
+    assert POLICY["policy"] == "saigonos/apps/decision"
+    assert POLICY["with_route"] is True
+
+
+def test_rate_limit_runs_before_opa():
+    assert wanted_route(GUARDED)["plugins"]["opa"]["_meta"]["priority"] < LIMIT_COUNT_PRIORITY
+
+
+def test_changed_rules_update_route_and_removed_rules_leave_it(apisix):
+    said(apisix, GUARDED)
+
+    changed, lines = said(apisix, MANIFEST)
+
+    route = apisix.routes["app-nghi-phep"]
+    assert (changed, lines) == (True, [ROUTE_UPDATED.format(route="app-nghi-phep")])
+    assert "opa" not in route["plugins"]
+    assert route["labels"] == {OWNER: "nghi-phep"}

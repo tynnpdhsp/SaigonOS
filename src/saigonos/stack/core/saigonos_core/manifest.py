@@ -2,19 +2,22 @@
 import json
 import os
 from fnmatch import fnmatchcase
+from ipaddress import ip_network
 from itertools import combinations
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, NamedTuple
+from typing import Annotated, Any, Literal, NamedTuple
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     TypeAdapter,
     ValidationError,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
     field_validator,
+    model_validator,
 )
 from pydantic.json_schema import GenerateJsonSchema
 from pydantic_core import InitErrorDetails, PydanticCustomError, core_schema
@@ -42,6 +45,7 @@ RESERVED_NAMES = frozenset(
         "api",
         "apps",
         "auth",
+        "auth-admin",
         "authenticated",
         "authenticator",
         "broker",
@@ -69,6 +73,10 @@ VERSION_PATTERN = (
     rf"(?:-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+ACCESS_PATH_PATTERN = r"^/[A-Za-z0-9_.*/-]*$"
+ACCESS_PATH_LENGTH = 200
+ACCESS_RULES = 20
+LABEL_LENGTH = 256
 SEGMENT = "[A-Za-z0-9_-][A-Za-z0-9_.-]*"
 FOLDER_PATTERN = f"^{SEGMENT}(?:/{SEGMENT})*/?$"
 REQUIRED_FILES = {
@@ -100,6 +108,15 @@ RULES = {
     ("database",): FOLDER_RULE,
     ("processes",): FOLDER_RULE,
     ("ui",): FOLDER_RULE,
+    ("access", "paths"): (
+        "Đường dẫn bắt đầu bằng dấu /, tính từ /apps/<tên ứng dụng>/api. Đường dẫn gồm "
+        "chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới, dấu / và dấu *. "
+        "Ví dụ: /rpc/duyet_don hoặc /don*."
+    ),
+    ("access", "roles"): (
+        "Tên role có dạng <tên ứng dụng>.<vai trò>. Vai trò viết theo quy tắc của "
+        "tên ứng dụng. Ví dụ: nghi-phep.quan-ly."
+    ),
 }
 MESSAGES = {
     "missing": "Thiếu trường bắt buộc.",
@@ -109,8 +126,20 @@ MESSAGES = {
     "model_type": "Giá trị phải là một đối tượng JSON.",
     "too_short": "Danh sách phải có ít nhất {min_length} phần tử.",
     "string_too_long": "Giá trị dài tối đa {max_length} ký tự.",
+    "too_long": "Danh sách có tối đa {max_length} phần tử.",
+    "bool_type": "Giá trị phải là true hoặc false.",
+    "literal_error": "Phương thức phải là GET, POST, PATCH, PUT hoặc DELETE.",
 }
-CUSTOM_ERRORS = {"reserved_prefix", "reserved_name", "role_prefix", "duplicate_role"}
+CUSTOM_ERRORS = {
+    "reserved_prefix",
+    "reserved_name",
+    "role_prefix",
+    "duplicate_role",
+    "network",
+    "access_condition",
+    "access_length",
+    "access_role",
+}
 JSON_MESSAGES = {
     "Expecting value": "thiếu giá trị",
     "Expecting ',' delimiter": "thiếu dấu phẩy",
@@ -125,6 +154,8 @@ JSON_MESSAGES = {
 
 Folder = Annotated[str, Field(pattern=FOLDER_PATTERN, max_length=FOLDER_LENGTH)]
 RoleName = Annotated[str, Field(pattern=ROLE_PATTERN, max_length=ROLE_LENGTH)]
+AccessPath = Annotated[str, Field(pattern=ACCESS_PATH_PATTERN, max_length=ACCESS_PATH_LENGTH)]
+Method = Literal["GET", "POST", "PATCH", "PUT", "DELETE"]
 
 
 class Role(BaseModel):
@@ -136,6 +167,77 @@ class Role(BaseModel):
     description: str = Field(
         pattern=TEXT_PATTERN, max_length=DESCRIPTION_LENGTH, description="Mô tả của role."
     )
+
+
+class AccessRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    methods: list[Method] | None = Field(
+        None,
+        min_length=1,
+        description=(
+            "Các phương thức HTTP mà luật áp dụng. GET áp dụng cả cho HEAD. "
+            "Khi không khai, luật áp dụng cho mọi phương thức."
+        ),
+    )
+    paths: list[AccessPath] | None = Field(
+        None,
+        min_length=1,
+        description=(
+            "Các đường dẫn mà luật áp dụng, tính từ /apps/<tên ứng dụng>/api, theo cú pháp glob. "
+            "Dấu * khớp với một cấp, dấu ** khớp với nhiều cấp. "
+            "Khi không khai, luật áp dụng cho mọi đường dẫn."
+        ),
+    )
+    roles: list[RoleName] | None = Field(
+        None,
+        min_length=1,
+        description="Người gọi phải có ít nhất một trong các role này của ứng dụng.",
+    )
+    networks: list[str] | None = Field(
+        None,
+        min_length=1,
+        description=(
+            "Địa chỉ IP của người gọi phải thuộc một trong các dải mạng này, "
+            "viết theo dạng CIDR. Ví dụ: 192.168.1.0/24."
+        ),
+    )
+    otp: StrictBool = Field(False, description="Người gọi phải đăng nhập bằng mật khẩu và mã OTP.")
+
+    @field_validator("networks")
+    @classmethod
+    def networks_are_cidr(cls, networks: list[str] | None) -> list[str] | None:
+        for network in networks or []:
+            try:
+                valid_network = "/" in network and ip_network(network, strict=True)
+            except ValueError:
+                valid_network = False
+            if not valid_network:
+                raise PydanticCustomError(
+                    "network",
+                    'Dải mạng "{network}" không hợp lệ. Hãy viết theo dạng CIDR, '
+                    "ví dụ 192.168.1.0/24.",
+                    {"network": network},
+                )
+        return networks
+
+    @model_validator(mode="after")
+    def has_condition(self) -> "AccessRule":
+        if not (self.roles or self.networks or self.otp):
+            raise PydanticCustomError(
+                "access_condition", "Luật phải có ít nhất một điều kiện roles, networks hoặc otp."
+            )
+        if len(self.label()) > LABEL_LENGTH:
+            raise PydanticCustomError(
+                "access_length",
+                "Luật dài {length} ký tự khi ghi vào route của APISIX, tối đa {limit} ký tự. "
+                "Hãy tách thành nhiều luật.",
+                {"length": len(self.label()), "limit": LABEL_LENGTH},
+            )
+        return self
+
+    def label(self) -> str:
+        return json.dumps(self.model_dump(exclude_defaults=True), separators=(",", ":"))
 
 
 FOLDER = TypeAdapter(Folder)
@@ -223,6 +325,14 @@ class Manifest(BaseModel):
             "Thư mục chứa giao diện, tính từ thư mục ứng dụng. Thư mục phải có file index.html."
         ),
     )
+    access: list[AccessRule] = Field(
+        default_factory=list,
+        max_length=ACCESS_RULES,
+        description=(
+            "Các luật truy cập API của ứng dụng. OPA kiểm tra các luật này ở API Gateway. "
+            "Lời gọi khớp phương thức và đường dẫn của một luật phải đạt mọi điều kiện của luật."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -265,6 +375,33 @@ class Manifest(BaseModel):
             errors.sort(key=lambda error: error["loc"][:1])
             raise ValidationError.from_exception_data("roles", errors)
         return roles
+
+    @field_validator("access")
+    @classmethod
+    def access_uses_roles_of_app(
+        cls, access: list[AccessRule], info: ValidationInfo
+    ) -> list[AccessRule]:
+        roles = info.data.get("roles")
+        if roles is None:
+            return access
+        declared = {role.name for role in roles}
+        errors = [
+            InitErrorDetails(
+                type=PydanticCustomError(
+                    "access_role",
+                    'Role "{role}" chưa được khai báo trong roles của ứng dụng.',
+                    {"role": name},
+                ),
+                loc=(index, "roles", position),
+                input=name,
+            )
+            for index, rule in enumerate(access)
+            for position, name in enumerate(rule.roles or [])
+            if name not in declared
+        ]
+        if errors:
+            raise ValidationError.from_exception_data("access", errors)
+        return access
 
 
 class Problem(NamedTuple):

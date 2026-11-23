@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from saigonos_core.manifest import (
+    ACCESS_RULES,
+    LABEL_LENGTH,
     MANIFEST,
     NAME_LENGTH,
     RESERVED_NAMES,
@@ -116,7 +118,7 @@ def test_valid_app_has_no_problem(app):
     checked = check_app(app)
 
     assert checked.problems == []
-    assert checked.manifest.model_dump(exclude={"schema_url"}) == VALID
+    assert checked.manifest.model_dump(exclude_defaults=True) == VALID
 
 
 @pytest.mark.parametrize(
@@ -598,3 +600,140 @@ def test_drawing_warning_keeps_app_valid(app):
         'processes: "processes/duyet.bpmn": File không có phần hình vẽ (BPMNDI) '
         "nên Cockpit của Operaton không vẽ được quy trình."
     ]
+
+
+PATH_RULE = (
+    "Đường dẫn bắt đầu bằng dấu /, tính từ /apps/<tên ứng dụng>/api. Đường dẫn gồm chữ cái "
+    "không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới, dấu / và dấu *. "
+    "Ví dụ: /rpc/duyet_don hoặc /don*."
+)
+APPROVE = {
+    "methods": ["POST"],
+    "paths": ["/rpc/duyet_don"],
+    "roles": ["nghi-phep.quan-ly"],
+    "otp": True,
+}
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        [APPROVE],
+        [{"networks": ["192.168.1.0/24", "2001:db8::/32", "203.0.113.7/32"]}],
+        [{"methods": ["DELETE", "PATCH"], "paths": ["/don*", "/rpc/**"], "otp": True}],
+        [{"roles": ["nghi-phep.nhan-vien", "nghi-phep.quan-ly"]}],
+        [],
+    ],
+    ids=["duyet-don", "dai-mang", "glob", "hai-role", "khong-co-luat"],
+)
+def test_access_rules_are_accepted(app, rules):
+    write(app, VALID | {"access": rules})
+
+    checked = check_app(app)
+
+    assert checked.problems == []
+    assert [rule.model_dump(exclude_defaults=True) for rule in checked.manifest.access] == rules
+
+
+def test_rule_is_written_to_route_label_as_compact_json(app):
+    write(app, VALID | {"access": [APPROVE]})
+
+    [rule] = check_app(app).manifest.access
+
+    assert rule.label() == json.dumps(APPROVE, separators=(",", ":"))
+
+
+@pytest.mark.parametrize(
+    ("rule", "expected"),
+    [
+        (
+            {"methods": ["POST"]},
+            "access[0]: Luật phải có ít nhất một điều kiện roles, networks hoặc otp.",
+        ),
+        ({"otp": False}, "access[0]: Luật phải có ít nhất một điều kiện roles, networks hoặc otp."),
+        ({"otp": "true"}, "access[0].otp: Giá trị phải là true hoặc false."),
+        (
+            {"methods": ["OPTIONS"], "otp": True},
+            "access[0].methods[0]: Phương thức phải là GET, POST, PATCH, PUT hoặc DELETE.",
+        ),
+        ({"methods": [], "otp": True}, "access[0].methods: Danh sách phải có ít nhất 1 phần tử."),
+        ({"paths": ["rpc/duyet_don"], "otp": True}, f"access[0].paths[0]: {PATH_RULE}"),
+        ({"paths": ["/đơn"], "otp": True}, f"access[0].paths[0]: {PATH_RULE}"),
+        ({"paths": ["/don?id=1"], "otp": True}, f"access[0].paths[0]: {PATH_RULE}"),
+        (
+            {"paths": ["/" + "a" * 200], "otp": True},
+            "access[0].paths[0]: Giá trị dài tối đa 200 ký tự.",
+        ),
+        ({"roles": ["quan-ly"]}, f"access[0].roles[0]: {ROLE_RULE}"),
+        (
+            {"roles": ["nghi-phep.truong-phong"]},
+            'access[0].roles[0]: Role "nghi-phep.truong-phong" chưa được khai báo trong roles '
+            "của ứng dụng.",
+        ),
+        (
+            {"networks": ["192.168.1.5/24"]},
+            'access[0].networks: Dải mạng "192.168.1.5/24" không hợp lệ. Hãy viết theo dạng '
+            "CIDR, ví dụ 192.168.1.0/24.",
+        ),
+        (
+            {"networks": ["203.0.113.7"]},
+            'access[0].networks: Dải mạng "203.0.113.7" không hợp lệ. Hãy viết theo dạng '
+            "CIDR, ví dụ 192.168.1.0/24.",
+        ),
+        (
+            {"networks": ["mang-noi-bo"]},
+            'access[0].networks: Dải mạng "mang-noi-bo" không hợp lệ. Hãy viết theo dạng '
+            "CIDR, ví dụ 192.168.1.0/24.",
+        ),
+        (
+            {"otp": True, "message": "Không được"},
+            "access[0].message: Không có trường này. Hãy kiểm tra lỗi chính tả.",
+        ),
+    ],
+    ids=[
+        "khong-co-dieu-kien",
+        "otp-false",
+        "otp-la-chuoi",
+        "phuong-thuc-la",
+        "phuong-thuc-rong",
+        "duong-dan-thieu-gach-cheo",
+        "duong-dan-co-dau",
+        "duong-dan-co-query",
+        "duong-dan-qua-dai",
+        "role-sai-dang",
+        "role-chua-khai",
+        "dai-mang-co-bit-may",
+        "dai-mang-thieu-do-dai",
+        "dai-mang-khong-phai-ip",
+        "truong-la",
+    ],
+)
+def test_each_invalid_access_rule_has_its_own_message(app, rule, expected):
+    assert problems(app, VALID | {"access": [rule]}) == [expected]
+
+
+def test_rule_too_long_for_route_label_is_refused(app):
+    paths = [f"/rpc/ham_so_{index:02d}_cua_ung_dung" for index in range(12)]
+    label = json.dumps({"paths": paths, "otp": True}, separators=(",", ":"))
+
+    found = problems(app, VALID | {"access": [{"paths": paths, "otp": True}]})
+
+    assert len(label) > LABEL_LENGTH
+    assert found == [
+        f"access[0]: Luật dài {len(label)} ký tự khi ghi vào route của APISIX, tối đa "
+        f"{LABEL_LENGTH} ký tự. Hãy tách thành nhiều luật."
+    ]
+
+
+def test_too_many_access_rules_are_refused(app):
+    rules = [{"otp": True}] * (ACCESS_RULES + 1)
+
+    assert problems(app, VALID | {"access": rules}) == [
+        f"access: Danh sách có tối đa {ACCESS_RULES} phần tử."
+    ]
+
+
+def test_role_check_of_access_waits_for_valid_roles(app):
+    change = {"roles": "nghi-phep.quan-ly", "access": [{"roles": ["nghi-phep.khac"]}]}
+
+    assert problems(app, VALID | change) == ["roles: Giá trị phải là một danh sách."]

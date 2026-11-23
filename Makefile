@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: check lint format test integration lock dependencies schema dist clean
+.PHONY: check lint format test opa-test integration lock dependencies schema dist clean
 
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 UV_COMPILE = uv pip compile --quiet --custom-compile-command "make lock"
 CORE_LOCK = src/saigonos/stack/core/requirements.txt
 APP_SCHEMA = schemas/saigonos-app.schema.json
 SPDX_TAG = SPDX-License-Identifier
+OPA_IMAGE = $(shell sed -n 's|^ *image: \(openpolicyagent/opa:[^ ]*\)$$|\1|p' src/saigonos/stack/compose.yaml | head -n 1)
+OPA = docker run --rm --user "$$(id -u):$$(id -g)" --volume "$(CURDIR)/src/saigonos/stack/config/opa:/policies:ro" --volume "$(CURDIR)/tests/opa:/tests:ro" $(OPA_IMAGE)
 
-check: lint test
+check: lint test opa-test
 
 lint:
 	reuse lint
@@ -21,6 +23,12 @@ format:
 
 test:
 	pytest --cov
+
+opa-test:
+	$(OPA) fmt --list --fail /policies /tests
+	$(OPA) check --strict /policies /tests
+	$(OPA) test --verbose /policies /tests
+	$(OPA) test --coverage --threshold 100 /policies /tests > /dev/null
 
 integration:
 	pytest -m integration -v

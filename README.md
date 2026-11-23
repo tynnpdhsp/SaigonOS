@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. Luật của OPA có thể chỉ mở trang quản trị cho một số dải mạng và luôn đòi đăng nhập có mã OTP, như mục [Luật truy cập](#luật-truy-cập). Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Bản khai cũng khai được luật truy cập API của ứng dụng theo role, dải mạng hoặc mã OTP. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Mục lục
 
@@ -26,6 +26,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Khởi động và dừng](#khởi-động-và-dừng)
 - [Triển khai trên máy chủ chưa có reverse proxy](#triển-khai-trên-máy-chủ-chưa-có-reverse-proxy)
 - [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
+- [Luật truy cập](#luật-truy-cập)
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
@@ -38,13 +39,53 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 
 ## Yêu cầu hệ thống
 
-- Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 24.04.
-- Python 3.11 trở lên và pip.
+- Hệ điều hành Linux. SaigonOS được kiểm thử trên Ubuntu 22.04 và 24.04.
+- Python 3.11 trở lên và pip. Ubuntu 22.04 chỉ có sẵn Python 3.10, nên cần cài Miniforge như bước 1 của mục [Cài đặt](#cài-đặt).
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
-- Khoảng 6 GB dung lượng đĩa cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên.
-- Khoảng 3 GB RAM cho các service.
+- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
+- Nên có 3 GB RAM cho các service. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+
+### Dung lượng đĩa
+
+Kiểm tra dung lượng còn trống của thư mục gốc:
+
+```bash
+df -h /
+```
+
+Bộ cài Ubuntu Server dùng LVM và thường chỉ cấp khoảng một nửa đĩa cho thư mục gốc. Cột `VFree` của lệnh sau cho biết phần đĩa chưa được cấp:
+
+```bash
+sudo vgs
+```
+
+Nếu `VFree` lớn hơn 0, cấp toàn bộ phần còn lại cho thư mục gốc. Thay `/dev/mapper/ubuntu--vg-ubuntu--lv` bằng giá trị ở cột `Filesystem` của lệnh `df -h /`:
+
+```bash
+sudo lvextend --resizefs --extents +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+
+### Swap
+
+Kiểm tra swap hiện có:
+
+```bash
+swapon --show
+```
+
+Máy có 2 GB RAM cần tổng swap từ 2 GB trở lên. Nếu chưa đủ, tạo thêm một file swap 2 GB:
+
+```bash
+sudo fallocate --length 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Dòng cuối giúp swap vẫn được bật sau khi khởi động lại máy.
 
 ## Cài đặt
 
@@ -52,7 +93,16 @@ Việc cài đặt chỉ cần pip và Docker Compose. Mọi cấu hình đều 
 
 ### 1. Cài đặt package `saigonos`
 
-Nên cài đặt trong một môi trường riêng, ví dụ môi trường conda:
+Nên cài đặt trong một môi trường riêng, ví dụ môi trường conda. Máy chưa có conda thì cài Miniforge trước:
+
+```bash
+curl -fsSLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash "Miniforge3-$(uname)-$(uname -m).sh" -b
+~/miniforge3/bin/conda init bash
+exec bash
+```
+
+Sau đó tạo môi trường và cài đặt package:
 
 ```bash
 conda create -n saigonos python=3.12
@@ -63,6 +113,8 @@ pip install .
 ```
 
 Mã nguồn của từng phiên bản cũng có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Tải file `saigonos-X.Y.Z.tar.gz`, giải nén rồi chạy `pip install .` trong thư mục vừa giải nén.
+
+Lệnh `saigonos` chỉ có trong môi trường `saigonos`. Mỗi lần mở terminal mới, chạy `conda activate saigonos` trước khi dùng lệnh `saigonos`. Nếu không, terminal báo `saigonos: command not found`.
 
 ### 2. Tạo thư mục làm việc
 
@@ -102,7 +154,9 @@ BÌNH THƯỜNG    freshclam     đang chạy
 BÌNH THƯỜNG    jwks          đã chạy xong
 BÌNH THƯỜNG    keycloak      đang chạy
 BÌNH THƯỜNG    migrate       đã chạy xong
+BÌNH THƯỜNG    opa           đang chạy
 BÌNH THƯỜNG    operaton      đang chạy
+BÌNH THƯỜNG    policies      đã chạy xong
 BÌNH THƯỜNG    postgres      đang chạy
 BÌNH THƯỜNG    postgrest     đang chạy
 BÌNH THƯỜNG    processes     đã chạy xong
@@ -184,6 +238,8 @@ docker compose exec keycloak /opt/keycloak/bin/kcadm.sh add-roles -r saigonos --
 Lệnh thứ hai hỏi mật khẩu của tài khoản `admin`, tức giá trị `KEYCLOAK_ADMIN_PASSWORD`. Lệnh thứ tư hỏi mật khẩu cho tài khoản mới.
 
 Sau đó, mở địa chỉ http://localhost:9080/auth/admin/saigonos/console/ và đăng nhập bằng tài khoản mới. Trên máy chủ có tên miền, địa chỉ này có dạng `https://dx.example.com/auth/admin/saigonos/console/`. Ở lần đăng nhập đầu tiên, Keycloak yêu cầu cài đặt OTP. Hãy quét mã QR bằng một ứng dụng xác thực, ví dụ FreeOTP hoặc Google Authenticator, rồi nhập mã gồm 6 chữ số. Từ lần sau, tài khoản đăng nhập bằng mật khẩu và mã OTP.
+
+Keycloak không ghi mã OTP của lần cài đặt vào access token. Do đó, ngay sau khi cài đặt OTP, Admin Console báo lỗi khi gọi Admin REST API qua API Gateway. Hãy đăng xuất rồi đăng nhập lại bằng mật khẩu và mã OTP, như mục [Trang quản trị](#trang-quản-trị).
 
 Trước khi cài đặt OTP, tài khoản chưa lấy được access token. Tuy vậy, người nào biết mật khẩu cũng có thể đăng nhập lần đầu và cài đặt OTP cho tài khoản. Do đó, hãy đăng nhập lần đầu ngay sau khi tạo tài khoản.
 
@@ -305,7 +361,7 @@ Các mã lỗi của hai lời gọi:
 
 ## Cấu hình
 
-Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram và SMTP được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram) và mục [Gửi email](#gửi-email).
+Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram, SMTP và dải mạng của trang quản trị được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram), mục [Gửi email](#gửi-email) và mục [Trang quản trị](#trang-quản-trị).
 
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -490,6 +546,69 @@ saigonos doctor
 ```
 
 Lệnh này gọi hệ thống qua địa chỉ `https://dx.example.com`. Do đó, lệnh cũng kiểm tra được kết nối qua reverse proxy và chứng chỉ. Nếu reverse proxy không gửi đủ các header ở bước 2, lệnh báo lỗi ở mục Đăng nhập và ghi địa chỉ mà Keycloak nhận được. Nếu reverse proxy không chuyển tiếp kết nối WebSocket, lệnh báo lỗi ở mục Centrifugo.
+
+## Luật truy cập
+
+Service `opa` chạy [Open Policy Agent](https://www.openpolicyagent.org/) (OPA). Trước khi chuyển lời gọi tới một route cần bảo vệ, API Gateway hỏi OPA. OPA trả lời cho phép hay từ chối theo các luật viết bằng Rego trong thư mục `config/opa` của thư mục làm việc. OPA chỉ giữ các luật chung ở API Gateway. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra.
+
+OPA chỉ nằm trong mạng nội bộ `policy` cùng APISIX và không mở cổng nào trên máy cài đặt. Luật trong file `config/opa/system.rego` chỉ cho API của OPA trả về quyết định. Lời gọi đọc dữ liệu, sửa luật hay sửa dữ liệu qua API của OPA đều bị từ chối. OPA được chạy với việc kiểm tra phiên bản mới đã tắt, nên không gửi thông tin tới máy chủ của dự án OPA.
+
+### Trang quản trị
+
+Hai route quản trị đi qua OPA:
+
+- Route `auth-admin`: Admin Console và Admin REST API của realm `saigonos` tại `/auth/admin/`.
+- Route `operaton`: Cockpit, Tasklist và Admin của Operaton tại `/operaton/`.
+
+Luật trong file `config/opa/admin.rego` chỉ cho qua lời gọi đạt cả hai điều kiện sau:
+
+- Địa chỉ IP của người gọi thuộc một dải mạng trong `SAIGONOS_ADMIN_NETWORKS` của file `.env`. Khi giá trị này trống hoặc không có, mọi địa chỉ IP đều đạt.
+- Lời gọi tới Admin REST API mang access token của một lần đăng nhập có mã OTP. Keycloak ghi các bước đăng nhập vào claim `amr` của access token, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Luật kiểm tra claim này có `otp`.
+
+Lời gọi không đạt nhận mã 403 kèm lý do. Khi OPA dừng hoặc trả lời sai định dạng, API Gateway từ chối các route quản trị với mã 403 hoặc 503. Trang đăng nhập và các route khác vẫn hoạt động. Quyền trên từng chức năng của Admin Console vẫn do Keycloak kiểm tra theo các role của client `realm-management`. Operaton chỉ cho tài khoản có realm role `admin` đăng nhập và luôn hỏi mã OTP.
+
+Ví dụ, để chỉ mở trang quản trị cho mạng `192.168.1.0/24` và địa chỉ IP `203.0.113.7`, thêm dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`:
+
+```
+SAIGONOS_ADMIN_NETWORKS=192.168.1.0/24,203.0.113.7/32
+```
+
+Mỗi dải mạng viết theo dạng CIDR, cho cả IPv4 và IPv6, các dải cách nhau bằng dấu phẩy. Một địa chỉ IP riêng lẻ có thêm `/32`, hoặc `/128` với IPv6. Khi có dải không hợp lệ, lệnh `saigonos up` báo lỗi ở service `policies`. Lúc đó OPA chưa khởi động lại, nên các route quản trị bị từ chối cho tới khi sửa xong.
+
+API Gateway tin header `X-Forwarded-For` do máy trong mạng nội bộ gửi tới, như mục [Cấu hình](#cấu-hình). Do đó, giới hạn theo dải mạng có hiệu lực chắc chắn với người gọi từ Internet và người gọi qua reverse proxy trên máy chủ. Một máy trong mạng nội bộ gọi thẳng vào cổng của API Gateway có thể khai báo một địa chỉ IP khác.
+
+Ở lần đăng nhập đầu tiên, tài khoản quản trị cài đặt OTP. Keycloak không ghi mã OTP của lần cài đặt vào claim `amr`. Do đó, sau khi cài đặt OTP, hãy đăng xuất rồi đăng nhập lại bằng mật khẩu và mã OTP.
+
+### Sửa luật
+
+OPA theo dõi thư mục `config/opa` và nạp lại luật ngay khi một file thay đổi. Khi file có lỗi, OPA giữ nguyên luật đang chạy. Lệnh `saigonos up` soát mọi file luật bằng service `policies`. Khi có file lỗi, lệnh báo service `policies` kết thúc với mã lỗi. Trong thư mục làm việc, xem vị trí lỗi bằng lệnh sau:
+
+```bash
+docker compose logs policies
+```
+
+Khi cập nhật phiên bản, lệnh `saigonos init` ghi đè các file luật có sẵn và giữ nguyên các file khác. Do đó, luật riêng của hệ thống nên được viết trong file mới, ví dụ `config/opa/local.rego`.
+
+Mỗi lý do trong tập `deny` của package `saigonos.admin` làm lời gọi bị từ chối. Luật mới thêm lý do vào tập này. Ví dụ, file sau không cho xóa tài khoản qua Admin Console, để người quản trị chỉ tắt tài khoản:
+
+```rego
+package saigonos.admin
+
+deny contains "Không xóa tài khoản qua API Gateway. Hãy tắt tài khoản thay cho việc xóa." if {
+	input.request.method == "DELETE"
+	regex.match(`^/auth/admin/realms/saigonos/users/[^/]+$`, input.request.path)
+}
+```
+
+Luật đọc được các giá trị sau của lời gọi:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `input.request.method` | Phương thức HTTP |
+| `input.request.path` | Đường dẫn, không gồm query string |
+| `input.request.query` | Các tham số của query string |
+| `input.request.headers` | Các header, tên viết thường |
+| `input.var.remote_addr` | Địa chỉ IP của người gọi |
 
 ## Kiểm tra audit log
 
@@ -1274,11 +1393,12 @@ Ví dụ bản khai của một ứng dụng xin nghỉ phép:
 | `database` | Không | Thư mục chứa file SQL, có ít nhất một file `.sql` |
 | `processes` | Không | Thư mục chứa file BPMN, có ít nhất một file `.bpmn` |
 | `ui` | Không | Thư mục chứa giao diện, có file `index.html` |
+| `access` | Không | Danh sách luật truy cập API của ứng dụng, tối đa 20 luật, như mục [Luật truy cập của ứng dụng](#luật-truy-cập-của-ứng-dụng) |
 
 Bản khai tuân theo các quy tắc sau:
 
 - Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `nghi-phep`, `don-tu-2`.
-- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
+- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
 - Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `nghi-phep.quan-ly`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
 - Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
 - Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`. Mỗi cấp gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và không bắt đầu bằng dấu chấm. Do đó, đường dẫn không trỏ ra ngoài thư mục ứng dụng được. Ba thư mục không trùng nhau và không nằm trong nhau.
@@ -1467,11 +1587,51 @@ const don = await (await fetch("/apps/nghi-phep/api/don", { headers })).json();
 
 Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng dụng>/api/`. Tài liệu chỉ có bảng và hàm trong schema của ứng dụng, với `basePath` là địa chỉ API của ứng dụng.
 
-Địa chỉ `/api/` của PostgREST cũng phục vụ schema của mọi ứng dụng đã cài đặt. Lời gọi qua địa chỉ này chọn schema bằng header `Accept-Profile` khi đọc và `Content-Profile` khi ghi. Lời gọi không có hai header này dùng schema `api`. Schema `api` nhận access token của mọi client.
+Địa chỉ `/api/` chỉ phục vụ schema `api`. API Gateway ghi đè header `Accept-Profile` và `Content-Profile` của mọi lời gọi tới địa chỉ này thành `api`. Do đó, schema của ứng dụng chỉ gọi được qua địa chỉ của ứng dụng, và mọi lời gọi tới schema này đều đi qua luật truy cập của ứng dụng. Schema `api` nhận access token của mọi client.
 
 Mỗi lần cài đặt, route được đặt lại theo bản khai, kể cả khi đã bị sửa trên Dashboard hay qua Admin API của APISIX. Route mang label `saigonos.app` có giá trị là tên ứng dụng. Khi APISIX đã có route `app-<tên ứng dụng>` mà không mang label này, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu và không đụng tới route đó.
 
 Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại. Việc này mất khoảng 1 giây.
+
+### Luật truy cập của ứng dụng
+
+Trường `access` của bản khai gồm tối đa 20 luật. OPA áp dụng các luật này cho API của ứng dụng tại `/apps/<tên ứng dụng>/api/`. Một lời gọi khớp với luật khi phương thức thuộc `methods` và đường dẫn khớp một mẫu trong `paths`. Lời gọi khớp với luật phải đạt mọi điều kiện của luật đó. Lời gọi không khớp luật nào vẫn được cho qua. Quyền trên từng bảng và từng dòng vẫn do file SQL của ứng dụng quyết định.
+
+Ví dụ:
+
+```json
+"access": [
+  {
+    "methods": ["POST"],
+    "paths": ["/rpc/duyet_don"],
+    "roles": ["nghi-phep.quan-ly"],
+    "otp": true
+  },
+  {
+    "networks": ["192.168.1.0/24"]
+  }
+]
+```
+
+Luật thứ nhất chỉ cho người có role `nghi-phep.quan-ly` đã đăng nhập bằng mã OTP gọi hàm `duyet_don`. Luật thứ hai chỉ mở API của ứng dụng cho mạng `192.168.1.0/24`.
+
+| Trường | Ý nghĩa |
+|---|---|
+| `methods` | Các phương thức `GET`, `POST`, `PATCH`, `PUT`, `DELETE`. `GET` áp dụng cả cho `HEAD`. Khi không khai, luật áp dụng cho mọi phương thức |
+| `paths` | Các mẫu đường dẫn tính từ `/apps/<tên ứng dụng>/api`, theo cú pháp glob. Dấu `*` khớp với một cấp, dấu `**` khớp với nhiều cấp, `/` là gốc của API. Khi không khai, luật áp dụng cho mọi đường dẫn |
+| `roles` | Người gọi phải có ít nhất một role trong danh sách. Các role phải được khai trong trường `roles` của bản khai |
+| `networks` | Địa chỉ IP của người gọi phải thuộc một dải mạng trong danh sách, viết theo dạng CIDR |
+| `otp` | Khi có giá trị `true`, người gọi phải đăng nhập bằng mật khẩu và mã OTP. Người dùng tự cài OTP ở trang tài khoản `/auth/realms/saigonos/account/` |
+
+Mỗi luật có ít nhất một điều kiện `roles`, `networks` hoặc `otp`. Lệnh cài đặt ghi mỗi luật thành một label của route `app-<tên ứng dụng>` và thêm plugin `opa` vào route. Do đó, luật có hiệu lực ngay khi lệnh cài đặt chạy xong và được gỡ cùng route. Khi viết thành JSON không có khoảng trắng, mỗi luật dài tối đa 256 ký tự, vì đó là giới hạn của label trong APISIX. Luật dài hơn cần được tách thành nhiều luật. Ứng dụng không khai luật thì route không có plugin `opa`.
+
+Lời gọi bị từ chối nhận mã 403. Khi luật cần access token mà lời gọi không có, mã trả về là 401. Nội dung trả về có dạng lỗi của PostgREST, ví dụ:
+
+```json
+{"code": "SGN03", "message": "Lời gọi này cần một trong các role: nghi-phep.quan-ly.", "details": null, "hint": null}
+```
+
+Khi OPA dừng, API của ứng dụng có luật bị từ chối. API của ứng dụng không có luật vẫn hoạt động.
 
 ### Thông báo và kênh của ứng dụng
 

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import base64
 import hashlib
+import hmac
 import html
 import ipaddress
 import json
@@ -18,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.client import HTTPConnection, HTTPException, HTTPMessage
 from typing import NamedTuple
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 
 import pytest
 
@@ -30,6 +31,8 @@ OUTSIDE_SUBNETS = [f"198.51.100.{start}/28" for start in range(0, 256, 16)]
 PUBLIC_SUBNETS = {"IPv4": "192.0.2.0/28", "IPv6": "2001:db8:5a1:9::/64"}
 ROUTES = ("/auth/realms/saigonos/.well-known/openid-configuration", "/api/", "/core/health")
 ATTEMPT_TIMEOUT = 5
+REDIRECTS = {301, 302, 303, 307}
+TOTP_SECRET = re.compile(r'name="totpSecret" value="([^"]+)"')
 TEXT, CLOSE, PING, PONG = 1, 8, 9, 10
 
 
@@ -181,6 +184,18 @@ def decode(segment):
 
 def cookies_of(reply):
     return "; ".join(cookie.split(";", 1)[0] for cookie in reply.headers.get_all("Set-Cookie", []))
+
+
+def totp(secret, step=0):
+    counter = struct.pack(">Q", int(time.time() // 30) + step)
+    digest = hmac.new(secret.encode(), counter, hashlib.sha1).digest()
+    offset = digest[-1] & 15
+    code = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+    return f"{code % 1_000_000:06d}"
+
+
+def form_action(reply):
+    return html.unescape(re.search(r'action="([^"]+)"', reply.body.decode())[1])
 
 
 def http_status(result):
@@ -428,6 +443,55 @@ class Stack:
             "code_verifier": verifier,
         }
         return self.call("POST", f"{endpoint}/token", form=exchange)
+
+    def browser_login(self, client, redirect, user, otp=None, step=1, secret=None):
+        verifier = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(verifier.encode()).digest()
+        query = {
+            "client_id": client,
+            "redirect_uri": redirect,
+            "response_type": "code",
+            "scope": "openid",
+            "code_challenge": base64.urlsafe_b64encode(digest).rstrip(b"=").decode(),
+            "code_challenge_method": "S256",
+        }
+        endpoint = f"{self.url}/auth/realms/{REALM}/protocol/openid-connect"
+        cookies = {}
+
+        def visit(method, url, form=None):
+            while True:
+                jar = "; ".join(f"{name}={value}" for name, value in cookies.items())
+                headers = {"Cookie": jar} if jar else {}
+                reply = self.call(method, url, form=form, headers=headers)
+                for line in reply.headers.get_all("Set-Cookie", []):
+                    name, _, value = line.split(";", 1)[0].partition("=")
+                    cookies[name] = value
+                location = reply.headers.get("Location", "")
+                if reply.status not in REDIRECTS or location.startswith(redirect):
+                    return reply
+                method, url, form = "GET", urljoin(url, location), None
+
+        page = visit("GET", f"{endpoint}/auth?{urlencode(query)}")
+        reply = visit("POST", form_action(page), {"username": user.name, "password": user.password})
+        if reply.status == 200:
+            setup = TOTP_SECRET.search(reply.body.decode())
+            if setup:
+                otp = html.unescape(setup[1])
+                form = {"totpSecret": otp, "totp": totp(otp), "userLabel": "thu"}
+            else:
+                form = {"otp": totp(otp, step)}
+            reply = visit("POST", form_action(reply), form)
+        assert reply.status in REDIRECTS, reply.body
+        exchange = {
+            "grant_type": "authorization_code",
+            "client_id": client,
+            "redirect_uri": redirect,
+            "code": parse_qs(urlsplit(reply.headers["Location"]).query)["code"][0],
+            "code_verifier": verifier,
+        }
+        if secret:
+            exchange["client_secret"] = secret
+        return self.call("POST", f"{endpoint}/token", form=exchange), otp
 
     def app_token(self, user, app):
         reply = self.app_login(user, app)
