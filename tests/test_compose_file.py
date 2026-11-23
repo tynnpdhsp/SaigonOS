@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 import re
 from importlib.resources import files
 from itertools import takewhile
@@ -290,3 +291,27 @@ def test_prometheus_starts_after_every_service_it_reads():
 
     for host in hosts - {"127.0.0.1"}:
         assert prometheus[prometheus.index(f"{host}:") + 1] == "condition: service_healthy"
+
+
+def test_dashboard_reads_only_provisioned_sources_and_existing_metrics():
+    grafana = services()["grafana"]
+    dashboard = json.loads((CONFIG / "grafana" / "dashboards" / "saigonos.json").read_text("utf-8"))
+    rules = (CONFIG / "prometheus" / "rules.yml").read_text(encoding="utf-8")
+    sources = (CONFIG / "grafana" / "provisioning" / "datasources" / "datasources.yaml").read_text(
+        encoding="utf-8"
+    )
+    known = {"apisix_http_status", "saigonos_service_up", "saigonos_service_memory_bytes"}
+    known |= set(re.findall(r"- record: (\S+)", rules))
+
+    for panel in dashboard["panels"]:
+        assert f"uid: {panel['datasource']['uid']}" in sources
+        for target in panel["targets"]:
+            if panel["datasource"]["type"] == "prometheus":
+                assert (
+                    set(re.findall(r"saigonos[:_][a-z_:]+|apisix_[a-z_]+", target["expr"])) <= known
+                )
+    assert (
+        "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/saigonos.json"
+        in grafana
+    )
+    assert "- ./config/grafana/dashboards:/etc/grafana/dashboards:ro" in grafana

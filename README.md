@@ -682,6 +682,15 @@ Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. G
 
 Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai.
 
+### Bảng theo dõi
+
+Trang chủ của Grafana là bảng SaigonOS. Bảng được nạp từ file `config/grafana/dashboards/saigonos.json` và không sửa được trong Grafana. Bảng gồm:
+
+- Sáu ô số trong khoảng thời gian đang xem: số request, số lỗi 4xx, số lỗi 5xx, số request bị tường lửa chặn, số request bị OPA từ chối và tổng RAM của các container.
+- Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm RAM.
+- Biểu đồ số request mỗi giây theo mã trạng thái.
+- Khung Log. Ô Service và ô Tìm trong log ở đầu trang dùng để lọc log. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
+
 ### Metrics
 
 Prometheus giữ metrics 7 ngày, tối đa 2 GB, trong volume `prometheus-data`. Prometheus đọc metrics của các nguồn sau:

@@ -23,6 +23,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 
+- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, RAM, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
 - README có mục Giám sát.
 
 ### Thay đổi

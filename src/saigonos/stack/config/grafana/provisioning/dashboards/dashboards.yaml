@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: 1
+
+providers:
+  - name: SaigonOS
+    folder: SaigonOS
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

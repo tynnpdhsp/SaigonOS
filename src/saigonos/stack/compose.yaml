@@ -731,12 +731,15 @@ services:
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
       GF_CLOUD_MIGRATION_ENABLED: "false"
       GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/saigonos.json
     networks:
       - default
       - monitoring
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/grafana/api/health"]
       interval: 30s
