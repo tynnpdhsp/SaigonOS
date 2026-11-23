@@ -307,3 +307,43 @@ def test_check_fails_on_unknown_license(monkeypatch, table_file, capsys):
     assert dependencies.main(["--check"]) == 1
     assert "ngoài danh sách cho phép" in capsys.readouterr().err
     assert not table_file.exists()
+
+
+def test_table_lists_coraza_plugin_fetched_by_waf_service():
+    table = dependencies.build_table()
+
+    [reference] = dependencies.read_plugins(dependencies.STACK_FILE)
+    plugin = dependencies.PLUGINS[reference]
+    name, _, version = reference.rpartition(":")
+    assert f"| {name} | {version} | {plugin.license} | {plugin.description} |" in table
+    assert table.index(dependencies.IMAGE_SECTION) < table.index(dependencies.PLUGIN_SECTION)
+    assert table.index(dependencies.PLUGIN_SECTION) < table.index(dependencies.DEV_SECTION)
+
+
+def test_undeclared_plugin_version_is_rejected(tmp_path):
+    stack_file = tmp_path / "compose.yaml"
+    stack_file.write_text('services:\n  waf:\n    CORAZA_VERSION: "0.7.0"\n', encoding="utf-8")
+
+    with pytest.raises(dependencies.DependencyError, match=r"coraza-proxy-wasm 0\.7\.0 chưa được"):
+        dependencies.build_plugin_rows(dependencies.read_plugins(stack_file))
+
+
+def test_declared_plugin_missing_from_stack_is_rejected():
+    with pytest.raises(dependencies.DependencyError, match=r"không còn trong compose\.yaml"):
+        dependencies.build_plugin_rows([])
+
+
+def test_plugin_source_of_another_version_is_rejected(monkeypatch):
+    plugin = dependencies.Image("Apache-2.0", "Mô tả", "https://example.org/demo/tree/0.5.0")
+    monkeypatch.setattr(dependencies, "PLUGINS", {"demo:0.6.0": plugin})
+
+    with pytest.raises(dependencies.DependencyError, match="không dẫn tới mã nguồn"):
+        dependencies.build_plugin_rows(["demo:0.6.0"])
+
+
+def test_plugin_license_outside_allowed_list_is_rejected(monkeypatch):
+    plugin = dependencies.Image("BUSL-1.1", "Mô tả", "https://example.org/demo/tree/0.6.0")
+    monkeypatch.setattr(dependencies, "PLUGINS", {"demo:0.6.0": plugin})
+
+    with pytest.raises(dependencies.DependencyError, match="ngoài danh sách cho phép"):
+        dependencies.build_plugin_rows(["demo:0.6.0"])

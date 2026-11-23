@@ -123,6 +123,14 @@ IMAGES = {
     ),
 }
 
+PLUGINS = {
+    "coraza-proxy-wasm:0.6.0": Image(
+        "Apache-2.0",
+        "Chặn tấn công web ở API Gateway. File .wasm gồm Coraza 3.3.3 và bộ luật OWASP CRS "
+        "4.14.0, cả hai theo giấy phép Apache-2.0",
+        "https://github.com/corazawaf/coraza-proxy-wasm/tree/0.6.0",
+    ),
+}
 SPDX_TAG = "SPDX-License-Identifier"
 HEADER = f"""\
 <!-- {SPDX_TAG}: Apache-2.0 -->
@@ -165,6 +173,17 @@ khác trong image giữ giấy phép riêng.
 | Image | Phiên bản | Giấy phép | Mô tả | Nguồn |
 |---|---|---|---|---|
 """
+PLUGIN_SECTION = """
+## Plugin của API Gateway
+
+Plugin này không nằm trong image nào. Service `waf` tải file zip của plugin từ trang Releases \
+của dự án, kiểm tra mã băm SHA-256 của file zip và của file `.wasm`, rồi đưa file `.wasm` cho \
+APISIX. Phiên bản và hai mã băm được ghi trong service `waf` của file \
+`src/saigonos/stack/compose.yaml`.
+
+| Plugin | Phiên bản | Giấy phép | Mô tả | Nguồn |
+|---|---|---|---|---|
+"""
 DEV_SECTION = """
 ## Công cụ phát triển
 
@@ -204,6 +223,9 @@ nguyên image gốc. Việc cấu hình chỉ thực hiện qua biến môi trư
 trên máy cài đặt và dùng pip để cài các thư viện của service `core` từ PyPI. File `Dockerfile` ghi \
 digest của base image. Lock file ghi mã băm của từng thư viện. Do đó, mọi file được tải về khi \
 build đều được đối chiếu mã băm. SaigonOS không phân phối image đã build.
+- Plugin của API Gateway được service `waf` tải từ trang Releases của dự án khi khởi động lần \
+đầu, rồi được đối chiếu mã băm. SaigonOS dùng nguyên file của dự án và không phân phối lại file \
+này.
 - SaigonOS không sao chép và không sửa mã nguồn của dự án khác.
 
 ## Quy tắc về giấy phép
@@ -211,15 +233,15 @@ build đều được đối chiếu mã băm. SaigonOS không phân phối imag
 - Mỗi thư viện và phần mềm giữ nguyên giấy phép gốc.
 - Thư viện đi kèm sản phẩm và thư viện của service `core` chỉ được dùng các giấy phép \
 {vietnamese_list(ALLOWED_LICENSES)}.
-- Phần mềm chạy trong container chỉ được dùng các giấy phép {vietnamese_list(IMAGE_LICENSES)}. \
-Các giấy phép này đều được OSI công nhận.
+- Phần mềm chạy trong container và plugin của API Gateway chỉ được dùng các giấy phép \
+{vietnamese_list(IMAGE_LICENSES)}. Các giấy phép này đều được OSI công nhận.
 - Phần mềm theo giấy phép GPL-2.0-only chỉ được chạy trong container riêng. SaigonOS chỉ trao đổi \
 với phần mềm này qua kết nối mạng và không phân phối lại image. Do đó, giấy phép này không ảnh \
 hưởng đến giấy phép Apache-2.0 của SaigonOS.
 - Công cụ phát triển được dùng thêm {vietnamese_list(DEV_ONLY_LICENSES)}. Các công cụ này không \
 được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
-- Lệnh `make lint` báo lỗi khi gặp giấy phép khác, gặp image chưa được khai báo hoặc gặp base \
-image chưa ghi digest.
+- Lệnh `make lint` báo lỗi khi gặp giấy phép khác, gặp image hoặc plugin chưa được khai báo hoặc \
+gặp base image chưa ghi digest.
 """
 
 
@@ -340,6 +362,40 @@ def build_image_rows(references: list[str]) -> str:
     return "".join(rows)
 
 
+def read_plugins(stack_file: Path) -> list[str]:
+    text = stack_file.read_text(encoding="utf-8")
+    versions = re.findall(r'^[ \t]+CORAZA_VERSION:[ \t]*"([^"]+)"[ \t]*$', text, re.MULTILINE)
+    return [f"coraza-proxy-wasm:{version}" for version in versions]
+
+
+def build_plugin_rows(references: list[str]) -> str:
+    rows = []
+    for reference in references:
+        name, _, version = reference.rpartition(":")
+        if reference not in PLUGINS:
+            raise DependencyError(
+                f"Plugin {name} {version} chưa được khai báo. Hãy kiểm tra giấy phép của đúng "
+                "phiên bản này rồi thêm vào PLUGINS trong scripts/dependencies.py."
+            )
+        plugin = PLUGINS[reference]
+        if version not in plugin.source:
+            raise DependencyError(
+                f"Nguồn của plugin {name} không dẫn tới mã nguồn của phiên bản {version}."
+            )
+        license_expression = resolve_license(reference, plugin.license, IMAGE_LICENSES)
+        rows.append(
+            f"| {name} | {version} | {license_expression} | {plugin.description} "
+            f"| {plugin.source} |\n"
+        )
+    unused = sorted(PLUGINS.keys() - set(references))
+    if unused:
+        raise DependencyError(
+            f"{', '.join(unused)} không còn trong compose.yaml. "
+            "Hãy xóa khỏi PLUGINS trong scripts/dependencies.py."
+        )
+    return "".join(rows)
+
+
 def build_table(
     lock_file: Path = LOCK_FILE,
     dev_lock_file: Path = DEV_LOCK_FILE,
@@ -367,6 +423,8 @@ def build_table(
         + build_rows(core_locked, core, installed, ALLOWED_LICENSES)
         + IMAGE_SECTION
         + build_image_rows(sorted({*read_images(stack_file), *read_base_images(dockerfile)}))
+        + PLUGIN_SECTION
+        + build_plugin_rows(read_plugins(stack_file))
         + DEV_SECTION
         + build_rows(dev_pins, dev, installed, ALLOWED_LICENSES | DEV_ONLY_LICENSES)
         + footer()
