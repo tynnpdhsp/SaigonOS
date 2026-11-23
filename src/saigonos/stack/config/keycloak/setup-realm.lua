@@ -9,6 +9,8 @@ local MASTER = "master"
 local SCOPE = "roles"
 local BASIC_SCOPE = "basic"
 local REFERENCE = "default.reference.value"
+local MAX_AGE = "default.reference.maxAge"
+local DEFAULT_SESSION_MAX = 36000
 local ATTRIBUTE = {
     name = "unit",
     displayName = "Đơn vị",
@@ -413,7 +415,12 @@ local function setup_mapper(scope, wanted)
     return true
 end
 
-local function setup_reference(reference)
+local function session_max_age()
+    local realm = call("GET", REALM)
+    return tostring(realm.ssoSessionMaxLifespan or DEFAULT_SESSION_MAX)
+end
+
+local function setup_reference(reference, max_age)
     local execution
     for _, item in ipairs(call("GET", flow_path(reference.flow) .. "/executions")) do
         if item.level == 0 and item.providerId == reference.provider then
@@ -423,7 +430,7 @@ local function setup_reference(reference)
     if not execution then
         fail("Luồng đăng nhập " .. reference.flow .. " của realm " .. REALM .. " không có bước " .. reference.provider)
     end
-    local wanted = { [REFERENCE] = reference.value }
+    local wanted = { [REFERENCE] = reference.value, [MAX_AGE] = max_age }
     local label = reference.provider .. " của luồng " .. reference.flow
     if not execution.authenticationConfig then
         call("POST", REALM .. "/authentication/executions/" .. execution.id .. "/config", {
@@ -436,19 +443,30 @@ local function setup_reference(reference)
     local path = REALM .. "/authentication/config/" .. execution.authenticationConfig
     local current = call("GET", path)
     local config = current.config or {}
-    if config[REFERENCE] == reference.value then
+    if config[REFERENCE] == reference.value and config[MAX_AGE] == max_age then
         return false
     end
+    if config[REFERENCE] ~= reference.value then
+        print("Giá trị amr của bước " .. label .. " đã bị thay đổi nên được đặt lại")
+    end
+    if config[MAX_AGE] ~= max_age then
+        print("Đã đặt thời hạn amr " .. max_age .. " giây cho bước " .. label)
+    end
     config[REFERENCE] = reference.value
+    config[MAX_AGE] = max_age
     call("PUT", path, { id = current.id, alias = current.alias, config = config })
-    print("Giá trị amr của bước " .. label .. " đã bị thay đổi nên được đặt lại")
     return true
 end
 
-local function setup_references()
+local function setup_references(max_age)
     local changed = false
     for _, reference in ipairs(REFERENCES) do
-        changed = setup_reference(reference) or changed
+        changed = setup_reference(reference, max_age) or changed
+    end
+    for _, step in ipairs(OPERATON_STEPS) do
+        if step.config and step.config[REFERENCE] then
+            step.config[MAX_AGE] = max_age
+        end
     end
     return changed
 end
@@ -516,7 +534,7 @@ local scope = find_scope(SCOPE)
 changed = add_mapper(scope) or changed
 changed = setup_mapper(scope, AUDIENCE_MAPPER) or changed
 changed = setup_mapper(find_scope(BASIC_SCOPE), AMR_MAPPER) or changed
-changed = setup_references() or changed
+changed = setup_references(session_max_age()) or changed
 changed = add_texts() or changed
 changed = setup_operaton() or changed
 if not changed then
