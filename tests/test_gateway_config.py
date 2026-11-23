@@ -158,3 +158,30 @@ def test_waf_and_opa_mark_the_requests_they_refuse():
     assert 'core.response.set_header("X-SaigonOS-Denied-By", "waf")' in PLUGIN
     for name in ("admin.rego", "apps.rego"):
         assert '"X-SaigonOS-Denied-By": "opa"' in (policies / name).read_text(encoding="utf-8")
+
+
+def test_grafana_route_follows_monitoring_profile_and_asks_opa_like_admin_pages():
+    route = json.loads((APISIX / "routes" / "grafana.json").read_text(encoding="utf-8"))
+    operaton = json.loads((APISIX / "routes" / "operaton.json").read_text(encoding="utf-8"))
+
+    assert route["labels"] == {"saigonos.profile": "monitoring"}
+    assert route["uris"] == ["/grafana", "/grafana/*"]
+    assert route["enable_websocket"] is True
+    assert route["plugins"] == {"opa": operaton["plugins"]["opa"]}
+    assert route["upstream"]["nodes"] == {"grafana:3000": 1}
+
+
+def test_routes_and_realm_services_know_which_profiles_are_on():
+    loader = (APISIX / "load-routes.lua").read_text(encoding="utf-8")
+    realm = (files("saigonos") / "stack" / "config" / "keycloak" / "setup-realm.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'labels["saigonos.profile"]' in loader
+    assert 'send("DELETE", url)' in loader
+    for script in (loader, realm):
+        assert 'os.getenv("SAIGONOS_PROFILES")' in script
+    for service in ("routes", "realm"):
+        block = COMPOSE.split(f"\n  {service}:\n", 1)[1].split("\n\n", 1)[0]
+        assert "SAIGONOS_PROFILES: ${COMPOSE_PROFILES:-}" in block
+    assert "GRAFANA_CLIENT_SECRET: ${GRAFANA_CLIENT_SECRET:?}" in COMPOSE.split("\n  realm:\n")[1]

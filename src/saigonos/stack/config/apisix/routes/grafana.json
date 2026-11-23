@@ -1,0 +1,21 @@
+{
+  "name": "grafana",
+  "desc": "Grafana: bảng theo dõi, metrics và log của hệ thống, đăng nhập bằng Keycloak. Route chỉ có khi giám sát được bật. OPA kiểm tra dải IP trước khi chuyển lời gọi",
+  "uris": ["/grafana", "/grafana/*"],
+  "labels": {
+    "saigonos.profile": "monitoring"
+  },
+  "enable_websocket": true,
+  "plugins": {
+    "opa": {
+      "host": "http://opa:8181",
+      "policy": "saigonos/admin/decision"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "grafana:3000": 1
+    }
+  }
+}
