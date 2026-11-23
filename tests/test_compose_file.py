@@ -101,7 +101,7 @@ def test_waf_service_fetches_pinned_coraza_and_checks_zip_and_wasm():
     assert re.fullmatch(r'CORAZA_VERSION: "\d+\.\d+\.\d+"', version)
     for key in ("CORAZA_ZIP_SHA256", "CORAZA_WASM_SHA256"):
         assert any(re.fullmatch(rf"{key}: [0-9a-f]{{64}}", line) for line in waf)
-    assert "- updates" in waf
+    assert [name for name, lines in services().items() if "- waf" in lines] == ["waf"]
     assert 'entrypoint: ["sh", "/config/fetch-coraza.sh"]' in waf
 
 

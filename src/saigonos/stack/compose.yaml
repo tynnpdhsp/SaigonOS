@@ -80,7 +80,7 @@ services:
       CORAZA_ZIP_SHA256: cca4e3c75cf6b2e615907f936a1b6dcd0955250e0fb7d3b1c2ecef807d84603c
       CORAZA_WASM_SHA256: f36e710529167482df820b790981230092da098d26d21aebb16f1d9c8c4e26d5
     networks:
-      - updates
+      - waf
     volumes:
       - wasm:/wasm
       - ./config/apisix/fetch-coraza.sh:/config/fetch-coraza.sh:ro
@@ -569,3 +569,4 @@ networks:
   policy:
     internal: true
   updates:
+  waf:
