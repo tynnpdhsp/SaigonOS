@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.7.0] - 2026-11-23
+
 ### Thêm
 
 - Service `opa` chạy Open Policy Agent 1.22.4 để API Gateway hỏi luật truy cập chung. Luật viết bằng Rego và nằm trong thư mục `config/opa`. OPA nạp lại luật ngay khi file thay đổi và giữ luật đang chạy khi file có lỗi. OPA chỉ nằm trong mạng nội bộ cùng APISIX, không nhận lời gọi sửa luật qua API và không gửi thông tin tới máy chủ của dự án OPA.
@@ -243,7 +245,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.6.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.4.0
