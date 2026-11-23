@@ -147,7 +147,7 @@ def executions(stack, flow):
     return json.loads(stack.admin("GET", path).body)
 
 
-def reference_of(stack, flow):
+def reference_config(stack, flow):
     for execution in executions(stack, flow):
         config = execution.get("authenticationConfig")
         if (
@@ -155,9 +155,13 @@ def reference_of(stack, flow):
             and config
             and "conditional" not in execution.get("providerId", "")
         ):
-            found = json.loads(stack.admin("GET", f"/authentication/config/{config}").body)
-            return found["config"].get("default.reference.value")
+            return json.loads(stack.admin("GET", f"/authentication/config/{config}").body)
     return None
+
+
+def reference_of(stack, flow, key="default.reference.value"):
+    found = reference_config(stack, flow)
+    return found and found["config"].get(key)
 
 
 def wait_for(condition, timeout=60):
@@ -613,9 +617,11 @@ def test_admin_api_through_gateway_needs_login_with_otp(stack):
     tokens = (first, second, third)
     replies = [gateway_page(stack, f"/auth{ADMIN_USERS}", token) for token in tokens]
     direct = [stack.call("GET", f"{stack.keycloak}{ADMIN_USERS}", token=token) for token in tokens]
-    amr = [decode(token.split(".")[1]).get("amr") or [] for token in tokens]
-    assert "otp" not in amr[0]
-    assert amr[1:] == [["pwd", "otp"], ["pwd"]]
+    assert [decode(token.split(".")[1]).get("amr") for token in tokens] == [
+        ["pwd"],
+        ["pwd", "otp"],
+        ["pwd"],
+    ]
     assert [reply.status for reply in replies] == [403, 200, 403]
     assert replies[0].body.decode() == OTP_REASON
     assert [reply.status for reply in direct] == [200, 200, 200]
@@ -739,3 +745,49 @@ def test_invalid_waf_mode_stops_routes_and_keeps_blocking(stack):
     )
     assert reply.status == 403
     assert restored.returncode == 0, restored.stderr
+
+
+def test_amr_lasts_for_session_after_slow_exchange_and_refresh(stack):
+    admin = stack.new_user(role="admin")
+    _, otp = console_token(stack, admin)
+    redirect = f"{stack.url}{ADMIN_CONSOLE}"
+    reply, _ = stack.browser_login(CONSOLE_CLIENT, redirect, admin, otp, wait=2)
+    tokens = json.loads(reply.body)
+    time.sleep(2)
+    form = {
+        "grant_type": "refresh_token",
+        "client_id": CONSOLE_CLIENT,
+        "refresh_token": tokens["refresh_token"],
+    }
+    refreshed = json.loads(stack.call("POST", f"{stack.url}{TOKEN_PATH}", form=form).body)
+    access = [tokens["access_token"], refreshed["access_token"]]
+
+    statuses = [gateway_page(stack, f"/auth{ADMIN_USERS}", token).status for token in access]
+
+    assert [decode(token.split(".")[1]).get("amr") for token in access] == [["pwd", "otp"]] * 2
+    assert statuses == [200, 200]
+
+
+def test_realm_service_sets_amr_max_age_on_realm_of_older_version(stack):
+    for flow in REFERENCES:
+        found = reference_config(stack, flow)
+        found["config"].pop("default.reference.maxAge")
+        assert stack.admin("PUT", f"/authentication/config/{found['id']}", found).status == 204
+
+    first = stack.up()
+    added = [line for line in stack.logs("realm").splitlines() if "thời hạn amr" in line][-3:]
+    second = stack.up()
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert added == [
+        "Đã đặt thời hạn amr 36000 giây cho bước auth-username-password-form của luồng "
+        "saigonos browser forms",
+        "Đã đặt thời hạn amr 36000 giây cho bước auth-otp-form của luồng "
+        "saigonos browser admin otp",
+        "Đã đặt thời hạn amr 36000 giây cho bước auth-otp-form của luồng "
+        "saigonos browser optional otp",
+    ]
+    assert stack.logs("realm").splitlines()[-1] == "Realm saigonos không cần thay đổi"
+    maximum = {flow: reference_of(stack, flow, "default.reference.maxAge") for flow in REFERENCES}
+    assert maximum == dict.fromkeys(REFERENCES, "36000")

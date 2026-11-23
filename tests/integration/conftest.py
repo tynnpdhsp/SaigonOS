@@ -444,7 +444,7 @@ class Stack:
         }
         return self.call("POST", f"{endpoint}/token", form=exchange)
 
-    def browser_login(self, client, redirect, user, otp=None, step=1, secret=None):
+    def browser_login(self, client, redirect, user, otp=None, step=1, secret=None, wait=0):
         verifier = secrets.token_urlsafe(32)
         digest = hashlib.sha256(verifier.encode()).digest()
         query = {
@@ -482,6 +482,7 @@ class Stack:
                 form = {"otp": totp(otp, step)}
             reply = visit("POST", form_action(reply), form)
         assert reply.status in REDIRECTS, reply.body
+        time.sleep(wait)
         exchange = {
             "grant_type": "authorization_code",
             "client_id": client,
