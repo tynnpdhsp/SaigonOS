@@ -7,6 +7,20 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Tường lửa ứng dụng web Coraza 3.3.3 với bộ luật OWASP CRS 4.14.0 chạy trong APISIX qua plugin coraza-proxy-wasm 0.6.0. Tường lửa kiểm tra lời gọi tới `/api`, `/apps` và `/core`, kể cả body JSON, và chặn lời gọi có dấu hiệu tấn công với mã 403. Lời gọi gửi nội dung file, Keycloak, Operaton và `/realtime` không đi qua tường lửa.
+- Service `waf` tải coraza-proxy-wasm ở lần khởi động đầu tiên, kiểm tra mã băm SHA-256 của file zip và của file `.wasm`, rồi lưu file vào volume `wasm`. Các lần khởi động sau dùng lại file đã lưu.
+- Plugin `saigonos-waf` của APISIX đưa body của lời gọi cho Coraza và trả nội dung JSON tiếng Việt với mã `SGN04` cho lời gọi bị chặn. Plugin ghi log mỗi lời gọi bị chặn kèm địa chỉ IP của người gọi.
+- Giá trị `SAIGONOS_WAF_MODE=detect` trong file `.env` chuyển tường lửa sang chế độ chỉ ghi log. Khi giá trị không hợp lệ, lệnh `saigonos up` báo lỗi ở service `routes`.
+- Lệnh `saigonos doctor` có thêm dòng `Tường lửa`, kiểm tra lời gọi có dấu hiệu tấn công bị chặn hay chỉ được ghi log theo chế độ trong file `.env`.
+- Bảng giấy phép có thêm mục plugin của API Gateway.
+
+### Thay đổi
+
+- Lời gọi tới `/api`, `/apps` và `/core` có body lớn hơn 1 MB nhận mã 413, trừ lời gọi gửi nội dung file.
+- APISIX chỉ bật các plugin mà SaigonOS dùng và tắt các plugin stream.
+
 ## [0.7.0] - 2026-11-23
 
 ### Thêm
