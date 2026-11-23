@@ -6,6 +6,9 @@ import pytest
 from saigonos import compose
 from saigonos.apps import app_folders
 from saigonos.cli import waiting
+from saigonos.home import OPTIONAL_SERVICES
+
+MONITORING = " ".join(OPTIONAL_SERVICES["monitoring"])
 
 
 @pytest.fixture
@@ -64,7 +67,10 @@ def test_enabled_caddy_is_left_to_compose(caddy_home, cli, docker, command, comp
     result = cli(command, "--home", caddy_home)
 
     assert result.exit_code == 0
-    assert docker.calls == [f"{caddy_home.resolve()}: compose {compose_command}"]
+    assert docker.calls == [
+        f"{caddy_home.resolve()}: compose rm --stop --force {MONITORING}",
+        f"{caddy_home.resolve()}: compose {compose_command}",
+    ]
 
 
 @pytest.mark.parametrize(("command", "compose_command"), [("up", "up -d --wait"), ("down", "down")])
@@ -75,7 +81,7 @@ def test_caddy_turned_off_is_removed_first(caddy_home, cli, docker, command, com
 
     assert result.exit_code == 0
     assert docker.calls == [
-        f"{caddy_home.resolve()}: compose rm --stop --force caddy",
+        f"{caddy_home.resolve()}: compose rm --stop --force caddy {MONITORING}",
         f"{caddy_home.resolve()}: compose {compose_command}",
     ]
 
@@ -91,7 +97,42 @@ def test_commands_stop_when_caddy_cannot_be_removed(caddy_home, cli, docker, com
     assert "Lệnh docker compose rm không chạy được: Cannot connect to the Docker daemon" in (
         result.output
     )
-    assert docker.calls == [f"{caddy_home.resolve()}: compose rm --stop --force caddy"]
+    assert docker.calls == [f"{caddy_home.resolve()}: compose rm --stop --force caddy {MONITORING}"]
+
+
+@pytest.fixture
+def monitoring_home(tmp_path, cli):
+    path = tmp_path / "monitoring"
+    cli("init", "--home", path, "--monitoring")
+    return path
+
+
+@pytest.mark.parametrize(("command", "compose_command"), [("up", "up -d --wait"), ("down", "down")])
+def test_enabled_monitoring_is_left_to_compose(
+    monitoring_home, cli, docker, command, compose_command
+):
+    result = cli(command, "--home", monitoring_home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [
+        f"{monitoring_home.resolve()}: compose rm --stop --force caddy",
+        f"{monitoring_home.resolve()}: compose {compose_command}",
+    ]
+
+
+@pytest.mark.parametrize(("command", "compose_command"), [("up", "up -d --wait"), ("down", "down")])
+def test_monitoring_turned_off_is_removed_first(
+    monitoring_home, cli, docker, command, compose_command
+):
+    cli("init", "--home", monitoring_home, "--no-monitoring")
+
+    result = cli(command, "--home", monitoring_home)
+
+    assert result.exit_code == 0
+    assert docker.calls == [
+        f"{monitoring_home.resolve()}: compose rm --stop --force caddy {MONITORING}",
+        f"{monitoring_home.resolve()}: compose {compose_command}",
+    ]
 
 
 @pytest.mark.parametrize("command", ["up", "down", "doctor", "audit verify"])

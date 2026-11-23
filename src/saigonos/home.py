@@ -20,7 +20,18 @@ DEFAULT_CADDY_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 APISIX_INTERNAL_PORTS = ("7085", "9090", "9091", "9180", "9443")
 CADDY_PROFILE = "caddy"
-OPTIONAL_SERVICES = (CADDY_PROFILE,)
+MONITORING_PROFILE = "monitoring"
+OPTIONAL_SERVICES = {
+    CADDY_PROFILE: ("caddy",),
+    MONITORING_PROFILE: (
+        "socket-proxy",
+        "prometheus",
+        "loki-probe",
+        "loki",
+        "alloy",
+        "grafana",
+    ),
+}
 BYTECODE_FOLDER = "__pycache__"
 PROCESS_FOLDER = Path("config", "operaton", "processes")
 APPS_FOLDER = Path("apps")
@@ -44,6 +55,7 @@ SECRET_KEYS = (
     "CENTRIFUGO_ADMIN_SECRET",
     "CENTRIFUGO_DB_PASSWORD",
     "CENTRIFUGO_SUBSCRIPTION_KEY",
+    "GRAFANA_CLIENT_SECRET",
 )
 SECRET_ALPHABET = string.ascii_letters + string.digits
 SECRET_LENGTH = 32
@@ -55,6 +67,7 @@ class Initialized(NamedTuple):
     listen: str
     new_secrets: int
     caddy: bool
+    monitoring: bool
 
 
 class SettingsError(Exception):
@@ -110,7 +123,12 @@ def disabled_services(home: Path) -> list[str]:
     if "COMPOSE_PROFILES" not in env:
         return []
     enabled = split_profiles(env["COMPOSE_PROFILES"])
-    return [name for name in OPTIONAL_SERVICES if name not in enabled]
+    return [
+        service
+        for profile, services in OPTIONAL_SERVICES.items()
+        if profile not in enabled
+        for service in services
+    ]
 
 
 def check_http_port(http_port: str) -> None:
@@ -201,6 +219,7 @@ def init_home(
     centrifugo_port: int | None = None,
     max_file_size: int | None = None,
     caddy: bool | None = None,
+    monitoring: bool | None = None,
 ) -> Initialized:
     lines = read_env_lines(home)
     current = parse_env(lines)
@@ -233,11 +252,13 @@ def init_home(
 
     check_http_port(new_http_port)
     profiles = split_profiles(current.get("COMPOSE_PROFILES", ""))
-    if caddy is not None and caddy != (CADDY_PROFILE in profiles):
-        if caddy:
-            profiles.append(CADDY_PROFILE)
+    for profile, wanted in ((CADDY_PROFILE, caddy), (MONITORING_PROFILE, monitoring)):
+        if wanted is None or wanted == (profile in profiles):
+            continue
+        if wanted:
+            profiles.append(profile)
         else:
-            profiles.remove(CADDY_PROFILE)
+            profiles.remove(profile)
         values["COMPOSE_PROFILES"] = ",".join(profiles)
     used = [
         (new_http_port, "cổng HTTP của API Gateway"),
@@ -266,5 +287,9 @@ def init_home(
         (home / folder).chmod(0o755)
     listen = listen_address(new_http_host, new_http_port)
     return Initialized(
-        url=url, listen=listen, new_secrets=len(missing), caddy=CADDY_PROFILE in profiles
+        url=url,
+        listen=listen,
+        new_secrets=len(missing),
+        caddy=CADDY_PROFILE in profiles,
+        monitoring=MONITORING_PROFILE in profiles,
     )

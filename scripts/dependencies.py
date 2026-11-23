@@ -31,7 +31,14 @@ ALLOWED_LICENSES = {
     "PSF-2.0",
 }
 DEV_ONLY_LICENSES = {"CC-BY-SA-4.0", "CC0-1.0", "GPL-3.0-or-later"}
-IMAGE_LICENSES = {"Apache-2.0", "GPL-2.0-only", "MIT", "PostgreSQL", "Python-2.0.1"}
+IMAGE_LICENSES = {
+    "AGPL-3.0-only",
+    "Apache-2.0",
+    "GPL-2.0-only",
+    "MIT",
+    "PostgreSQL",
+    "Python-2.0.1",
+}
 VERIFIED_LICENSES = {
     "h11": "MIT",
     "reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later",
@@ -66,6 +73,11 @@ IMAGES = {
         "Làm API Gateway cho mọi lời gọi từ bên ngoài",
         "https://github.com/apache/apisix/tree/3.19.0",
     ),
+    "busybox:1.38.0-musl": Image(
+        "GPL-2.0-only",
+        "Cung cấp lệnh wget tĩnh cho healthcheck của Loki khi giám sát được bật",
+        "https://busybox.net/downloads/busybox-1.38.0.tar.bz2",
+    ),
     "caddy:2.11.9-alpine": Image(
         "Apache-2.0",
         "Làm reverse proxy HTTPS và tự động lấy chứng chỉ khi được bật",
@@ -86,6 +98,21 @@ IMAGES = {
         "Quét mã độc trong file được tải lên",
         "https://github.com/Cisco-Talos/clamav/tree/clamav-1.5.4",
     ),
+    "grafana/alloy:v1.22.0": Image(
+        "Apache-2.0",
+        "Đọc log của các container và gửi tới Loki khi giám sát được bật",
+        "https://github.com/grafana/alloy/tree/v1.22.0",
+    ),
+    "grafana/grafana:13.3.1": Image(
+        "AGPL-3.0-only",
+        "Hiển thị bảng theo dõi, metrics và log khi giám sát được bật",
+        "https://github.com/grafana/grafana/tree/v13.3.1",
+    ),
+    "grafana/loki:3.7.10": Image(
+        "AGPL-3.0-only",
+        "Lưu log của các service khi giám sát được bật",
+        "https://github.com/grafana/loki/tree/v3.7.10",
+    ),
     "openpolicyagent/opa:1.22.4": Image(
         "Apache-2.0",
         "Kiểm tra luật truy cập chung trước khi API Gateway chuyển lời gọi đi",
@@ -100,6 +127,11 @@ IMAGES = {
         "PostgreSQL",
         "Lưu dữ liệu của Keycloak và của các ứng dụng",
         "https://github.com/postgres/postgres/tree/REL_18_6",
+    ),
+    "prom/prometheus:v3.16.0": Image(
+        "Apache-2.0",
+        "Thu và lưu metrics của các service khi giám sát được bật",
+        "https://github.com/prometheus/prometheus/tree/v3.16.0",
     ),
     "python:3.14.10-slim-trixie": Image(
         "Python-2.0.1",
@@ -120,6 +152,11 @@ IMAGES = {
         "Apache-2.0",
         "Quản lý định danh và đăng nhập một lần",
         "https://github.com/keycloak/keycloak/tree/26.8.2",
+    ),
+    "wollomatic/socket-proxy:1.13.2": Image(
+        "MIT AND Apache-2.0",
+        "Cho bộ thu log chỉ đọc Docker API khi giám sát được bật",
+        "https://github.com/wollomatic/socket-proxy/tree/1.13.2",
     ),
 }
 
@@ -235,9 +272,10 @@ này.
 {vietnamese_list(ALLOWED_LICENSES)}.
 - Phần mềm chạy trong container và plugin của API Gateway chỉ được dùng các giấy phép \
 {vietnamese_list(IMAGE_LICENSES)}. Các giấy phép này đều được OSI công nhận.
-- Phần mềm theo giấy phép GPL-2.0-only chỉ được chạy trong container riêng. SaigonOS chỉ trao đổi \
-với phần mềm này qua kết nối mạng và không phân phối lại image. Do đó, giấy phép này không ảnh \
-hưởng đến giấy phép Apache-2.0 của SaigonOS.
+- Phần mềm theo giấy phép GPL-2.0-only và AGPL-3.0-only chỉ được chạy trong container riêng từ \
+image gốc. SaigonOS không sửa mã nguồn của các phần mềm này, chỉ trao đổi với chúng qua kết nối \
+mạng và không phân phối lại image. Do đó, các giấy phép này không ảnh hưởng đến giấy phép \
+Apache-2.0 của SaigonOS. Mã nguồn của đúng phiên bản đang dùng nằm ở cột nguồn.
 - Công cụ phát triển được dùng thêm {vietnamese_list(DEV_ONLY_LICENSES)}. Các công cụ này không \
 được phân phối cùng SaigonOS nên không ảnh hưởng đến giấy phép Apache-2.0 của dự án.
 - Lệnh `make lint` báo lỗi khi gặp giấy phép khác, gặp image hoặc plugin chưa được khai báo hoặc \

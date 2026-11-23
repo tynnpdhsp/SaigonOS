@@ -7,6 +7,13 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Giám sát bằng Prometheus 3.16.0, Loki 3.7.10, Grafana 13.3.1 và Grafana Alloy 1.22.0 trong profile `monitoring`. Lệnh `saigonos init --monitoring` bật và `--no-monitoring` tắt giám sát. Các service này không mở cổng nào ra máy cài đặt, không gửi thống kê và không kiểm tra bản mới.
+- Service `socket-proxy` là service duy nhất giữ Docker socket. Service này chỉ cho Alloy gọi các đường dẫn GET cần thiết của Docker API.
+- Service một lần `loki-probe` chép lệnh `busybox` tĩnh vào volume `probe` để Loki có healthcheck, vì image của Loki không có shell.
+- Bảng giấy phép cho phép AGPL-3.0-only cho phần mềm chạy trong container, vì Grafana và Loki dùng giấy phép này.
+
 ## [0.8.1] - 2026-11-23
 
 ### Sửa

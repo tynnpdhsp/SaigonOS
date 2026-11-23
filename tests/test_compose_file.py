@@ -5,6 +5,8 @@ from itertools import takewhile
 
 import pytest
 
+from saigonos.home import MONITORING_PROFILE, OPTIONAL_SERVICES
+
 COMPOSE = (files("saigonos") / "stack" / "compose.yaml").read_text(encoding="utf-8")
 
 
@@ -13,7 +15,7 @@ def services():
     blocks = {}
     name = None
     for line in section.splitlines():
-        header = re.fullmatch(r"  ([a-z]+):", line)
+        header = re.fullmatch(r"  ([a-z][a-z-]*):", line)
         if header:
             name = header[1]
             blocks[name] = []
@@ -123,3 +125,103 @@ def test_only_apisix_shares_internal_network_with_opa():
         "opa",
     ]
     assert "  policy:\n    internal: true\n" in networks
+
+
+MONITORING = OPTIONAL_SERVICES[MONITORING_PROFILE]
+
+
+def block(name, key):
+    lines = services()[name]
+    return list(takewhile(lambda line: line.startswith("- "), lines[lines.index(f"{key}:") + 1 :]))
+
+
+def test_monitoring_profile_has_exactly_the_optional_services():
+    profiled = [name for name, lines in services().items() if 'profiles: ["monitoring"]' in lines]
+
+    assert sorted(profiled) == sorted(MONITORING)
+
+
+@pytest.mark.parametrize("name", MONITORING)
+def test_monitoring_service_is_pinned_and_publishes_no_port(name):
+    lines = services()[name]
+    images = image_of(name)
+
+    assert "ports:" not in lines
+    if images:
+        assert re.fullmatch(r"image: [a-z./-]+:v?\d+\.\d+\.\d+(-musl)?", images[0])
+    else:
+        assert "build: ./core" in lines
+
+
+def test_only_socket_proxy_holds_docker_socket_read_only_and_without_privileges():
+    proxy = services()["socket-proxy"]
+    holders = [name for name, lines in services().items() if any("docker.sock" in x for x in lines)]
+
+    assert holders == ["socket-proxy"]
+    assert "- /var/run/docker.sock:/var/run/docker.sock:ro" in proxy
+    assert 'cap_drop: ["ALL"]' in proxy
+    assert "read_only: true" in proxy
+    assert 'security_opt: ["no-new-privileges:true"]' in proxy
+    assert block("socket-proxy", "networks") == ["- docker"]
+    assert not any(line.startswith("- -allowPOST") or "allowGET=.*" in line for line in proxy)
+
+
+def test_docker_and_monitoring_networks_are_internal():
+    networks = COMPOSE.split("\nnetworks:\n", 1)[1]
+
+    assert "  monitoring:\n    internal: true\n" in networks
+    assert "  docker:\n    internal: true\n" in networks
+    assert sorted(name for name, lines in services().items() if "- docker" in lines) == sorted(
+        name for name in ("socket-proxy", "alloy", "exporter") if name in services()
+    )
+
+
+def test_log_collector_runs_as_user_of_its_image_without_capabilities():
+    alloy = services()["alloy"]
+
+    assert 'user: "473:473"' in alloy
+    assert 'cap_drop: ["ALL"]' in alloy
+    assert "- --disable-reporting" in alloy
+
+
+def test_loki_reports_nothing_and_checks_readiness_with_static_busybox():
+    probe, loki = services()["loki-probe"], services()["loki"]
+    config = (files("saigonos") / "stack" / "config" / "loki" / "config.yaml").read_text("utf-8")
+
+    assert 'restart: "no"' in probe
+    assert "network_mode: none" in probe
+    assert loki[loki.index("loki-probe:") + 1] == "condition: service_completed_successfully"
+    assert "- probe:/probe:ro" in loki
+    assert "/probe/busybox" in next(line for line in loki if line.startswith("test:"))
+    assert "analytics:\n  reporting_enabled: false\n" in config
+    assert "retention_period: 168h" in config
+
+
+def test_grafana_sends_nothing_outside_and_allows_only_keycloak_login():
+    grafana = services()["grafana"]
+    settings = (
+        "GF_ANALYTICS_REPORTING_ENABLED",
+        "GF_ANALYTICS_CHECK_FOR_UPDATES",
+        "GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES",
+        "GF_ANALYTICS_FEEDBACK_LINKS_ENABLED",
+        "GF_NEWS_NEWS_FEED_ENABLED",
+        "GF_PLUGINS_PLUGIN_ADMIN_ENABLED",
+        "GF_PUBLIC_DASHBOARDS_ENABLED",
+        "GF_SNAPSHOTS_EXTERNAL_ENABLED",
+        "GF_CLOUD_MIGRATION_ENABLED",
+        "GF_AUTH_BASIC_ENABLED",
+    )
+
+    for setting in settings:
+        assert f'{setting}: "false"' in grafana
+    for setting in (
+        "GF_PLUGINS_PREINSTALL_DISABLED",
+        "GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED",
+        "GF_SECURITY_DISABLE_GRAVATAR",
+        "GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION",
+        "GF_AUTH_DISABLE_LOGIN_FORM",
+        "GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT",
+        "GF_AUTH_GENERIC_OAUTH_USE_PKCE",
+    ):
+        assert f'{setting}: "true"' in grafana
+    assert "GF_SERVER_ROOT_URL: ${SAIGONOS_URL:?}/grafana/" in grafana

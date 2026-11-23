@@ -122,16 +122,17 @@ def test_footer_states_allowed_licenses():
 
     assert "Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MIT-0 và PSF-2.0" in table
     assert "CC-BY-SA-4.0, CC0-1.0 và GPL-3.0-or-later" in table
-    assert "Apache-2.0, GPL-2.0-only, MIT, PostgreSQL và Python-2.0.1" in table
-    assert "GPL-2.0-only chỉ được chạy trong container riêng" in table
+    assert "AGPL-3.0-only, Apache-2.0, GPL-2.0-only, MIT, PostgreSQL và Python-2.0.1" in table
+    assert "GPL-2.0-only và AGPL-3.0-only chỉ được chạy trong container riêng" in table
 
 
-def test_gpl_is_allowed_for_images_only():
-    expression = dependencies.resolve_license("demo", "GPL-2.0-only", dependencies.IMAGE_LICENSES)
+@pytest.mark.parametrize("license_id", ["GPL-2.0-only", "AGPL-3.0-only"])
+def test_copyleft_is_allowed_for_images_only(license_id):
+    expression = dependencies.resolve_license("demo", license_id, dependencies.IMAGE_LICENSES)
 
-    assert expression == "GPL-2.0-only"
+    assert expression == license_id
     with pytest.raises(dependencies.DependencyError, match="ngoài danh sách cho phép"):
-        dependencies.resolve_license("demo", "GPL-2.0-only", DEV_ALLOWED)
+        dependencies.resolve_license("demo", license_id, DEV_ALLOWED)
 
 
 def test_empty_lock_gives_product_table_without_rows(tmp_path):
