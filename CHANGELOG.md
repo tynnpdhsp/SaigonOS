@@ -18,7 +18,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Prometheus giữ metrics 7 ngày và đọc metrics của APISIX, Keycloak, Centrifugo, PostgREST, etcd, Loki và `exporter`. Recording rule ghi tổng số request, số lỗi 4xx và 5xx, số request bị tường lửa chặn và số request bị OPA từ chối.
 - Keycloak bật metrics ở cổng quản lý 9000. Centrifugo bật metrics ở cổng nội bộ 9000. Admin server của PostgREST lắng nghe trên mọi địa chỉ của container để Prometheus đọc `/metrics`. Các cổng này không mở ra máy cài đặt, trừ cổng 9000 của Centrifugo vốn đã mở trên `127.0.0.1`.
 - Alloy đọc log của mọi container trong project qua `socket-proxy`, kể cả service một lần đã chạy xong, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày.
+- Grafana có địa chỉ `/grafana/` qua API Gateway. Route `grafana` đi qua luật trang quản trị của OPA như Operaton. Grafana chỉ cho đăng nhập bằng Keycloak qua client `grafana`, dùng luồng đăng nhập chỉ cho realm role `admin` và bắt buộc OTP. Grafana không có tài khoản cục bộ.
+- Route có label `saigonos.profile` chỉ được service `routes` nạp khi profile đó được bật và được gỡ khi profile bị tắt. Service `realm` cũng tạo client `grafana` khi bật giám sát và xóa client này khi tắt.
+- Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
+
+### Thay đổi
+
+- Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
 
 ## [0.8.1] - 2026-11-23
 
