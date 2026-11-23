@@ -267,3 +267,15 @@ def test_recorded_totals_start_at_zero_only_while_gateway_answers():
         assert expression.endswith(' or sum(up{job="apisix"} == 1) * 0')
     assert '{denied_by="waf"}' in records[3][1]
     assert '{denied_by="opa"}' in records[4][1]
+
+
+def test_alloy_ships_logs_of_this_project_only_with_service_label():
+    config = (CONFIG / "alloy" / "config.alloy").read_text(encoding="utf-8")
+
+    assert config.count('host             = "tcp://socket-proxy:2375"') == 1
+    assert config.count('host          = "tcp://socket-proxy:2375"') == 1
+    assert '"com.docker.compose.project=" + sys.env("COMPOSE_PROJECT")' in config
+    assert 'values = ["running", "exited"]' in config
+    assert 'target_label  = "service"' in config
+    assert 'url = "http://loki:3100/loki/api/v1/push"' in config
+    assert "COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}" in services()["alloy"]

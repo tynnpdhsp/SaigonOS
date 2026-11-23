@@ -17,6 +17,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `exporter` chạy bằng image của service `core`. Service này đọc trạng thái, healthcheck và RAM của từng container qua `socket-proxy` và trả metrics `saigonos_service_up` và `saigonos_service_memory_bytes` cho Prometheus. Service một lần không được tính.
 - Prometheus giữ metrics 7 ngày và đọc metrics của APISIX, Keycloak, Centrifugo, PostgREST, etcd, Loki và `exporter`. Recording rule ghi tổng số request, số lỗi 4xx và 5xx, số request bị tường lửa chặn và số request bị OPA từ chối.
 - Keycloak bật metrics ở cổng quản lý 9000. Centrifugo bật metrics ở cổng nội bộ 9000. Admin server của PostgREST lắng nghe trên mọi địa chỉ của container để Prometheus đọc `/metrics`. Các cổng này không mở ra máy cài đặt, trừ cổng 9000 của Centrifugo vốn đã mở trên `127.0.0.1`.
+- Alloy đọc log của mọi container trong project qua `socket-proxy`, kể cả service một lần đã chạy xong, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 
 ## [0.8.1] - 2026-11-23
