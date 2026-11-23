@@ -15,6 +15,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Bảng giấy phép cho phép AGPL-3.0-only cho phần mềm chạy trong container, vì Grafana và Loki dùng giấy phép này.
 - Plugin `prometheus` của APISIX đếm mọi request qua API Gateway. Metrics chỉ mở ở cổng 9091 bên trong mạng Docker. Label `denied_by` có giá trị `waf` hoặc `opa` cho request bị tường lửa chặn hoặc bị luật OPA từ chối.
 - Service `exporter` chạy bằng image của service `core`. Service này đọc trạng thái, healthcheck và RAM của từng container qua `socket-proxy` và trả metrics `saigonos_service_up` và `saigonos_service_memory_bytes` cho Prometheus. Service một lần không được tính.
+- Prometheus giữ metrics 7 ngày và đọc metrics của APISIX, Keycloak, Centrifugo, PostgREST, etcd, Loki và `exporter`. Recording rule ghi tổng số request, số lỗi 4xx và 5xx, số request bị tường lửa chặn và số request bị OPA từ chối.
+- Keycloak bật metrics ở cổng quản lý 9000. Centrifugo bật metrics ở cổng nội bộ 9000. Admin server của PostgREST lắng nghe trên mọi địa chỉ của container để Prometheus đọc `/metrics`. Các cổng này không mở ra máy cài đặt, trừ cổng 9000 của Centrifugo vốn đã mở trên `127.0.0.1`.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 
 ## [0.8.1] - 2026-11-23

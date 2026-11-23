@@ -225,3 +225,45 @@ def test_grafana_sends_nothing_outside_and_allows_only_keycloak_login():
     ):
         assert f'{setting}: "true"' in grafana
     assert "GF_SERVER_ROOT_URL: ${SAIGONOS_URL:?}/grafana/" in grafana
+
+
+CONFIG = files("saigonos") / "stack" / "config"
+
+
+def test_prometheus_keeps_seven_days_and_reads_metrics_of_services():
+    prometheus = services()["prometheus"]
+    scrape = (CONFIG / "prometheus" / "prometheus.yml").read_text(encoding="utf-8")
+    targets = re.findall(r'- targets: \["([^"]+)"\]', scrape)
+
+    assert "- --storage.tsdb.retention.time=7d" in prometheus
+    assert targets == [
+        "127.0.0.1:9090",
+        "exporter:9100",
+        "apisix:9091",
+        "keycloak:9000",
+        "centrifugo:9000",
+        "postgrest:3001",
+        "etcd:2379",
+        "loki:3100",
+    ]
+    assert 'KC_METRICS_ENABLED: "true"' in services()["keycloak"]
+    assert "PGRST_ADMIN_SERVER_HOST: 0.0.0.0" in services()["postgrest"]
+    centrifugo = (CONFIG / "centrifugo" / "config.yaml").read_text(encoding="utf-8")
+    assert "prometheus:\n  enabled: true\n" in centrifugo
+
+
+def test_recorded_totals_start_at_zero_only_while_gateway_answers():
+    rules = (CONFIG / "prometheus" / "rules.yml").read_text(encoding="utf-8")
+    records = re.findall(r"- record: (\S+)\n\s+expr: (.+)", rules)
+
+    assert [name for name, _ in records] == [
+        "saigonos:http_requests:total",
+        "saigonos:http_client_errors:total",
+        "saigonos:http_server_errors:total",
+        "saigonos:waf_denied:total",
+        "saigonos:opa_denied:total",
+    ]
+    for _, expression in records:
+        assert expression.endswith(' or sum(up{job="apisix"} == 1) * 0')
+    assert '{denied_by="waf"}' in records[3][1]
+    assert '{denied_by="opa"}' in records[4][1]

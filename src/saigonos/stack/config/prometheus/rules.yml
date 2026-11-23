@@ -1,2 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-groups: []
+groups:
+  - name: saigonos
+    rules:
+      - record: saigonos:http_requests:total
+        expr: sum(apisix_http_status) or sum(up{job="apisix"} == 1) * 0
+      - record: saigonos:http_client_errors:total
+        expr: sum(apisix_http_status{code=~"4.."}) or sum(up{job="apisix"} == 1) * 0
+      - record: saigonos:http_server_errors:total
+        expr: sum(apisix_http_status{code=~"5.."}) or sum(up{job="apisix"} == 1) * 0
+      - record: saigonos:waf_denied:total
+        expr: sum(apisix_http_status{denied_by="waf"}) or sum(up{job="apisix"} == 1) * 0
+      - record: saigonos:opa_denied:total
+        expr: sum(apisix_http_status{denied_by="opa"}) or sum(up{job="apisix"} == 1) * 0
