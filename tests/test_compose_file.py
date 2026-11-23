@@ -92,6 +92,29 @@ def test_opa_starts_only_after_rules_and_admin_networks_pass_check():
     assert setting in opa
 
 
+def test_waf_service_fetches_pinned_coraza_and_checks_zip_and_wasm():
+    waf = services()["waf"]
+    version = next(line for line in waf if line.startswith("CORAZA_VERSION:"))
+
+    assert image_of("waf") == image_of("jwks")
+    assert 'restart: "no"' in waf
+    assert re.fullmatch(r'CORAZA_VERSION: "\d+\.\d+\.\d+"', version)
+    for key in ("CORAZA_ZIP_SHA256", "CORAZA_WASM_SHA256"):
+        assert any(re.fullmatch(rf"{key}: [0-9a-f]{{64}}", line) for line in waf)
+    assert "- updates" in waf
+    assert 'entrypoint: ["sh", "/config/fetch-coraza.sh"]' in waf
+
+
+def test_apisix_waits_for_coraza_and_reads_it_read_only():
+    apisix = services()["apisix"]
+    holders = [name for name, lines in services().items() if any("- wasm:" in x for x in lines)]
+
+    assert apisix[apisix.index("waf:") + 1] == "condition: service_completed_successfully"
+    assert "- wasm:/usr/local/apisix/wasm:ro" in apisix
+    assert "- wasm:/wasm" in services()["waf"]
+    assert sorted(holders) == ["apisix", "waf"]
+
+
 def test_only_apisix_shares_internal_network_with_opa():
     networks = COMPOSE.split("\nnetworks:\n", 1)[1]
 

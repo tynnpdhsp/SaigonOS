@@ -14,6 +14,23 @@ apisix:
     ip: 127.0.0.1
     port: 7085
 
+plugins:
+  - saigonos-waf
+  - openid-connect
+  - opa
+  - proxy-rewrite
+  - limit-count
+  - response-rewrite
+
+stream_plugins: []
+
+wasm:
+  plugins:
+    - name: coraza-filter
+      priority: 7999
+      http_request_phase: rewrite
+      file: /usr/local/apisix/wasm/coraza-proxy-wasm.wasm
+
 nginx_config:
   worker_processes: 4
   http:
