@@ -566,7 +566,7 @@ Hai route quản trị đi qua OPA:
 Luật trong file `config/opa/admin.rego` chỉ cho qua lời gọi đạt cả hai điều kiện sau:
 
 - Địa chỉ IP của người gọi thuộc một dải mạng trong `SAIGONOS_ADMIN_NETWORKS` của file `.env`. Khi giá trị này trống hoặc không có, mọi địa chỉ IP đều đạt.
-- Lời gọi tới Admin REST API mang access token của một lần đăng nhập có mã OTP. Keycloak ghi các bước đăng nhập vào claim `amr` của access token, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Luật kiểm tra claim này có `otp`.
+- Lời gọi tới Admin REST API mang access token của một lần đăng nhập có mã OTP. Keycloak ghi các bước đăng nhập vào claim `amr` của access token, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Luật kiểm tra claim này có `otp`. Các giá trị trong claim `amr` có hiệu lực suốt phiên đăng nhập, kể cả trong access token được làm mới. Thời gian này bằng SSO Session Max của realm, mặc định là 10 giờ.
 
 Lời gọi không đạt nhận mã 403 kèm lý do. Khi OPA dừng hoặc trả lời sai định dạng, API Gateway từ chối các route quản trị với mã 403 hoặc 503. Trang đăng nhập và các route khác vẫn hoạt động. Quyền trên từng chức năng của Admin Console vẫn do Keycloak kiểm tra theo các role của client `realm-management`. Operaton chỉ cho tài khoản có realm role `admin` đăng nhập và luôn hỏi mã OTP.
 

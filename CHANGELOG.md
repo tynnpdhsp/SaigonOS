@@ -7,6 +7,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Sửa
+
+- Claim `amr` của access token giữ các bước đăng nhập suốt phiên đăng nhập, kể cả khi access token được làm mới. Trước đây Keycloak chỉ ghi một bước vào `amr` khi access token được cấp trong cùng giây với bước đó. Do đó, khi trình duyệt đổi code chậm hoặc làm mới access token, Admin Console của realm `saigonos` qua API Gateway nhận mã 403 và luật `otp` trong bản khai của ứng dụng từ chối người dùng đã nhập mã OTP. Service `realm` đặt `default.reference.maxAge` bằng SSO Session Max của realm cho các bước có giá trị `amr` và đặt lại khi thiết lập này bị sửa.
+
 ## [0.8.0] - 2026-11-23
 
 ### Thêm
