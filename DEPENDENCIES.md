@@ -62,7 +62,7 @@ Cột giấy phép ghi giấy phép của phần mềm chính trong image. Giấ
 | python | 3.14.10-slim-trixie | Python-2.0.1 | Làm base image của service `core` | https://github.com/python/cpython/tree/v3.14.10 |
 | quay.io/coreos/etcd | v3.6.16 | Apache-2.0 | Lưu cấu hình của APISIX | https://github.com/etcd-io/etcd/tree/v3.6.16 |
 | quay.io/keycloak/keycloak | 26.8.2 | Apache-2.0 | Quản lý định danh và đăng nhập một lần | https://github.com/keycloak/keycloak/tree/26.8.2 |
-| wollomatic/socket-proxy | 1.13.2 | MIT AND Apache-2.0 | Cho bộ thu log chỉ đọc Docker API khi giám sát được bật | https://github.com/wollomatic/socket-proxy/tree/1.13.2 |
+| wollomatic/socket-proxy | 1.13.2 | MIT AND Apache-2.0 | Cho Alloy và exporter chỉ đọc Docker API khi giám sát được bật | https://github.com/wollomatic/socket-proxy/tree/1.13.2 |
 
 ## Plugin của API Gateway
 

@@ -10,10 +10,11 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thêm
 
 - Giám sát bằng Prometheus 3.16.0, Loki 3.7.10, Grafana 13.3.1 và Grafana Alloy 1.22.0 trong profile `monitoring`. Lệnh `saigonos init --monitoring` bật và `--no-monitoring` tắt giám sát. Các service này không mở cổng nào ra máy cài đặt, không gửi thống kê và không kiểm tra bản mới.
-- Service `socket-proxy` là service duy nhất giữ Docker socket. Service này chỉ cho Alloy gọi các đường dẫn GET cần thiết của Docker API.
+- Service `socket-proxy` là service duy nhất giữ Docker socket. Service này chỉ cho Alloy và `exporter` gọi các đường dẫn GET cần thiết của Docker API.
 - Service một lần `loki-probe` chép lệnh `busybox` tĩnh vào volume `probe` để Loki có healthcheck, vì image của Loki không có shell.
 - Bảng giấy phép cho phép AGPL-3.0-only cho phần mềm chạy trong container, vì Grafana và Loki dùng giấy phép này.
 - Plugin `prometheus` của APISIX đếm mọi request qua API Gateway. Metrics chỉ mở ở cổng 9091 bên trong mạng Docker. Label `denied_by` có giá trị `waf` hoặc `opa` cho request bị tường lửa chặn hoặc bị luật OPA từ chối.
+- Service `exporter` chạy bằng image của service `core`. Service này đọc trạng thái, healthcheck và RAM của từng container qua `socket-proxy` và trả metrics `saigonos_service_up` và `saigonos_service_memory_bytes` cho Prometheus. Service một lần không được tính.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 
 ## [0.8.1] - 2026-11-23

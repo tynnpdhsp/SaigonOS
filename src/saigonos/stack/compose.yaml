@@ -547,9 +547,9 @@ services:
     security_opt: ["no-new-privileges:true"]
     command:
       - -listenip=0.0.0.0
-      - -allowfrom=alloy
+      - -allowfrom=alloy,exporter
       - -allowHEAD=/_ping
-      - -allowGET=(/v[0-9.]+)?/(_ping|networks|containers/json|containers/[0-9a-f]{64}/(json|logs))
+      - -allowGET=(/v[0-9.]+)?/(_ping|networks|containers/json|containers/[0-9a-f]{64}/(json|logs|stats))
       - -allowhealthcheck
       - -watchdoginterval=60
       - -stoponwatchdog
@@ -560,6 +560,29 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD", "/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
+  exporter:
+    build: ./core
+    pull_policy: build
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "saigonos_core.exporter"]
+    environment:
+      DOCKER_URL: http://socket-proxy:2375
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}
+    networks:
+      - docker
+      - monitoring
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3

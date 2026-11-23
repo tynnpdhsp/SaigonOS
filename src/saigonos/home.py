@@ -25,6 +25,7 @@ OPTIONAL_SERVICES = {
     CADDY_PROFILE: ("caddy",),
     MONITORING_PROFILE: (
         "socket-proxy",
+        "exporter",
         "prometheus",
         "loki-probe",
         "loki",

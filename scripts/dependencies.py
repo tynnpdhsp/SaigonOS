@@ -155,7 +155,7 @@ IMAGES = {
     ),
     "wollomatic/socket-proxy:1.13.2": Image(
         "MIT AND Apache-2.0",
-        "Cho bộ thu log chỉ đọc Docker API khi giám sát được bật",
+        "Cho Alloy và exporter chỉ đọc Docker API khi giám sát được bật",
         "https://github.com/wollomatic/socket-proxy/tree/1.13.2",
     ),
 }
