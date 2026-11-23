@@ -75,6 +75,9 @@ local REFERENCES = {
 }
 
 local OPERATON = "operaton"
+local GRAFANA = "grafana"
+local MONITORING = "monitoring"
+local PROFILE = "saigonos.profile"
 local OPERATON_FLOW = "saigonos operaton"
 local NOT_ADMIN_FLOW = "saigonos operaton not admin"
 local ADMIN_ONLY = "saigonos-operaton-admin-only"
@@ -130,6 +133,11 @@ local keycloak_url = os.getenv("KEYCLOAK_URL")
 local master_frontend_url = os.getenv("MASTER_FRONTEND_URL")
 local saigonos_url = os.getenv("SAIGONOS_URL")
 local operaton_secret = os.getenv("OPERATON_CLIENT_SECRET")
+local grafana_secret = os.getenv("GRAFANA_CLIENT_SECRET")
+local profiles = {}
+for profile in (os.getenv("SAIGONOS_PROFILES") or ""):gmatch("[^,%s]+") do
+    profiles[profile] = true
+end
 local token
 
 local function fail(message)
@@ -349,8 +357,8 @@ local function add_texts()
     return added
 end
 
-local function find_client()
-    local clients = call("GET", REALM .. "/clients?clientId=" .. OPERATON)
+local function find_client(client_id)
+    local clients = call("GET", REALM .. "/clients?clientId=" .. client_id)
     return clients[1]
 end
 
@@ -372,6 +380,45 @@ local function operaton_settings(flow_id)
         authenticationFlowBindingOverrides = { browser = flow_id },
     }
 end
+
+local function grafana_settings(flow_id)
+    return {
+        protocol = "openid-connect",
+        publicClient = false,
+        clientAuthenticatorType = "client-secret",
+        secret = grafana_secret,
+        standardFlowEnabled = true,
+        implicitFlowEnabled = false,
+        directAccessGrantsEnabled = false,
+        serviceAccountsEnabled = false,
+        rootUrl = saigonos_url .. "/grafana",
+        baseUrl = "/",
+        redirectUris = { saigonos_url .. "/grafana/login/generic_oauth" },
+        webOrigins = setmetatable({}, cjson.array_mt),
+        attributes = {
+            ["pkce.code.challenge.method"] = "S256",
+            ["post.logout.redirect.uris"] = saigonos_url .. "/grafana/login",
+            [PROFILE] = MONITORING,
+        },
+        authenticationFlowBindingOverrides = { browser = flow_id },
+    }
+end
+
+local ADMIN_CLIENTS = {
+    {
+        client_id = OPERATON,
+        name = "Operaton",
+        description = "Cockpit, Tasklist và Admin của Operaton",
+        settings = operaton_settings,
+    },
+    {
+        client_id = GRAFANA,
+        name = "Grafana",
+        description = "Bảng theo dõi, metrics và log của hệ thống",
+        settings = grafana_settings,
+        profile = MONITORING,
+    },
+}
 
 local function differs(current, wanted)
     if type(wanted) ~= "table" then
@@ -471,38 +518,43 @@ local function setup_references(max_age)
     return changed
 end
 
-local function setup_operaton()
-    local client = find_client()
-    local changed = false
+local function setup_flow()
     local flow = find_flow()
-    local flow_id = flow and flow.id
-    if not flow or not flow_matches() then
+    if flow and flow_matches() then
+        return flow.id, false
+    end
+    for _, spec in ipairs(ADMIN_CLIENTS) do
+        local client = find_client(spec.client_id)
         if client then
             call("PUT", REALM .. "/clients/" .. client.id, {
                 enabled = false,
                 authenticationFlowBindingOverrides = { browser = "" },
             })
         end
-        if flow then
-            call("DELETE", REALM .. "/authentication/flows/" .. flow.id)
-            print("Luồng đăng nhập " .. OPERATON_FLOW .. " đã bị thay đổi nên được tạo lại")
-        end
-        flow_id = build_flow()
-        print("Đã tạo luồng đăng nhập " .. OPERATON_FLOW .. " của realm " .. REALM)
-        changed = true
     end
+    if flow then
+        call("DELETE", REALM .. "/authentication/flows/" .. flow.id)
+        print("Luồng đăng nhập " .. OPERATON_FLOW .. " đã bị thay đổi nên được tạo lại")
+    end
+    local flow_id = build_flow()
+    print("Đã tạo luồng đăng nhập " .. OPERATON_FLOW .. " của realm " .. REALM)
+    return flow_id, true
+end
 
-    local settings = operaton_settings(flow_id)
+local function setup_client(spec, flow_id, rebuilt)
+    local client = find_client(spec.client_id)
+    local changed = rebuilt
+    local settings = spec.settings(flow_id)
     if changed or not client then
         settings.enabled = true
     end
     if not client then
-        settings.clientId = OPERATON
-        settings.name = "Operaton"
-        settings.description = "Cockpit, Tasklist và Admin của Operaton"
+        settings.clientId = spec.client_id
+        settings.name = spec.name
+        settings.description = spec.description
         settings.protocolMappers = { GROUPS_MAPPER }
         call("POST", REALM .. "/clients", settings)
-        print("Đã tạo client " .. OPERATON .. " của realm " .. REALM)
+        print("Đã tạo client " .. spec.client_id .. " của realm " .. REALM)
         return true
     end
 
@@ -517,12 +569,35 @@ local function setup_operaton()
     end
     if changed then
         call("PUT", REALM .. "/clients/" .. client.id, settings)
-        print("Đã cập nhật client " .. OPERATON .. " của realm " .. REALM)
+        print("Đã cập nhật client " .. spec.client_id .. " của realm " .. REALM)
     end
     if not find(client.protocolMappers, GROUPS_MAPPER.name) then
         call("POST", REALM .. "/clients/" .. client.id .. "/protocol-mappers/models", GROUPS_MAPPER)
-        print("Đã thêm mapper " .. GROUPS_MAPPER.name .. " vào client " .. OPERATON)
+        print("Đã thêm mapper " .. GROUPS_MAPPER.name .. " vào client " .. spec.client_id)
         changed = true
+    end
+    return changed
+end
+
+local function remove_client(spec)
+    local client = find_client(spec.client_id)
+    if not client or (client.attributes or {})[PROFILE] ~= spec.profile then
+        return false
+    end
+    call("DELETE", REALM .. "/clients/" .. client.id)
+    print("Đã xóa client " .. spec.client_id .. " vì profile " .. spec.profile .. " đang tắt")
+    return true
+end
+
+local function setup_admin_clients()
+    local flow_id, changed = setup_flow()
+    local rebuilt = changed
+    for _, spec in ipairs(ADMIN_CLIENTS) do
+        if spec.profile and not profiles[spec.profile] then
+            changed = remove_client(spec) or changed
+        else
+            changed = setup_client(spec, flow_id, rebuilt) or changed
+        end
     end
     return changed
 end
@@ -536,7 +611,7 @@ changed = setup_mapper(scope, AUDIENCE_MAPPER) or changed
 changed = setup_mapper(find_scope(BASIC_SCOPE), AMR_MAPPER) or changed
 changed = setup_references(session_max_age()) or changed
 changed = add_texts() or changed
-changed = setup_operaton() or changed
+changed = setup_admin_clients() or changed
 if not changed then
     print("Realm " .. REALM .. " không cần thay đổi")
 end
