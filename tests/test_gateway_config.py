@@ -135,3 +135,26 @@ def test_routes_service_loads_global_rules_with_block_as_default_mode():
 
     assert "SAIGONOS_WAF_MODE: ${SAIGONOS_WAF_MODE:-block}" in routes
     assert "/config/routes/*.json /config/global-rules/*.json" in routes
+
+
+def test_prometheus_counts_every_request_of_gateway():
+    rule = json.loads((APISIX / "global-rules" / "prometheus.json").read_text(encoding="utf-8"))
+
+    assert rule == {"plugins": {"prometheus": {}}}
+
+
+def test_metrics_are_exported_inside_docker_networks_only_with_label_of_denial():
+    attributes = "\n".join(section("plugin_attr"))
+
+    assert "    export_addr:\n      ip: 0.0.0.0\n      port: 9091\n" in attributes
+    assert "    refresh_interval: 5\n" in attributes
+    assert "          - denied_by: $sent_http_x_saigonos_denied_by" in attributes
+    assert "9091" not in COMPOSE
+
+
+def test_waf_and_opa_mark_the_requests_they_refuse():
+    policies = files("saigonos") / "stack" / "config" / "opa"
+
+    assert 'core.response.set_header("X-SaigonOS-Denied-By", "waf")' in PLUGIN
+    for name in ("admin.rego", "apps.rego"):
+        assert '"X-SaigonOS-Denied-By": "opa"' in (policies / name).read_text(encoding="utf-8")

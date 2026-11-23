@@ -13,6 +13,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Service `socket-proxy` là service duy nhất giữ Docker socket. Service này chỉ cho Alloy gọi các đường dẫn GET cần thiết của Docker API.
 - Service một lần `loki-probe` chép lệnh `busybox` tĩnh vào volume `probe` để Loki có healthcheck, vì image của Loki không có shell.
 - Bảng giấy phép cho phép AGPL-3.0-only cho phần mềm chạy trong container, vì Grafana và Loki dùng giấy phép này.
+- Plugin `prometheus` của APISIX đếm mọi request qua API Gateway. Metrics chỉ mở ở cổng 9091 bên trong mạng Docker. Label `denied_by` có giá trị `waf` hoặc `opa` cho request bị tường lửa chặn hoặc bị luật OPA từ chối.
+- Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 
 ## [0.8.1] - 2026-11-23
 

@@ -42,6 +42,7 @@ test_address_outside_declared_networks_is_refused if {
 	decision.status_code == 403
 	reason(decision) == "Địa chỉ IP này không được vào trang quản trị."
 	decision.headers["Content-Type"] == "text/plain; charset=utf-8"
+	decision.headers["X-SaigonOS-Denied-By"] == "opa"
 }
 
 test_invalid_network_refuses_every_call if {

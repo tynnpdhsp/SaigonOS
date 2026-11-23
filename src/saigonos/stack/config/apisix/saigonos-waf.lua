@@ -50,6 +50,7 @@ function _M.header_filter(conf, ctx)
     ctx.saigonos_waf_reply = '{"code":"SGN04","details":null,"hint":null,"message":'
         .. core.json.encode(message) .. "}"
     core.response.set_header("Content-Type", "application/json; charset=utf-8")
+    core.response.set_header("X-SaigonOS-Denied-By", "waf")
     core.response.clear_header_as_body_modified()
     core.log.warn("Tường lửa ứng dụng web trả mã ", ngx.status, " cho ", ngx.var.request_method,
         " ", ngx.var.uri, " từ ", ngx.var.remote_addr)
