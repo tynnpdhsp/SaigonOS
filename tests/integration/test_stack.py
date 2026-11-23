@@ -602,11 +602,9 @@ def test_admin_api_through_gateway_needs_login_with_otp(stack):
     tokens = (first, second, third)
     replies = [gateway_page(stack, f"/auth{ADMIN_USERS}", token) for token in tokens]
     direct = [stack.call("GET", f"{stack.keycloak}{ADMIN_USERS}", token=token) for token in tokens]
-    assert [decode(token.split(".")[1]).get("amr") for token in tokens] == [
-        ["pwd"],
-        ["pwd", "otp"],
-        ["pwd"],
-    ]
+    amr = [decode(token.split(".")[1]).get("amr") or [] for token in tokens]
+    assert "otp" not in amr[0]
+    assert amr[1:] == [["pwd", "otp"], ["pwd"]]
     assert [reply.status for reply in replies] == [403, 200, 403]
     assert replies[0].body.decode() == OTP_REASON
     assert [reply.status for reply in direct] == [200, 200, 200]

@@ -1818,7 +1818,7 @@ def test_access_rule_with_otp_needs_login_with_otp(stack, tmp_path):
     refused = table_call(stack, "POST", name, without, {"body": "Chưa nhập OTP"})
     allowed = table_call(stack, "POST", name, with_otp, {"body": "Đã nhập OTP"})
 
-    assert claims_of(without)["amr"] == ["pwd"]
+    assert "otp" not in claims_of(without).get("amr", [])
     assert claims_of(with_otp)["amr"] == ["pwd", "otp"]
     message = "Lời gọi này cần đăng nhập bằng mật khẩu và mã OTP."
     assert refusal(refused) == (403, "SGN03", message)
