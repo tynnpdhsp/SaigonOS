@@ -1066,10 +1066,11 @@ def test_ui_of_app_is_served_with_security_headers(stack, with_ui):
         "css/..%2f..%2fsaigonos-app.json",
     ],
 )
-def test_path_with_dot_dot_is_not_found(stack, with_ui, path):
+def test_path_with_dot_dot_is_blocked_at_gateway(stack, with_ui, path):
     reply = app_call(stack, "GET", with_ui.name, path)
 
-    assert reply.status == 404, reply.body
+    assert reply.status == 403, reply.body
+    assert json.loads(reply.body)["code"] == "SGN04"
     assert with_ui.name.encode() not in reply.body
 
 
