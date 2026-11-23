@@ -265,6 +265,8 @@ def test_recorded_totals_start_at_zero_only_while_gateway_answers():
     ]
     for _, expression in records:
         assert expression.endswith(' or sum(up{job="apisix"} == 1) * 0')
+    for _, expression in records[:3]:
+        assert 'route!="grafana"' in expression
     assert '{denied_by="waf"}' in records[3][1]
     assert '{denied_by="opa"}' in records[4][1]
 
@@ -279,3 +281,12 @@ def test_alloy_ships_logs_of_this_project_only_with_service_label():
     assert 'target_label  = "service"' in config
     assert 'url = "http://loki:3100/loki/api/v1/push"' in config
     assert "COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}" in services()["alloy"]
+
+
+def test_prometheus_starts_after_every_service_it_reads():
+    prometheus = services()["prometheus"]
+    scrape = (CONFIG / "prometheus" / "prometheus.yml").read_text(encoding="utf-8")
+    hosts = {target.split(":")[0] for target in re.findall(r'- targets: \["([^"]+)"\]', scrape)}
+
+    for host in hosts - {"127.0.0.1"}:
+        assert prometheus[prometheus.index(f"{host}:") + 1] == "condition: service_healthy"

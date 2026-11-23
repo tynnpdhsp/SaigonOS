@@ -593,6 +593,21 @@ services:
     image: prom/prometheus:v3.16.0
     profiles: ["monitoring"]
     restart: unless-stopped
+    depends_on:
+      apisix:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      centrifugo:
+        condition: service_healthy
+      postgrest:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      exporter:
+        condition: service_healthy
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus

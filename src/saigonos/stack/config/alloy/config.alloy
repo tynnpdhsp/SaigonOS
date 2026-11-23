@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+logging {
+  level = "warn"
+}
+
 discovery.docker "containers" {
   host             = "tcp://socket-proxy:2375"
   refresh_interval = "5s"

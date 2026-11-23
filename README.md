@@ -701,13 +701,13 @@ Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `w
 
 | Metrics | Ý nghĩa |
 |---|---|
-| `saigonos:http_requests:total` | Tổng số request qua API Gateway |
+| `saigonos:http_requests:total` | Tổng số request qua API Gateway, trừ request tới Grafana |
 | `saigonos:http_client_errors:total` | Số request nhận mã 4xx |
 | `saigonos:http_server_errors:total` | Số request nhận mã 5xx |
 | `saigonos:waf_denied:total` | Số request bị tường lửa ứng dụng web chặn |
 | `saigonos:opa_denied:total` | Số request bị luật OPA từ chối |
 
-Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
+Ba tổng đầu không tính request tới route `grafana`, vì chính Grafana gửi request qua API Gateway mỗi khi bảng theo dõi làm mới. Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
 
 Service `exporter` cung cấp hai metrics. Metrics `saigonos_service_up` bằng 1 khi service đang chạy và đạt healthcheck. Metrics `saigonos_service_memory_bytes` là RAM của container, tính như lệnh `docker stats`. Service chạy một lần không được tính.
 
