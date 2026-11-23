@@ -72,12 +72,30 @@ services:
       start_period: 60s
       start_interval: 2s
 
+  waf:
+    image: postgres:18.6-alpine
+    restart: "no"
+    environment:
+      CORAZA_VERSION: "0.6.0"
+      CORAZA_ZIP_SHA256: cca4e3c75cf6b2e615907f936a1b6dcd0955250e0fb7d3b1c2ecef807d84603c
+      CORAZA_WASM_SHA256: f36e710529167482df820b790981230092da098d26d21aebb16f1d9c8c4e26d5
+    networks:
+      - waf
+    volumes:
+      - wasm:/wasm
+      - ./config/apisix/fetch-coraza.sh:/config/fetch-coraza.sh:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["sh", "/config/fetch-coraza.sh"]
+
   apisix:
     image: apache/apisix:3.19.0-ubuntu
     restart: unless-stopped
     depends_on:
       etcd:
         condition: service_healthy
+      waf:
+        condition: service_completed_successfully
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
       SAIGONOS_HTTP_PORT: ${SAIGONOS_HTTP_PORT:?}
@@ -95,6 +113,8 @@ services:
     volumes:
       - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./config/apisix/saigonos-dns.lua:/usr/local/apisix/saigonos/saigonos-dns.lua:ro
+      - ./config/apisix/saigonos-waf.lua:/usr/local/apisix/saigonos/apisix/plugins/saigonos-waf.lua:ro
+      - wasm:/usr/local/apisix/wasm:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7085 && printf 'GET /status/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
       interval: 30s
@@ -158,10 +178,11 @@ services:
     environment:
       APISIX_ADMIN_URL: http://apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
+      SAIGONOS_WAF_MODE: ${SAIGONOS_WAF_MODE:-block}
     volumes:
       - ./config/apisix:/config:ro
     entrypoint: ["sh", "-c"]
-    command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/load-routes.lua /config/routes/*.json"]
+    command: ["resty -I /usr/local/apisix/deps/share/lua/5.1 /config/load-routes.lua /config/routes/*.json /config/global-rules/*.json"]
 
   realm:
     image: apache/apisix:3.19.0-ubuntu
@@ -536,6 +557,7 @@ services:
 volumes:
   postgres-data:
   etcd-data:
+  wasm:
   jwks:
   seaweedfs-data:
   clamav-data:
@@ -547,3 +569,4 @@ networks:
   policy:
     internal: true
   updates:
+  waf:

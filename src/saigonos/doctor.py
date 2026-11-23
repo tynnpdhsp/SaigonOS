@@ -4,6 +4,7 @@ import hashlib
 import json
 import secrets
 import ssl
+from functools import partial
 from http.client import HTTPConnection, HTTPException, HTTPMessage, HTTPSConnection
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -11,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from saigonos import compose
 from saigonos.apps import AppFolderError, app_folders, read_manifest
-from saigonos.home import APPS_FOLDER
+from saigonos.home import APPS_FOLDER, parse_env, read_env_lines
 
 REALM_PATH = "/auth/realms/saigonos"
 TOKEN_PATH = f"{REALM_PATH}/protocol/openid-connect/token"
@@ -25,6 +26,10 @@ OPERATON_CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
 OPERATON_REST_PATH = "/operaton/engine-rest/version"
 REALTIME_PATH = "/realtime/connection/websocket"
 REALTIME_API_PATH = "/realtime/api"
+WAF_PROBE_PATH = "/api/?kiem_tra=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+WAF_CODE = "SGN04"
+WAF_NAME = "Tường lửa"
+WAF_MODES = ("block", "detect")
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
@@ -102,8 +107,9 @@ def fetch(url: str, certificate: str | None = None, headers: dict[str, str] | No
         connection = HTTPSConnection(parts.netloc, timeout=TIMEOUT, context=context)
     else:
         connection = HTTPConnection(parts.netloc, timeout=TIMEOUT)
+    target = f"{parts.path}?{parts.query}" if parts.query else parts.path
     try:
-        connection.request("GET", parts.path, headers=headers or {})
+        connection.request("GET", target, headers=headers or {})
         response = connection.getresponse()
         return Reply(response.status, response.read(), response.headers)
     finally:
@@ -191,6 +197,25 @@ def realtime_state(url: str, status: int, accepted: bool, api: int) -> tuple[boo
     return True, "Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn"
 
 
+def waf_state(mode: str, status: int, body: bytes) -> tuple[bool, str]:
+    if mode not in WAF_MODES:
+        return False, f"SAIGONOS_WAF_MODE trong file .env là {mode}, chỉ dùng block hoặc detect"
+    try:
+        code = json.loads(body).get("code")
+    except (ValueError, AttributeError):
+        code = None
+    blocked = status == 403 and code == WAF_CODE
+    if mode == "detect" and blocked:
+        return False, "SAIGONOS_WAF_MODE là detect nhưng lời gọi vẫn bị chặn. Hãy chạy saigonos up"
+    if mode == "detect":
+        return True, "chế độ chỉ ghi log, lời gọi có dấu hiệu tấn công không bị chặn"
+    if not blocked:
+        return False, (
+            f"lời gọi có dấu hiệu tấn công nhận mã {status}, đúng ra là 403 với mã {WAF_CODE}"
+        )
+    return True, "API Gateway chặn lời gọi có dấu hiệu tấn công"
+
+
 def websocket_accept(key: str) -> str:
     digest = hashlib.sha1(f"{key}{WEBSOCKET_GUID}".encode(), usedforsecurity=False).digest()
     return base64.b64encode(digest).decode()
@@ -243,9 +268,16 @@ PROBES = (
 )
 
 
-def gateway_checks(url: str, certificate: str | None = None) -> list[Check]:
+def waf_check(url: str, certificate: str | None, mode: str) -> tuple[bool, str]:
+    reply = fetch(f"{url}{WAF_PROBE_PATH}", certificate)
+    return waf_state(mode, reply.status, reply.body)
+
+
+def gateway_checks(
+    url: str, certificate: str | None = None, waf_mode: str = "block"
+) -> list[Check]:
     checks = []
-    for name, probe in PROBES:
+    for name, probe in [*PROBES, (WAF_NAME, partial(waf_check, mode=waf_mode))]:
         try:
             checks.append(Check(name, *probe(url, certificate)))
         except (OSError, HTTPException) as error:
@@ -290,4 +322,6 @@ def run_checks(home: Path, url: str) -> list[Check]:
     certificate = None
     if any(check.name == CADDY for check in services):
         certificate = caddy_root_certificate(home)
-    return [*services, *gateway_checks(url, certificate), *app_checks(home, url, certificate)]
+    waf_mode = parse_env(read_env_lines(home)).get("SAIGONOS_WAF_MODE") or "block"
+    gateway = gateway_checks(url, certificate, waf_mode)
+    return [*services, *gateway, *app_checks(home, url, certificate)]

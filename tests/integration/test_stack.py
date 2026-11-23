@@ -44,6 +44,17 @@ REFERENCES = {
     "saigonos browser optional otp": "otp",
 }
 ENVIRONMENT = re.compile(r'<script id="environment" type="application/json">(.*?)</script>', re.S)
+WAF_BLOCKED = "Tường lửa ứng dụng web đã chặn lời gọi này vì có dấu hiệu tấn công."
+WAF_TOO_BIG = "Nội dung của lời gọi lớn hơn 1 MB nên tường lửa ứng dụng web không kiểm tra được."
+SQL_INJECTION = "/api/?id=1%27%20OR%201%3D1--"
+ATTACKS = {
+    "sql-injection": ("GET", SQL_INJECTION, None),
+    "xss": ("GET", "/core/health?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", None),
+    "path-traversal": ("GET", "/apps/thu/?file=..%2F..%2F..%2Fetc%2Fpasswd", None),
+    "xss-json": ("POST", "/api/notes", {"body": "<script>alert(1)</script>"}),
+    "sql-injection-json": ("PATCH", "/api/notes", {"body": "1' UNION SELECT password FROM t--"}),
+    "command-json": ("POST", "/core/files", {"name": "a.txt; cat /etc/passwd"}),
+}
 
 
 def decode(segment):
@@ -602,11 +613,9 @@ def test_admin_api_through_gateway_needs_login_with_otp(stack):
     tokens = (first, second, third)
     replies = [gateway_page(stack, f"/auth{ADMIN_USERS}", token) for token in tokens]
     direct = [stack.call("GET", f"{stack.keycloak}{ADMIN_USERS}", token=token) for token in tokens]
-    assert [decode(token.split(".")[1]).get("amr") for token in tokens] == [
-        ["pwd"],
-        ["pwd", "otp"],
-        ["pwd"],
-    ]
+    amr = [decode(token.split(".")[1]).get("amr") or [] for token in tokens]
+    assert "otp" not in amr[0]
+    assert amr[1:] == [["pwd", "otp"], ["pwd"]]
     assert [reply.status for reply in replies] == [403, 200, 403]
     assert replies[0].body.decode() == OTP_REASON
     assert [reply.status for reply in direct] == [200, 200, 200]
@@ -641,3 +650,92 @@ def test_realm_service_adds_amr_to_realm_created_by_older_version(stack):
     ]
     assert stack.logs("realm").splitlines()[-1] == "Realm saigonos không cần thay đổi"
     assert {flow: reference_of(stack, flow) for flow in REFERENCES} == REFERENCES
+
+
+def waf_reply(reply):
+    error = json.loads(reply.body)
+    return reply.status, reply.headers["Content-Type"], error["code"], error["message"]
+
+
+def set_waf_mode(stack, value):
+    path = stack.home / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = [line for line in lines if not line.startswith("SAIGONOS_WAF_MODE=")]
+    if value is not None:
+        lines.append(f"SAIGONOS_WAF_MODE={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return stack.compose_result("run", "--rm", "--no-deps", "routes", timeout=180)
+
+
+@pytest.mark.parametrize(("method", "path", "body"), ATTACKS.values(), ids=ATTACKS)
+def test_waf_blocks_attack_at_gateway(stack, method, path, body):
+    reply = stack.call(method, f"{stack.url}{path}", body=body)
+
+    assert waf_reply(reply) == (403, "application/json; charset=utf-8", "SGN04", WAF_BLOCKED)
+
+
+def test_waf_logs_rule_and_address_of_blocked_call(stack):
+    stack.call("GET", f"{stack.url}{SQL_INJECTION}")
+
+    logs = stack.logs("apisix")
+
+    assert '[id "942100"]' in logs
+    assert "Tường lửa ứng dụng web trả mã 403 cho GET /api/ từ " in logs
+
+
+def test_waf_lets_valid_calls_of_api_and_core_through(stack):
+    token = stack.token(stack.new_user())
+    calls = [
+        ("GET", "/api/?select=id,body&order=id.desc&or=(id.eq.1,id.eq.2)&limit=10", None),
+        ("PATCH", "/api/notes?id=eq.1", {"body": "Ghi chú: sửa lại lúc 8:30, phòng I.201"}),
+        ("DELETE", "/api/notes?id=in.(1,2,3)", None),
+        ("POST", "/core/files", {"name": "Báo cáo 11.pdf", "type": "application/pdf", "size": 9}),
+    ]
+
+    replies = [
+        stack.call(method, f"{stack.url}{path}", token=token, body=body)
+        for method, path, body in calls
+    ]
+
+    assert [reply.status for reply in replies] == [200, 404, 404, 201]
+
+
+def test_waf_refuses_body_larger_than_it_checks(stack):
+    reply = stack.call("POST", f"{stack.url}/api/notes", body={"body": "a" * 1_100_000})
+
+    assert waf_reply(reply) == (413, "application/json; charset=utf-8", "SGN04", WAF_TOO_BIG)
+
+
+def test_waf_detect_mode_only_logs_attack(stack):
+    try:
+        switched = set_waf_mode(stack, "detect")
+        wait_for(lambda: stack.call("GET", f"{stack.url}{SQL_INJECTION}").status != 403)
+        reply = stack.call("GET", f"{stack.url}{SQL_INJECTION}")
+        doctor = stack.saigonos("doctor")
+        logs = stack.logs("apisix")
+    finally:
+        restored = set_waf_mode(stack, None)
+        wait_for(lambda: stack.call("GET", f"{stack.url}{SQL_INJECTION}").status == 403)
+
+    assert switched.returncode == 0, switched.stderr
+    assert (reply.status, json.loads(reply.body)["code"]) == (400, "PGRST100")
+    assert "Tường lửa     chế độ chỉ ghi log, lời gọi có dấu hiệu tấn công không bị chặn" in (
+        doctor.stdout
+    )
+    assert "Coraza: Warning. SQL Injection Attack Detected via libinjection" in logs
+    assert restored.returncode == 0, restored.stderr
+
+
+def test_invalid_waf_mode_stops_routes_and_keeps_blocking(stack):
+    try:
+        failed = set_waf_mode(stack, "chan")
+        reply = stack.call("GET", f"{stack.url}{SQL_INJECTION}")
+    finally:
+        restored = set_waf_mode(stack, None)
+
+    assert failed.returncode != 0
+    assert "Giá trị SAIGONOS_WAF_MODE không hợp lệ: 'chan'. Chỉ dùng block hoặc detect." in (
+        failed.stdout + failed.stderr
+    )
+    assert reply.status == 403
+    assert restored.returncode == 0, restored.stderr

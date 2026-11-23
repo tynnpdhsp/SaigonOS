@@ -1,0 +1,36 @@
+{
+  "plugins": {
+    "saigonos-waf": {
+      "_meta": {
+        "filter": [
+          ["uri", "~~", "^/(api|apps|core)(/|$)"],
+          ["uri", "!", "~~", "^/core/files/[^/]+/content$"]
+        ]
+      },
+      "mode": "${SAIGONOS_WAF_MODE}"
+    },
+    "coraza-filter": {
+      "_meta": {
+        "filter": [
+          ["uri", "~~", "^/(api|apps|core)(/|$)"],
+          ["uri", "!", "~~", "^/core/files/[^/]+/content$"]
+        ]
+      },
+      "conf": {
+        "directives_map": {
+          "saigonos": [
+            "Include @recommended-conf",
+            "SecRuleEngine ${SAIGONOS_WAF_ENGINE}",
+            "SecRequestBodyLimit 1048576",
+            "SecRequestBodyInMemoryLimit 1048576",
+            "SecResponseBodyAccess Off",
+            "Include @crs-setup-conf",
+            "SecAction \"id:900200,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'\"",
+            "Include @owasp_crs/*.conf"
+          ]
+        },
+        "default_directives": "saigonos"
+      }
+    }
+  }
+}

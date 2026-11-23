@@ -7,6 +7,24 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.8.0] - 2026-11-23
+
+### Thêm
+
+- Tường lửa ứng dụng web Coraza 3.3.3 với bộ luật OWASP CRS 4.14.0 chạy trong APISIX qua plugin coraza-proxy-wasm 0.6.0. Tường lửa kiểm tra lời gọi tới `/api`, `/apps` và `/core`, kể cả body JSON, và chặn lời gọi có dấu hiệu tấn công với mã 403. Lời gọi gửi nội dung file, Keycloak, Operaton và `/realtime` không đi qua tường lửa.
+- Service `waf` tải coraza-proxy-wasm ở lần khởi động đầu tiên, kiểm tra mã băm SHA-256 của file zip và của file `.wasm`, rồi lưu file vào volume `wasm`. Các lần khởi động sau dùng lại file đã lưu.
+- Plugin `saigonos-waf` của APISIX đưa body của lời gọi cho Coraza và trả nội dung JSON tiếng Việt với mã `SGN04` cho lời gọi bị chặn. Plugin ghi log mỗi lời gọi bị chặn kèm địa chỉ IP của người gọi.
+- Giá trị `SAIGONOS_WAF_MODE=detect` trong file `.env` chuyển tường lửa sang chế độ chỉ ghi log. Khi giá trị không hợp lệ, lệnh `saigonos up` báo lỗi ở service `routes`.
+- Lệnh `saigonos doctor` có thêm dòng `Tường lửa`, kiểm tra lời gọi có dấu hiệu tấn công bị chặn hay chỉ được ghi log theo chế độ trong file `.env`.
+- Bảng giấy phép có thêm mục plugin của API Gateway.
+
+### Thay đổi
+
+- Lời gọi tới `/api`, `/apps` và `/core` có body lớn hơn 1 MB nhận mã 413, trừ lời gọi gửi nội dung file.
+- APISIX chỉ bật các plugin mà SaigonOS dùng và tắt các plugin stream.
+- Mức RAM nên có trong README tăng từ 3 GB lên 4 GB, vì tường lửa ứng dụng web dùng thêm khoảng 300 MB.
+- Đường dẫn có `..` đã mã hóa tới `/apps/<tên>/` nhận mã 403 của tường lửa thay cho mã 404.
+
 ## [0.7.0] - 2026-11-23
 
 ### Thêm
@@ -245,7 +263,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.7.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.0
 [0.7.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.5.0

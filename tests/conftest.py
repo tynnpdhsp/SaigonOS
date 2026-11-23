@@ -10,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from saigonos.cli import main
-from saigonos.doctor import REALTIME_PATH, websocket_accept
+from saigonos.doctor import REALTIME_PATH, WAF_PROBE_PATH, websocket_accept
 
 FAKE_DOCKER = """\
 #!/bin/sh
@@ -73,6 +73,7 @@ class Gateway:
         self.routes["/api/", True] = (401, b"")
         self.routes["/core/health", False] = (200, b'{"status": "ok"}')
         self.routes["/core/me", True] = (401, b"")
+        self.routes[WAF_PROBE_PATH, False] = (403, b'{"code": "SGN04"}')
         callback = f"{seen_url or self.url}/operaton/login/oauth2/code/operaton"
         query = urlencode({"client_id": "operaton", "redirect_uri": callback})
         login = f"{self.url}{realm}/protocol/openid-connect/auth?{query}"

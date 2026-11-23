@@ -7,6 +7,7 @@ import ssl
 import pytest
 
 from saigonos.doctor import (
+    WAF_PROBE_PATH,
     api_state,
     app_state,
     core_state,
@@ -15,6 +16,7 @@ from saigonos.doctor import (
     operaton_state,
     realtime_state,
     service_state,
+    waf_state,
     websocket_accept,
 )
 
@@ -39,6 +41,9 @@ LOGIN_PAGE = f"{REALM_PATH}/protocol/openid-connect/auth"
 CALLBACK_PATH = "/operaton/login/oauth2/code/operaton"
 OPERATON_OK = "Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn"
 REALTIME_OK = "Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn"
+WAF_OK = "API Gateway chặn lời gọi có dấu hiệu tấn công"
+WAF_DETECT = "chế độ chỉ ghi log, lời gọi có dấu hiệu tấn công không bị chặn"
+WAF_REPLY = b'{"code": "SGN04"}'
 
 
 def discovery(issuer=f"{URL}{REALM_PATH}", token_endpoint=f"{URL}{TOKEN_PATH}"):
@@ -92,6 +97,7 @@ def test_doctor_passes_when_everything_works(home, cli, docker, gateway, array):
         "BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối",
         f"BÌNH THƯỜNG    Operaton      {OPERATON_OK}",
         f"BÌNH THƯỜNG    Centrifugo    {REALTIME_OK}",
+        f"BÌNH THƯỜNG    Tường lửa     {WAF_OK}",
         "Hệ thống hoạt động bình thường.",
     ]
     assert docker.calls == [
@@ -139,7 +145,8 @@ def test_doctor_reports_unreachable_gateway(tmp_path, cli, docker, closed_url):
     assert f"LỖI            API           không kết nối được tới {closed_url}: " in result.output
     assert f"LỖI            Core API      không kết nối được tới {closed_url}: " in result.output
     assert f"LỖI            Centrifugo    không kết nối được tới {closed_url}: " in result.output
-    assert result.output.endswith("Có 5 mục lỗi.\n")
+    assert f"LỖI            Tường lửa     không kết nối được tới {closed_url}: " in result.output
+    assert result.output.endswith("Có 6 mục lỗi.\n")
 
 
 def test_doctor_stops_when_compose_fails(home, cli, docker):
@@ -297,7 +304,7 @@ def test_doctor_reports_core_service_that_fails_through_gateway(
 def test_gateway_checks_use_tls_for_https_address(gateway):
     checks = gateway_checks(gateway.url.replace("http://", "https://"))
 
-    assert [check.ok for check in checks] == [False, False, False, False, False]
+    assert [check.ok for check in checks] == [False] * 6
     assert all("không kết nối được" in check.detail for check in checks)
 
 
@@ -308,7 +315,7 @@ def test_doctor_trusts_root_certificate_of_caddy(caddy_home, cli, docker, truste
 
     assert "BÌNH THƯỜNG    caddy         đang chạy\n" in result.output
     assert docker.calls[-1] == f"{caddy_home.resolve()}: {READ_ROOT_CERTIFICATE}"
-    assert trusted == ["chứng chỉ gốc\n"] * 5
+    assert trusted == ["chứng chỉ gốc\n"] * 6
 
 
 @pytest.mark.parametrize("reply", [{"output": ""}, {"error": "No such file\n", "code": 1}])
@@ -457,7 +464,7 @@ def test_doctor_opens_websocket_with_url_as_origin(home, cli, docker, gateway):
     result = cli("doctor", "--home", home)
 
     assert f"BÌNH THƯỜNG    Centrifugo    {REALTIME_OK}\n" in result.output
-    assert gateway.requests[-2:] == ["/realtime/connection/websocket", "/realtime/api"]
+    assert gateway.requests[-3:-1] == ["/realtime/connection/websocket", "/realtime/api"]
 
 
 @pytest.mark.parametrize(
@@ -563,3 +570,54 @@ def test_doctor_reports_unreachable_gateway_for_apps(tmp_path, cli, docker, clos
     result = cli("doctor", "--home", home)
 
     assert f"Ứng dụng nghi-phep    không kết nối được tới {closed_url}" in result.output
+
+
+@pytest.mark.parametrize(
+    ("mode", "status", "body", "ok", "detail"),
+    [
+        ("block", 403, WAF_REPLY, True, WAF_OK),
+        ("block", 200, b"{}", False, "nhận mã 200, đúng ra là 403 với mã SGN04"),
+        ("block", 403, b'{"code": "SGN03"}', False, "nhận mã 403, đúng ra là 403 với mã SGN04"),
+        ("block", 403, b"<html>", False, "nhận mã 403, đúng ra là 403 với mã SGN04"),
+        ("detect", 200, b"{}", True, WAF_DETECT),
+        ("detect", 403, WAF_REPLY, False, "là detect nhưng lời gọi vẫn bị chặn"),
+        ("chan", 403, WAF_REPLY, False, "là chan, chỉ dùng block hoặc detect"),
+    ],
+    ids=[
+        "chan-dung-ma",
+        "de-lot",
+        "403-cua-opa",
+        "403-khong-phai-json",
+        "chi-ghi-log",
+        "chi-ghi-log-nhung-van-chan",
+        "che-do-sai",
+    ],
+)
+def test_waf_state_follows_mode_in_env(mode, status, body, ok, detail):
+    result = waf_state(mode, status, body)
+
+    assert result[0] is ok
+    assert detail in result[1]
+
+
+def test_doctor_sends_attack_with_query_string_and_reads_mode_from_env(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    env = home / ".env"
+    env.write_text(env.read_text(encoding="utf-8") + "SAIGONOS_WAF_MODE=detect\n", encoding="utf-8")
+    gateway.routes[WAF_PROBE_PATH, False] = (200, b"{}")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 0
+    assert f"BÌNH THƯỜNG    Tường lửa     {WAF_DETECT}\n" in result.output
+    assert WAF_PROBE_PATH in gateway.requests
+
+
+def test_doctor_reports_gateway_that_lets_attack_through(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    gateway.routes[WAF_PROBE_PATH, False] = (200, b"{}")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 1
+    assert "LỖI            Tường lửa     lời gọi có dấu hiệu tấn công nhận mã 200" in result.output

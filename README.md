@@ -10,7 +10,7 @@ Lõi cung cấp bốn service chính:
 - Quản lý dữ liệu có cấu trúc và phi cấu trúc
 - Luồng công việc (Workflow)
 
-Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. Luật của OPA có thể chỉ mở trang quản trị cho một số dải mạng và luôn đòi đăng nhập có mã OTP, như mục [Luật truy cập](#luật-truy-cập). Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Bản khai cũng khai được luật truy cập API của ứng dụng theo role, dải mạng hoặc mã OTP. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
+Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và REST API cho dữ liệu có cấu trúc. API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. Luật của OPA có thể chỉ mở trang quản trị cho một số dải mạng và luôn đòi đăng nhập có mã OTP, như mục [Luật truy cập](#luật-truy-cập). Tường lửa ứng dụng web Coraza chặn lời gọi có dấu hiệu tấn công ngay tại API Gateway, như mục [Tường lửa ứng dụng web](#tường-lửa-ứng-dụng-web). Dữ liệu phi cấu trúc được lưu trong kho file có quét mã độc. Luồng công việc chạy các quy trình BPMN bằng Operaton, gồm việc của người, bước máy làm, form và hẹn giờ. Ứng dụng nhận cập nhật tức thời qua WebSocket bằng Centrifugo. Thông báo cho người dùng được lưu trong hệ thống và có thể được gửi thêm qua Telegram hoặc email. Mỗi ứng dụng được cài đặt vào hệ thống đang chạy bằng một bản khai và một lệnh, không cần sửa mã của lõi, như mục [Ứng dụng](#ứng-dụng). Ứng dụng có schema, client, route, quy trình và kênh tức thời riêng, nên không đọc được dữ liệu của ứng dụng khác. Bản khai cũng khai được luật truy cập API của ứng dụng theo role, dải mạng hoặc mã OTP. Ứng dụng gỡ được mà vẫn giữ dữ liệu. Các thay đổi được ghi lại trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Mục lục
 
@@ -27,6 +27,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Triển khai trên máy chủ chưa có reverse proxy](#triển-khai-trên-máy-chủ-chưa-có-reverse-proxy)
 - [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
 - [Luật truy cập](#luật-truy-cập)
+- [Tường lửa ứng dụng web](#tường-lửa-ứng-dụng-web)
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
@@ -45,7 +46,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
 - Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
-- Nên có 3 GB RAM cho các service. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+- Nên có 4 GB RAM cho các service. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
 
 ### Dung lượng đĩa
 
@@ -163,11 +164,13 @@ BÌNH THƯỜNG    processes     đã chạy xong
 BÌNH THƯỜNG    realm         đã chạy xong
 BÌNH THƯỜNG    routes        đã chạy xong
 BÌNH THƯỜNG    seaweedfs     đang chạy
+BÌNH THƯỜNG    waf           đã chạy xong
 BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối
 BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối
 BÌNH THƯỜNG    Operaton      Operaton chuyển tới trang đăng nhập, REST của Operaton bị chặn
 BÌNH THƯỜNG    Centrifugo    Centrifugo nhận kết nối WebSocket, API của Centrifugo bị chặn
+BÌNH THƯỜNG    Tường lửa     API Gateway chặn lời gọi có dấu hiệu tấn công
 Hệ thống hoạt động bình thường.
 ```
 
@@ -609,6 +612,47 @@ Luật đọc được các giá trị sau của lời gọi:
 | `input.request.query` | Các tham số của query string |
 | `input.request.headers` | Các header, tên viết thường |
 | `input.var.remote_addr` | Địa chỉ IP của người gọi |
+
+## Tường lửa ứng dụng web
+
+API Gateway chạy tường lửa ứng dụng web (WAF) [Coraza](https://coraza.io/) với bộ luật [OWASP Core Rule Set](https://coreruleset.org/) (CRS) 4.14.0. Coraza kiểm tra lời gọi tới `/api`, `/apps` và `/core` trước khi lời gọi được chuyển tới service phía sau. Lời gọi có dấu hiệu tấn công, ví dụ SQL injection, XSS hoặc path traversal, bị chặn ngay tại API Gateway.
+
+Coraza chạy trong APISIX dưới dạng plugin wasm. Ở lần khởi động đầu tiên, service `waf` tải file `coraza-proxy-wasm` 0.6.0 từ trang Releases của dự án. Service này kiểm tra mã băm SHA-256 của file zip và của file `.wasm`, rồi lưu file vào volume `wasm`. Ở các lần khởi động sau, file đã lưu được dùng lại. Khi không tải được file hoặc mã băm không khớp, lệnh `saigonos up` báo lỗi ở service `waf`.
+
+### Phạm vi kiểm tra
+
+- Coraza kiểm tra đường dẫn, query string, header và body của lời gọi. Body JSON, form và XML được tách thành từng tham số để kiểm tra.
+- Bộ luật CRS chạy ở mức paranoia 1. Lời gọi bị chặn khi tổng điểm bất thường đạt 5, tức là chỉ cần một luật mức critical khớp.
+- Bộ luật CRS chạy đầy đủ, chưa tắt luật nào. Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
+- Các phương thức được dùng là GET, HEAD, POST, OPTIONS, PUT, PATCH và DELETE.
+- Body của lời gọi tối đa 1 MB. Lời gọi có body lớn hơn nhận mã 413, vì tường lửa không kiểm tra được.
+- Body JSON không đúng định dạng không tách được thành tham số. PostgREST và service `core` từ chối body này với mã 400 hoặc 422.
+- Lời gọi gửi nội dung file tới `/core/files/{id}/content` không đi qua tường lửa. Nội dung file được ClamAV quét như mục [Quét mã độc](#quét-mã-độc).
+- Keycloak, Operaton và `/realtime` không đi qua tường lửa.
+
+### Lời gọi bị chặn
+
+Lời gọi bị chặn nhận mã 403, hoặc mã 413 khi body quá lớn. Nội dung trả về theo dạng lỗi của PostgREST với mã `SGN04`. Ví dụ:
+
+```json
+{"code":"SGN04","details":null,"hint":null,"message":"Tường lửa ứng dụng web đã chặn lời gọi này vì có dấu hiệu tấn công."}
+```
+
+Mỗi luật khớp được ghi vào log của APISIX, kèm mã luật và phần dữ liệu khớp. Plugin `saigonos-waf` ghi thêm một dòng cho mỗi lời gọi bị chặn, kèm địa chỉ IP của người gọi. Trong thư mục làm việc, xem các dòng này bằng lệnh sau:
+
+```bash
+docker compose logs apisix | grep -E "Coraza|Tường lửa"
+```
+
+### Chế độ chỉ ghi log
+
+Để thử tường lửa trên hệ thống đang chạy mà không chặn lời gọi nào, thêm dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`:
+
+```
+SAIGONOS_WAF_MODE=detect
+```
+
+Ở chế độ này, các luật khớp vẫn được ghi vào log nhưng lời gọi không bị chặn. Để chặn trở lại, xóa dòng trên hoặc đặt giá trị `block`, rồi chạy `saigonos up`. Khi giá trị không hợp lệ, lệnh `saigonos up` báo lỗi ở service `routes` và tường lửa giữ chế độ đang chạy. Lệnh `saigonos doctor` cho biết tường lửa đang chặn hay chỉ ghi log.
 
 ## Kiểm tra audit log
 
