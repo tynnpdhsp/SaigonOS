@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.client import HTTPConnection, HTTPException, HTTPMessage
 from typing import NamedTuple
-from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlsplit
 
 import pytest
 
@@ -494,6 +494,59 @@ class Stack:
             exchange["client_secret"] = secret
         return self.call("POST", f"{endpoint}/token", form=exchange), otp
 
+    def grafana_login(self, user, otp=None, step=1):
+        cookies = {}
+
+        def visit(method, url, form=None):
+            while True:
+                jar = "; ".join(f"{name}={value}" for name, value in cookies.items())
+                reply = self.call(method, url, form=form, headers={"Cookie": jar} if jar else {})
+                for line in reply.headers.get_all("Set-Cookie", []):
+                    name, _, value = line.split(";", 1)[0].partition("=")
+                    if value:
+                        cookies[name] = value
+                    else:
+                        cookies.pop(name, None)
+                if reply.status not in REDIRECTS:
+                    return reply
+                method, url, form = "GET", urljoin(url, reply.headers["Location"]), None
+
+        page = visit("GET", f"{self.url}/grafana/login/generic_oauth")
+        reply = visit("POST", form_action(page), {"username": user.name, "password": user.password})
+        body = reply.body.decode()
+        setup = TOTP_SECRET.search(body)
+        if reply.status == 200 and (setup or 'name="otp"' in body):
+            if setup:
+                otp = html.unescape(setup[1])
+                form = {"totpSecret": otp, "totp": totp(otp), "userLabel": "thu"}
+            else:
+                form = {"otp": totp(otp, step)}
+            reply = visit("POST", form_action(reply), form)
+        return reply, cookies, otp
+
+    def grafana(self, cookies, path):
+        jar = "; ".join(f"{name}={value}" for name, value in cookies.items())
+        return self.call("GET", f"{self.url}/grafana{path}", headers={"Cookie": jar})
+
+    def prometheus(self, expression):
+        url = f"http://127.0.0.1:9090/api/v1/query?query={quote(expression)}"
+        result = self.exec("prometheus", "wget", "-q", "-O", "-", url)
+        assert result.returncode == 0, result.stderr
+        samples = json.loads(result.stdout)["data"]["result"]
+        return {
+            sample["metric"].get("service", ""): float(sample["value"][1]) for sample in samples
+        }
+
+    def loki(self, query):
+        url = (
+            f"http://127.0.0.1:3100/loki/api/v1/query_range?since=15m&limit=50&query={quote(query)}"
+        )
+        result = self.exec("loki", "/probe/busybox", "wget", "-q", "-O", "-", url)
+        if result.returncode != 0:
+            return []
+        streams = json.loads(result.stdout)["data"]["result"]
+        return [line for stream in streams for _, line in stream["values"]]
+
     def app_token(self, user, app):
         reply = self.app_login(user, app)
         assert reply.status == 200, reply.body
@@ -722,7 +775,8 @@ def run_stack(stack, request):
                 print(stack.compose("logs", "--tail", "50"))
     finally:
         stack.saigonos("down", "--volumes")
-        stack.compose_result("--profile", "apps", "down", "--volumes", "--rmi", "local")
+        profiles = ("--profile", "apps", "--profile", "monitoring")
+        stack.compose_result(*profiles, "down", "--volumes", "--rmi", "local")
         stack.remove_data()
 
 
@@ -746,5 +800,13 @@ def caddy_stack(tmp_path_factory, request):
     (stack.home / ".env").write_text(f"CADDY_HTTP_PORT={free_port()}\n", encoding="utf-8")
     options = ["--caddy", "--url", f"https://localhost:{free_port()}"]
     created = stack.saigonos("init", *options, *free_ports())
+    assert created.returncode == 0, created.stdout + created.stderr
+    yield from run_stack(stack, request)
+
+
+@pytest.fixture(scope="module")
+def monitoring_stack(tmp_path_factory, request):
+    stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-monitoring-{secrets.token_hex(4)}")
+    created = stack.saigonos("init", "--monitoring", *free_ports())
     assert created.returncode == 0, created.stdout + created.stderr
     yield from run_stack(stack, request)
