@@ -40,12 +40,14 @@ IMAGE_LICENSES = {
     "Python-2.0.1",
 }
 VERIFIED_LICENSES = {
+    "duckdb": "MIT",
     "h11": "MIT",
     "reuse": "Apache-2.0 AND CC0-1.0 AND CC-BY-SA-4.0 AND GPL-3.0-or-later",
 }
 DESCRIPTIONS = {
     "asyncpg": "Kết nối service `core` với PostgreSQL",
     "click": "Xây dựng giao diện dòng lệnh cho lệnh `saigonos`",
+    "duckdb": "Ghi và đọc file Parquet của hồ dữ liệu",
     "fastapi": "Xây dựng REST API của service `core`",
     "httpx2": "Gọi service `core` trong kiểm thử",
     "packaging": "Đọc và so sánh số phiên bản",
