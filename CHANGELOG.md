@@ -9,7 +9,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thêm
 
-- Lệnh `saigonos backup` tạo gói sao lưu gồm toàn bộ cơ sở dữ liệu, các file trong SeaweedFS, file `.env`, thư mục `apps` và chứng chỉ của Caddy nếu có, kèm mã băm SHA-256 của từng phần. Gói có quyền 600 vì chứa mật khẩu. Service `seaweedfs` tạm dừng trong lúc chép file.
+- Lệnh `saigonos backup` tạo gói sao lưu gồm toàn bộ cơ sở dữ liệu, các file trong SeaweedFS, file `.env`, thư mục `apps` và chứng chỉ của Caddy nếu có, kèm mã băm SHA-256 của từng phần. Gói có quyền 600 vì chứa mật khẩu. Service `seaweedfs` tạm dừng trong lúc chép file, rồi lệnh chờ service này đạt healthcheck trở lại.
+- Lệnh `saigonos restore` khôi phục hệ thống từ gói sao lưu, kể cả vào thư mục làm việc chưa có. Lệnh kiểm tra phần đầu gzip, mã CRC và mã băm của từng phần, từ chối gói đã bị sửa hoặc gói của phiên bản mới hơn, và hỏi lại trước khi thay dữ liệu. Lệnh chỉ xóa các volume `postgres-data`, `seaweedfs-data` và `etcd-data`.
 - Service một lần `backup` chép volume của SeaweedFS. Service này không có mạng và chỉ chạy khi được gọi.
 
 ## [0.9.0] - 2026-11-24

@@ -87,12 +87,7 @@ def service_state(service: dict[str, Any], container: dict[str, Any] | None) -> 
 
 def service_checks(home: Path) -> list[Check]:
     services = json.loads(compose.capture(home, "config", "--format", "json"))["services"]
-    output = compose.capture(home, "ps", "--all", "--format", "json").strip()
-    if output.startswith("["):
-        rows = json.loads(output)
-    else:
-        rows = [json.loads(line) for line in output.splitlines()]
-    containers = {row["Service"]: row for row in rows}
+    containers = compose.containers(home)
     return [
         Check(name, *service_state(service, containers.get(name)))
         for name, service in services.items()

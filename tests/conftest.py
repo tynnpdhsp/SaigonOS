@@ -16,6 +16,7 @@ FAKE_DOCKER = """\
 #!/bin/sh
 dir="${0%/*}"
 printf '%s\\n' "$(pwd -P): $*" >> "$dir/calls"
+case "$*" in *" -xf -"|*"--dbname=postgres --no-psqlrc --quiet") cat > "$dir/$2.in" ;; esac
 [ -f "$dir/$2.out" ] && cat "$dir/$2.out"
 [ -f "$dir/$2.err" ] && cat "$dir/$2.err" >&2
 [ -f "$dir/$2.code" ] && exit "$(cat "$dir/$2.code")"
