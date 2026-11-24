@@ -1056,9 +1056,19 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
         "core.record_migration(text, text)",
         "core.secure_app()",
         "core.apply_search(text, jsonb)",
+        "core.apply_lake(text, jsonb, jsonb)",
+        "core.check_lake_entry(text, oid, text, jsonb, text)",
         "core.pre_config()",
     ]
-    roles = ["anon", "authenticated", "authenticator", "core_service", "workflow", "centrifugo"]
+    roles = [
+        "anon",
+        "authenticated",
+        "authenticator",
+        "core_service",
+        "workflow",
+        "centrifugo",
+        "lake",
+    ]
 
     granted = stack.sql(
         "SELECT r, f FROM unnest(ARRAY['"
