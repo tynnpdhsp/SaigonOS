@@ -131,8 +131,7 @@ Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một tron
 ### 3. Khởi động các service
 
 ```bash
-cd ~/saigonos
-docker compose up -d --wait
+saigonos up
 ```
 
 Ở lần chạy đầu tiên, Docker tải các image nên lệnh mất vài phút. Ở những lần sau, lệnh mất khoảng một phút.

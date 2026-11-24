@@ -100,8 +100,7 @@ def leaf_commands(group):
 
 
 def test_readme_shows_the_whole_install_path():
-    assert {"pip install .", "saigonos init", "docker compose up -d --wait"} <= set(BLOCK_LINES)
-    assert "saigonos doctor" in BLOCK_LINES
+    assert {"pip install .", "saigonos init", "saigonos up", "saigonos doctor"} <= set(BLOCK_LINES)
 
 
 @pytest.mark.parametrize("line", COMMANDS)

@@ -28,6 +28,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thay đổi
 
 - Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
+- Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
 
 ## [0.8.1] - 2026-11-23
 
