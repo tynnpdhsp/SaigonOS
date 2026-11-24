@@ -22,6 +22,7 @@ RUN = "SELECT core.run_app_sql($1)"
 SECURE = "SELECT core.secure_app()"
 RECORD = "SELECT core.record_migration($1, $2)"
 FINISH = "SELECT core.finish_app($1, $2, $3, $4::jsonb, $5)"
+SEARCH = "SELECT core.apply_search($1, $2::jsonb)"
 WAS_REMOVED = "SELECT removed_at IS NOT NULL FROM core.apps WHERE name = $1"
 INSTALLED = "SELECT name FROM core.apps WHERE applied_at IS NOT NULL ORDER BY name"
 KNOWN = "SELECT EXISTS (SELECT FROM core.apps WHERE name = $1)"
@@ -193,11 +194,15 @@ async def apply_database(
         pending = [file for file in files if file.name not in applied]
         if pending:
             await run_files(admin, app, pending, say)
+        wanted = json.dumps([table.model_dump() for table in manifest.search])
+        searched = await admin.fetchval(SEARCH, app, wanted) or []
+        for line in searched:
+            say(line)
         if before_finish is not None:
             before_finish(removed)
         content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_defaults=True))
         return await admin.fetchval(
-            FINISH, app, manifest.title, manifest.version, content, bool(pending)
+            FINISH, app, manifest.title, manifest.version, content, bool(pending or searched)
         )
 
 

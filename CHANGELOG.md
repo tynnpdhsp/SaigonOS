@@ -7,6 +7,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.11.0] - 2026-11-24
+
+### Thêm
+
+- Cấu hình tìm kiếm toàn văn tiếng Việt `core.vietnamese` trong PostgreSQL. Cấu hình này bỏ dấu bằng extension `unaccent` và không phân biệt chữ hoa, chữ thường. Hai hàm `core.search_vector` và `core.search_query` dùng cấu hình này, mọi role đều gọi được.
+- Lời gọi `GET /core/files?q=` của service `core` tìm file theo tên, chỉ trong các file người gọi được đọc. Kết quả xếp theo độ khớp.
+- Mục `search` trong bản khai ứng dụng khai các bảng và cột cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm `search_<bảng>` chạy với role `<schema>_user`. Kết quả xếp theo độ khớp và vẫn theo phân quyền từng dòng. Bỏ bảng khỏi bản khai thì lõi gỡ index và hàm của bảng đó.
+
 ## [0.10.0] - 2026-11-24
 
 ### Thêm
@@ -307,7 +315,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.10.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0
 [0.10.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0
 [0.8.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.1

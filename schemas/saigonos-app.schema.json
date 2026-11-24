@@ -110,6 +110,34 @@
       ],
       "title": "Role",
       "type": "object"
+    },
+    "SearchTable": {
+      "additionalProperties": false,
+      "properties": {
+        "table": {
+          "description": "Tên bảng trong schema của ứng dụng. Ví dụ: don_nghi.",
+          "maxLength": 47,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "columns": {
+          "description": "Các cột cần tìm. Mỗi cột có kiểu text, varchar hoặc char.",
+          "items": {
+            "maxLength": 63,
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "table",
+        "columns"
+      ],
+      "title": "SearchTable",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -235,6 +263,14 @@
       "description": "Các luật truy cập API của ứng dụng. OPA kiểm tra các luật này ở API Gateway. Lời gọi khớp phương thức và đường dẫn của một luật phải đạt mọi điều kiện của luật.",
       "items": {
         "$ref": "#/$defs/AccessRule"
+      },
+      "maxItems": 20,
+      "type": "array"
+    },
+    "search": {
+      "description": "Các bảng cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm search_<bảng> cho mỗi bảng. Hàm này tìm không phân biệt có dấu hay không dấu.",
+      "items": {
+        "$ref": "#/$defs/SearchTable"
       },
       "maxItems": 20,
       "type": "array"

@@ -15,6 +15,9 @@ from saigonos_core.manifest import (
     RESERVED_NAMES,
     RESERVED_PREFIX,
     ROLE_LENGTH,
+    SEARCH_COLUMNS,
+    SEARCH_TABLES,
+    TABLE_LENGTH,
     check_app,
     schema_text,
 )
@@ -730,6 +733,97 @@ def test_too_many_access_rules_are_refused(app):
 
     assert problems(app, VALID | {"access": rules}) == [
         f"access: Danh sách có tối đa {ACCESS_RULES} phần tử."
+    ]
+
+
+TABLE_RULE = (
+    "Tên bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+    "hoặc dấu gạch dưới. Ví dụ: don_nghi."
+)
+COLUMN_RULE = (
+    "Tên cột gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+    "hoặc dấu gạch dưới. Ví dụ: ly_do."
+)
+
+
+@pytest.mark.parametrize(
+    "search",
+    [
+        [{"table": "don", "columns": ["ly_do"]}],
+        [
+            {"table": "don_nghi", "columns": ["ly_do", "ghi_chu"]},
+            {"table": "_nhap", "columns": ["noi_dung_2"]},
+        ],
+        [],
+    ],
+    ids=["mot-bang", "hai-bang", "khong-co-bang"],
+)
+def test_search_tables_are_accepted(app, search):
+    write(app, VALID | {"search": search})
+
+    checked = check_app(app)
+
+    assert checked.problems == []
+    assert [table.model_dump() for table in checked.manifest.search] == search
+
+
+@pytest.mark.parametrize(
+    ("search", "expected"),
+    [
+        ([{"table": "Don", "columns": ["ly_do"]}], f"search[0].table: {TABLE_RULE}"),
+        ([{"table": "don-nghi", "columns": ["ly_do"]}], f"search[0].table: {TABLE_RULE}"),
+        ([{"table": "2don", "columns": ["ly_do"]}], f"search[0].table: {TABLE_RULE}"),
+        (
+            [{"table": "d" * (TABLE_LENGTH + 1), "columns": ["ly_do"]}],
+            f"search[0].table: Giá trị dài tối đa {TABLE_LENGTH} ký tự.",
+        ),
+        (
+            [{"table": "don", "columns": []}],
+            "search[0].columns: Danh sách phải có ít nhất 1 phần tử.",
+        ),
+        ([{"table": "don", "columns": ["lý_do"]}], f"search[0].columns[0]: {COLUMN_RULE}"),
+        (
+            [{"table": "don", "columns": ["ly_do", "ly_do"]}],
+            'search[0].columns: Cột "ly_do" được khai báo hai lần.',
+        ),
+        (
+            [{"table": "don", "columns": ["ly_do"]}, {"table": "don", "columns": ["ghi_chu"]}],
+            'search[1].table: Bảng "don" được khai báo hai lần.',
+        ),
+        ([{"table": "don"}], "search[0].columns: Thiếu trường bắt buộc."),
+        (
+            [{"table": "don", "columns": ["ly_do"], "language": "vi"}],
+            "search[0].language: Không có trường này. Hãy kiểm tra lỗi chính tả.",
+        ),
+    ],
+    ids=[
+        "bang-chu-hoa",
+        "bang-gach-ngang",
+        "bang-bat-dau-bang-so",
+        "bang-qua-dai",
+        "khong-co-cot",
+        "cot-co-dau",
+        "cot-trung",
+        "bang-trung",
+        "thieu-cot",
+        "truong-la",
+    ],
+)
+def test_each_invalid_search_table_has_its_own_message(app, search, expected):
+    assert problems(app, VALID | {"search": search}) == [expected]
+
+
+def test_too_many_search_tables_or_columns_are_refused(app):
+    tables = [
+        {"table": f"bang_{index}", "columns": ["noi_dung"]} for index in range(SEARCH_TABLES + 1)
+    ]
+    columns = [f"cot_{index}" for index in range(SEARCH_COLUMNS + 1)]
+
+    assert problems(app, VALID | {"search": tables}) == [
+        f"search: Danh sách có tối đa {SEARCH_TABLES} phần tử."
+    ]
+    assert problems(app, VALID | {"search": [{"table": "don", "columns": columns}]}) == [
+        f"search[0].columns: Danh sách có tối đa {SEARCH_COLUMNS} phần tử."
     ]
 
 

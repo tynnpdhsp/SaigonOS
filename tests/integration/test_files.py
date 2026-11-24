@@ -10,7 +10,7 @@ import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import pytest
 
@@ -164,6 +164,21 @@ def user(stack):
 @pytest.fixture
 def token(stack, user):
     return stack.token(user)
+
+
+def test_search_finds_own_files_by_name_typed_with_or_without_marks(stack, token):
+    other = stack.token(stack.new_user())
+    photo = declared(stack, token, png(), name="Ảnh máy hỏng phòng I.201.png")
+    report = declared(stack, token, png(), name="bien-ban_sua-may.pdf", type="application/pdf")
+    declared(stack, other, png(), name="Máy hỏng của người khác.png")
+
+    plain = core(stack, "GET", "/files?q=may%20hong", token)
+    marked = core(stack, "GET", f"/files?q={quote('Biên bản')}", token)
+    both = core(stack, "GET", "/files?q=may", token)
+
+    assert (plain.status, [file["id"] for file in json.loads(plain.body)]) == (200, [photo["id"]])
+    assert [file["id"] for file in json.loads(marked.body)] == [report["id"]]
+    assert {file["id"] for file in json.loads(both.body)} == {photo["id"], report["id"]}
 
 
 def test_clean_file_moves_from_quarantine_to_clean_after_scan(stack, user, token):

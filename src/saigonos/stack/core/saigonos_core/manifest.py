@@ -78,6 +78,11 @@ ACCESS_PATH_PATTERN = r"^/[A-Za-z0-9_.*/-]*$"
 ACCESS_PATH_LENGTH = 200
 ACCESS_RULES = 20
 LABEL_LENGTH = 256
+SQL_NAME_PATTERN = "^[a-z_][a-z0-9_]*$"
+TABLE_LENGTH = 47
+COLUMN_LENGTH = 63
+SEARCH_TABLES = 20
+SEARCH_COLUMNS = 10
 SEGMENT = "[A-Za-z0-9_-][A-Za-z0-9_.-]*"
 FOLDER_PATTERN = f"^{SEGMENT}(?:/{SEGMENT})*/?$"
 REQUIRED_FILES = {
@@ -118,6 +123,14 @@ RULES = {
         "Tên role có dạng <tên ứng dụng>.<vai trò>. Vai trò viết theo quy tắc của "
         "tên ứng dụng. Ví dụ: nghi-phep.quan-ly."
     ),
+    ("search", "table"): (
+        "Tên bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+        "hoặc dấu gạch dưới. Ví dụ: don_nghi."
+    ),
+    ("search", "columns"): (
+        "Tên cột gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+        "hoặc dấu gạch dưới. Ví dụ: ly_do."
+    ),
 }
 MESSAGES = {
     "missing": "Thiếu trường bắt buộc.",
@@ -140,6 +153,8 @@ CUSTOM_ERRORS = {
     "access_condition",
     "access_length",
     "access_role",
+    "duplicate_table",
+    "duplicate_column",
 }
 JSON_MESSAGES = {
     "Expecting value": "thiếu giá trị",
@@ -157,6 +172,7 @@ Folder = Annotated[str, Field(pattern=FOLDER_PATTERN, max_length=FOLDER_LENGTH)]
 RoleName = Annotated[str, Field(pattern=ROLE_PATTERN, max_length=ROLE_LENGTH)]
 AccessPath = Annotated[str, Field(pattern=ACCESS_PATH_PATTERN, max_length=ACCESS_PATH_LENGTH)]
 Method = Literal["GET", "POST", "PATCH", "PUT", "DELETE"]
+ColumnName = Annotated[str, Field(pattern=SQL_NAME_PATTERN, max_length=COLUMN_LENGTH)]
 
 
 class Role(BaseModel):
@@ -239,6 +255,31 @@ class AccessRule(BaseModel):
 
     def label(self) -> str:
         return json.dumps(self.model_dump(exclude_defaults=True), separators=(",", ":"))
+
+
+class SearchTable(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    table: str = Field(
+        pattern=SQL_NAME_PATTERN,
+        max_length=TABLE_LENGTH,
+        description="Tên bảng trong schema của ứng dụng. Ví dụ: don_nghi.",
+    )
+    columns: list[ColumnName] = Field(
+        min_length=1,
+        max_length=SEARCH_COLUMNS,
+        description="Các cột cần tìm. Mỗi cột có kiểu text, varchar hoặc char.",
+    )
+
+    @field_validator("columns")
+    @classmethod
+    def columns_are_unique(cls, columns: list[str]) -> list[str]:
+        for index, column in enumerate(columns):
+            if column in columns[:index]:
+                raise PydanticCustomError(
+                    "duplicate_column", 'Cột "{column}" được khai báo hai lần.', {"column": column}
+                )
+        return columns
 
 
 FOLDER = TypeAdapter(Folder)
@@ -334,6 +375,14 @@ class Manifest(BaseModel):
             "Lời gọi khớp phương thức và đường dẫn của một luật phải đạt mọi điều kiện của luật."
         ),
     )
+    search: list[SearchTable] = Field(
+        default_factory=list,
+        max_length=SEARCH_TABLES,
+        description=(
+            "Các bảng cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm "
+            "search_<bảng> cho mỗi bảng. Hàm này tìm không phân biệt có dấu hay không dấu."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -403,6 +452,25 @@ class Manifest(BaseModel):
         if errors:
             raise ValidationError.from_exception_data("access", errors)
         return access
+
+    @field_validator("search")
+    @classmethod
+    def search_tables_are_unique(cls, search: list[SearchTable]) -> list[SearchTable]:
+        names = [entry.table for entry in search]
+        errors = [
+            InitErrorDetails(
+                type=PydanticCustomError(
+                    "duplicate_table", 'Bảng "{table}" được khai báo hai lần.', {"table": name}
+                ),
+                loc=(index, "table"),
+                input=name,
+            )
+            for index, name in enumerate(names)
+            if name in names[:index]
+        ]
+        if errors:
+            raise ValidationError.from_exception_data("search", errors)
+        return search
 
 
 class Problem(NamedTuple):

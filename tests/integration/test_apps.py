@@ -288,7 +288,14 @@ def schema_of(name):
 
 
 def notes_app(
-    folder, name, version="0.1.0", files=None, roles=("nguoi-dung",), ui=None, access=None
+    folder,
+    name,
+    version="0.1.0",
+    files=None,
+    roles=("nguoi-dung",),
+    ui=None,
+    access=None,
+    search=None,
 ):
     manifest = {
         "name": name,
@@ -299,6 +306,8 @@ def notes_app(
     }
     if access is not None:
         manifest["access"] = access
+    if search is not None:
+        manifest["search"] = search
     if ui is not None:
         manifest["ui"] = "giao-dien"
         for file, text in ui.items():
@@ -684,6 +693,131 @@ def test_call_without_token_into_schema_of_app_still_runs_as_anon(stack, tmp_pat
     assert foreign.status == 403
 
 
+SEARCHED = [{"table": "notes", "columns": ["body"]}]
+NOTES_OF_ROWS = """
+SET session_replication_role = replica;
+INSERT INTO {schema}.notes (body, owner)
+SELECT (ARRAY['Máy tính không lên màn hình', 'Bàn phím hỏng phím Enter', 'Chuột không nhận',
+    'Mạng chập chờn ở phòng I.201', 'Nguyễn Văn An báo máy chạy chậm'])[1 + n % 5] || ' số ' || n,
+    CASE WHEN n % 2 = 0 THEN '{owner}' ELSE 'nguoi-khac' END
+FROM generate_series(1, 10000) AS n;
+ANALYZE {schema}.notes
+"""
+
+
+def search_call(stack, name, token, text):
+    path = f"/apps/{name}/api/rpc/search_notes?{urlencode({'q': text})}"
+    return stack.call("GET", f"{stack.url}{path}", token=token)
+
+
+def bodies(reply):
+    assert reply.status == 200, reply.body
+    return [note["body"] for note in json.loads(reply.body)]
+
+
+def test_search_of_app_ignores_marks_ranks_rows_and_keeps_row_security(stack, tmp_path):
+    name = new_name()
+    result = plug(stack, notes_app(tmp_path / name, name, search=SEARCHED))
+    token = stack.app_token(stack.new_user(), name)
+    other = stack.app_token(stack.new_user(), name)
+    wait_until_served(stack, name, token)
+    for body in ("Nguyễn Văn An báo máy hỏng", "Máy hỏng, máy hỏng nặng", "Máy in kẹt giấy"):
+        assert table_call(stack, "POST", name, token, {"body": body}).status == 201
+    assert (
+        table_call(stack, "POST", name, other, {"body": "Nguyễn Văn Bình hỏng máy"}).status == 201
+    )
+
+    plain = search_call(stack, name, token, "nguyen van")
+    marked = search_call(stack, name, other, "NGUYỄN VĂN")
+    ranked = search_call(stack, name, token, "hong")
+    phrase = search_call(stack, name, token, '"may hong" -nguyen')
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Đã tạo tìm kiếm cho bảng notes.\n" in result.stdout
+    assert bodies(plain) == ["Nguyễn Văn An báo máy hỏng"]
+    assert bodies(marked) == ["Nguyễn Văn Bình hỏng máy"]
+    assert bodies(ranked) == ["Máy hỏng, máy hỏng nặng", "Nguyễn Văn An báo máy hỏng"]
+    assert bodies(phrase) == ["Máy hỏng, máy hỏng nặng"]
+
+
+def test_search_of_app_stays_on_apply_again_and_goes_when_left_out(stack, tmp_path):
+    name = new_name()
+    folder = notes_app(tmp_path / name, name, search=SEARCHED)
+    assert plug(stack, folder).returncode == 0
+    token = stack.app_token(stack.new_user(), name)
+    wait_until_served(stack, name, token)
+
+    again = plug(stack, folder)
+    without = plug(stack, notes_app(tmp_path / "ban-sau" / name, name, version="0.2.0"))
+
+    assert printed_last(again.stdout, "Không có gì thay đổi.\n")
+    assert "Đã gỡ tìm kiếm của bảng notes.\n" in without.stdout
+    deadline = time.monotonic() + 15
+    while search_call(stack, name, token, "may").status != 404:
+        assert time.monotonic() < deadline, "PostgREST vẫn phục vụ hàm tìm kiếm đã gỡ"
+        time.sleep(0.2)
+    index = f"{schema_of(name)}.saigonos_search_notes"
+    assert stack.sql(f"SELECT to_regclass('{index}') IS NULL") == [["t"]]
+
+
+@pytest.mark.parametrize(
+    ("search", "expected"),
+    [
+        (
+            [{"table": "khong_co", "columns": ["body"]}],
+            "Mục search khai bảng khong_co, nhưng schema {schema} không có bảng này.",
+        ),
+        (
+            [{"table": "notes", "columns": ["tieu_de"]}],
+            "Mục search khai cột tieu_de của bảng notes, nhưng bảng không có cột này.",
+        ),
+        (
+            [{"table": "notes", "columns": ["id"]}],
+            "Cột id của bảng notes có kiểu bigint. "
+            "Mục search chỉ nhận cột kiểu text, varchar hoặc char.",
+        ),
+    ],
+    ids=["thieu-bang", "thieu-cot", "cot-khong-phai-chu"],
+)
+def test_search_of_missing_table_or_column_stops_apply(stack, tmp_path, search, expected):
+    name = new_name()
+
+    result = plug(stack, notes_app(tmp_path / name, name, search=search))
+
+    assert result.returncode == 1, result.stdout
+    assert printed_last(result.stdout, expected.format(schema=schema_of(name)) + "\n")
+
+
+def test_search_does_not_take_over_function_made_by_app(stack, tmp_path):
+    name = new_name()
+    own = {"0002_own.sql": "CREATE FUNCTION search_notes(q text) RETURNS bigint RETURN 1;\n"}
+
+    result = plug(stack, notes_app(tmp_path / name, name, files=own, search=SEARCHED))
+
+    assert result.returncode == 1, result.stdout
+    assert printed_last(
+        result.stdout,
+        f"Schema {schema_of(name)} đã có hàm search_notes nhưng không do SaigonOS tạo. "
+        "Hãy đổi tên hàm này hoặc bỏ bảng notes khỏi mục search.\n",
+    )
+
+
+def test_search_of_app_answers_within_a_second_on_ten_thousand_rows(stack, tmp_path):
+    name = new_name()
+    assert plug(stack, notes_app(tmp_path / name, name, search=SEARCHED)).returncode == 0
+    user = stack.new_user()
+    token = stack.app_token(user, name)
+    wait_until_served(stack, name, token)
+    stack.sql(NOTES_OF_ROWS.format(schema=schema_of(name), owner=user.id))
+
+    started = time.monotonic()
+    reply = search_call(stack, name, token, "man hinh")
+    elapsed = time.monotonic() - started
+
+    assert len(bodies(reply)) == 1000
+    assert elapsed < 1
+
+
 def rpc(stack, name, token, function, body):
     return table_call(stack, "POST", name, token, body, table=f"rpc/{function}")
 
@@ -921,6 +1055,7 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
         "core.run_app_sql(text)",
         "core.record_migration(text, text)",
         "core.secure_app()",
+        "core.apply_search(text, jsonb)",
         "core.pre_config()",
     ]
     roles = ["anon", "authenticated", "authenticator", "core_service", "workflow", "centrifugo"]
