@@ -43,3 +43,5 @@ health:
   enabled: true
 usage_stats:
   disabled: true
+prometheus:
+  enabled: true

@@ -122,6 +122,13 @@ def test_waf_loads_crs_after_its_setup_and_allows_methods_of_api():
     assert "GET HEAD POST OPTIONS PUT PATCH DELETE" in DIRECTIVES[methods]
 
 
+def test_waf_removes_only_rule_against_address_as_host_after_loading_crs():
+    removed = [line for line in DIRECTIVES if line.startswith("SecRuleRemove")]
+
+    assert removed == ["SecRuleRemoveById 920350"]
+    assert DIRECTIVES.index(removed[0]) > DIRECTIVES.index("Include @owasp_crs/*.conf")
+
+
 def test_coraza_and_plugin_share_one_body_limit():
     limit = int(re.search(r"local LIMIT = (\d+)", PLUGIN)[1])
 
@@ -135,3 +142,53 @@ def test_routes_service_loads_global_rules_with_block_as_default_mode():
 
     assert "SAIGONOS_WAF_MODE: ${SAIGONOS_WAF_MODE:-block}" in routes
     assert "/config/routes/*.json /config/global-rules/*.json" in routes
+
+
+def test_prometheus_counts_every_request_of_gateway():
+    rule = json.loads((APISIX / "global-rules" / "prometheus.json").read_text(encoding="utf-8"))
+
+    assert rule == {"plugins": {"prometheus": {}}}
+
+
+def test_metrics_are_exported_inside_docker_networks_only_with_label_of_denial():
+    attributes = "\n".join(section("plugin_attr"))
+
+    assert "    export_addr:\n      ip: 0.0.0.0\n      port: 9091\n" in attributes
+    assert "    refresh_interval: 5\n" in attributes
+    assert "          - denied_by: $sent_http_x_saigonos_denied_by" in attributes
+    assert "9091" not in COMPOSE
+
+
+def test_waf_and_opa_mark_the_requests_they_refuse():
+    policies = files("saigonos") / "stack" / "config" / "opa"
+
+    assert 'core.response.set_header("X-SaigonOS-Denied-By", "waf")' in PLUGIN
+    for name in ("admin.rego", "apps.rego"):
+        assert '"X-SaigonOS-Denied-By": "opa"' in (policies / name).read_text(encoding="utf-8")
+
+
+def test_grafana_route_follows_monitoring_profile_and_asks_opa_like_admin_pages():
+    route = json.loads((APISIX / "routes" / "grafana.json").read_text(encoding="utf-8"))
+    operaton = json.loads((APISIX / "routes" / "operaton.json").read_text(encoding="utf-8"))
+
+    assert route["labels"] == {"saigonos.profile": "monitoring"}
+    assert route["uris"] == ["/grafana", "/grafana/*"]
+    assert route["enable_websocket"] is True
+    assert route["plugins"] == {"opa": operaton["plugins"]["opa"]}
+    assert route["upstream"]["nodes"] == {"grafana:3000": 1}
+
+
+def test_routes_and_realm_services_know_which_profiles_are_on():
+    loader = (APISIX / "load-routes.lua").read_text(encoding="utf-8")
+    realm = (files("saigonos") / "stack" / "config" / "keycloak" / "setup-realm.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'labels["saigonos.profile"]' in loader
+    assert 'send("DELETE", url)' in loader
+    for script in (loader, realm):
+        assert 'os.getenv("SAIGONOS_PROFILES")' in script
+    for service in ("routes", "realm"):
+        block = COMPOSE.split(f"\n  {service}:\n", 1)[1].split("\n\n", 1)[0]
+        assert "SAIGONOS_PROFILES: ${COMPOSE_PROFILES:-}" in block
+    assert "GRAFANA_CLIENT_SECRET: ${GRAFANA_CLIENT_SECRET:?}" in COMPOSE.split("\n  realm:\n")[1]

@@ -52,6 +52,7 @@ RESERVED_NAMES = frozenset(
         "centrifugo",
         "core",
         "core-service",
+        "grafana",
         "information-schema",
         "keycloak",
         "operaton",

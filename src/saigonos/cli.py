@@ -189,6 +189,14 @@ def main() -> None:
         "chứng chỉ, dùng khi máy cài đặt chưa có reverse proxy. Mặc định tắt."
     ),
 )
+@click.option(
+    "--monitoring/--no-monitoring",
+    default=None,
+    help=(
+        "Bật hoặc tắt giám sát bằng Prometheus, Loki và Grafana. Grafana có địa chỉ /grafana/ "
+        "và chỉ tài khoản quản trị của realm saigonos đăng nhập được. Mặc định tắt."
+    ),
+)
 @click.pass_context
 def init(
     ctx: click.Context,
@@ -202,6 +210,7 @@ def init(
     centrifugo_port: int | None,
     max_file_size: int | None,
     caddy: bool | None,
+    monitoring: bool | None,
 ) -> None:
     try:
         result = init_home(
@@ -215,6 +224,7 @@ def init(
             centrifugo_port=centrifugo_port,
             max_file_size=max_file_size,
             caddy=caddy,
+            monitoring=monitoring,
         )
     except SettingsError as error:
         raise click.UsageError(str(error)) from error
@@ -225,6 +235,8 @@ def init(
     click.echo(f"Địa chỉ lắng nghe: {result.listen}")
     if result.caddy:
         click.echo("Caddy: bật")
+    if result.monitoring:
+        click.echo("Giám sát: bật")
     if result.new_secrets:
         click.echo(f"Đã tạo {result.new_secrets} mật khẩu ngẫu nhiên trong file .env.")
     else:

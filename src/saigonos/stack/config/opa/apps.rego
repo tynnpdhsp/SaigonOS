@@ -166,9 +166,13 @@ status := 503 if broken
 
 status := 401 if missing_token
 
-default headers := {"Content-Type": "application/json; charset=utf-8"}
+default headers := {"Content-Type": "application/json; charset=utf-8", "X-SaigonOS-Denied-By": "opa"}
 
-headers := {"Content-Type": "application/json; charset=utf-8", "WWW-Authenticate": "Bearer"} if missing_token
+headers := {
+	"Content-Type": "application/json; charset=utf-8",
+	"WWW-Authenticate": "Bearer",
+	"X-SaigonOS-Denied-By": "opa",
+} if missing_token
 
 default decision := {"allow": true}
 

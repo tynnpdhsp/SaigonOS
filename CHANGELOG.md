@@ -7,6 +7,36 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.9.0] - 2026-11-24
+
+### Thêm
+
+- Giám sát bằng Prometheus 3.16.0, Loki 3.7.10, Grafana 13.3.1 và Grafana Alloy 1.22.0 trong profile `monitoring`. Lệnh `saigonos init --monitoring` bật và `--no-monitoring` tắt giám sát. Các service này không mở cổng nào ra máy cài đặt, không gửi thống kê và không kiểm tra bản mới.
+- Service `socket-proxy` là service duy nhất giữ Docker socket. Service này chỉ cho Alloy và `exporter` gọi các đường dẫn GET cần thiết của Docker API.
+- Service một lần `loki-probe` chép lệnh `busybox` tĩnh vào volume `probe` để Loki có healthcheck, vì image của Loki không có shell.
+- Bảng giấy phép cho phép AGPL-3.0-only cho phần mềm chạy trong container, vì Grafana và Loki dùng giấy phép này.
+- Plugin `prometheus` của APISIX đếm mọi request qua API Gateway. Metrics chỉ mở ở cổng 9091 bên trong mạng Docker. Label `denied_by` có giá trị `waf` hoặc `opa` cho request bị tường lửa chặn hoặc bị luật OPA từ chối.
+- Service `exporter` chạy bằng image của service `core`. Service này đọc trạng thái, healthcheck, CPU và RAM của từng container qua `socket-proxy`, cùng dung lượng ổ chứa dữ liệu Docker. Service trả metrics `saigonos_service_up`, `saigonos_service_memory_bytes`, `saigonos_service_cpu_seconds_total`, `saigonos_host_cpus`, `saigonos_host_disk_used_bytes` và `saigonos_host_disk_available_bytes` cho Prometheus. Service một lần không được tính.
+- Prometheus giữ metrics 7 ngày và đọc metrics của APISIX, Keycloak, Centrifugo, PostgREST, etcd, Loki và `exporter`. Recording rule ghi tổng số request và số lỗi 4xx, 5xx, không tính request tới Grafana, cùng số request bị tường lửa chặn và số request bị OPA từ chối.
+- Keycloak bật metrics ở cổng quản lý 9000. Centrifugo bật metrics ở cổng nội bộ 9000. Admin server của PostgREST lắng nghe trên mọi địa chỉ của container để Prometheus đọc `/metrics`. Các cổng này không mở ra máy cài đặt, trừ cổng 9000 của Centrifugo vốn đã mở trên `127.0.0.1`.
+- Alloy đọc log của mọi container trong project qua `socket-proxy`, kể cả service một lần đã chạy xong, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày.
+- Grafana có địa chỉ `/grafana/` qua API Gateway. Route `grafana` đi qua luật trang quản trị của OPA như Operaton. Grafana chỉ cho đăng nhập bằng Keycloak qua client `grafana`, dùng luồng đăng nhập chỉ cho realm role `admin` và bắt buộc OTP. Grafana không có tài khoản cục bộ.
+- Route có label `saigonos.profile` chỉ được service `routes` nạp khi profile đó được bật và được gỡ khi profile bị tắt. Service `realm` cũng tạo client `grafana` khi bật giám sát và xóa client này khi tắt.
+- Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus. Ngay sau khi khởi động, lệnh chờ tối đa 30 giây để Prometheus đọc metrics của mọi target lần đầu.
+- Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
+- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ đĩa, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
+- README có mục Giám sát.
+
+### Thay đổi
+
+- Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
+- Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
+- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB đĩa cho image.
+
+### Sửa
+
+- Tường lửa ứng dụng web không còn chặn lời gọi có header `Host` là địa chỉ IP. Trước đây luật 920350 của CRS đẩy tổng điểm bất thường lên 6, vượt ngưỡng 5, nên lời gọi tới `/api`, `/apps` và `/core` qua địa chỉ IP trong mạng nội bộ nhận mã 403. SaigonOS tắt luật 920350.
+
 ## [0.8.1] - 2026-11-23
 
 ### Sửa
@@ -269,7 +299,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.8.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0
 [0.8.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.1
 [0.8.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.0
 [0.7.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.7.0

@@ -527,6 +527,39 @@ def test_caddy_option_keeps_other_compose_profiles(home):
     assert read_env(home)["COMPOSE_PROFILES"] == "khac"
 
 
+def test_monitoring_option_enables_compose_profile(home):
+    result = init("--home", home, "--monitoring")
+
+    assert result.exit_code == 0
+    assert list(read_env(home)) == [*SETTING_KEYS, "COMPOSE_PROFILES"]
+    assert read_env(home)["COMPOSE_PROFILES"] == "monitoring"
+    assert "Giám sát: bật\n" in result.output
+
+
+def test_monitoring_stays_enabled_until_turned_off(home):
+    init("--home", home, "--monitoring")
+    before = (home / ".env").read_text(encoding="utf-8")
+
+    result = init("--home", home)
+    assert (home / ".env").read_text(encoding="utf-8") == before
+    assert "Giám sát: bật\n" in result.output
+
+    result = init("--home", home, "--no-monitoring")
+    assert read_env(home)["COMPOSE_PROFILES"] == ""
+    assert "Giám sát" not in result.output
+
+
+def test_monitoring_and_caddy_are_switched_separately(home):
+    init("--home", home, "--url", HTTPS_URL, "--caddy", "--monitoring")
+    assert read_env(home)["COMPOSE_PROFILES"] == "caddy,monitoring"
+
+    init("--home", home, "--no-caddy")
+    assert read_env(home)["COMPOSE_PROFILES"] == "monitoring"
+
+    init("--home", home, "--caddy", "--no-monitoring")
+    assert read_env(home)["COMPOSE_PROFILES"] == "caddy"
+
+
 def test_caddy_accepts_gateway_listening_on_all_addresses(home):
     result = init("--home", home, "--url", HTTPS_URL, "--caddy", "--http-host", "0.0.0.0")
 

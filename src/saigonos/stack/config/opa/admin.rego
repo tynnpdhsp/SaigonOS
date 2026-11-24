@@ -57,5 +57,5 @@ decision := {
 	"allow": false,
 	"status_code": 403,
 	"reason": concat(" ", deny),
-	"headers": {"Content-Type": "text/plain; charset=utf-8"},
+	"headers": {"Content-Type": "text/plain; charset=utf-8", "X-SaigonOS-Denied-By": "opa"},
 } if count(deny) > 0

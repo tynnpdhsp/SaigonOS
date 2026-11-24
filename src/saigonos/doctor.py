@@ -4,6 +4,8 @@ import hashlib
 import json
 import secrets
 import ssl
+import time
+from collections.abc import Callable
 from functools import partial
 from http.client import HTTPConnection, HTTPException, HTTPMessage, HTTPSConnection
 from pathlib import Path
@@ -33,6 +35,13 @@ WAF_MODES = ("block", "detect")
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 INVALID_AUTHORIZATION = {"Authorization": "Bearer khong-hop-le"}
 CADDY = "caddy"
+GRAFANA = "grafana"
+PROMETHEUS = "prometheus"
+GRAFANA_HEALTH_PATH = "/grafana/api/health"
+TARGETS_URL = "http://127.0.0.1:9090/api/v1/targets?state=active"
+TARGETS_WAIT = 30
+TARGETS_POLL = 2
+MONITORING_NAME = "Giám sát"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
 TIMEOUT = 5
 STOPPED_STATES = {
@@ -285,6 +294,72 @@ def gateway_checks(
     return checks
 
 
+def prometheus_targets(home: Path) -> list[dict[str, Any]] | None:
+    try:
+        output = compose.capture(
+            home, "exec", "-T", PROMETHEUS, "wget", "-q", "-O", "-", TARGETS_URL
+        )
+        targets = json.loads(output)["data"]["activeTargets"]
+    except (compose.ComposeError, ValueError, KeyError, TypeError):
+        return None
+    return targets if isinstance(targets, list) else None
+
+
+def first_scrape_done(targets: list[dict[str, Any]] | None) -> bool:
+    if targets is None:
+        return True
+    return bool(targets) and all(target.get("health") != "unknown" for target in targets)
+
+
+def settled_targets(home: Path) -> list[dict[str, Any]] | None:
+    deadline = time.monotonic() + TARGETS_WAIT
+    targets = prometheus_targets(home)
+    while not first_scrape_done(targets) and time.monotonic() < deadline:
+        time.sleep(TARGETS_POLL)
+        targets = prometheus_targets(home)
+    return targets
+
+
+def jobs(targets: list[dict[str, Any]], wanted: Callable[[Any], bool]) -> str:
+    return ", ".join(
+        sorted(
+            str(target.get("labels", {}).get("job"))
+            for target in targets
+            if wanted(target.get("health"))
+        )
+    )
+
+
+def monitoring_state(
+    status: int, body: bytes, targets: list[dict[str, Any]] | None
+) -> tuple[bool, str]:
+    try:
+        database = json.loads(body).get("database")
+    except (ValueError, AttributeError):
+        database = None
+    if status != 200 or database != "ok":
+        return False, f"lời gọi {GRAFANA_HEALTH_PATH} nhận mã {status}, đúng ra là 200"
+    if targets is None:
+        return False, "không đọc được danh sách target của Prometheus"
+    if not targets:
+        return False, "Prometheus chưa có target nào"
+    if down := jobs(targets, lambda health: health == "down"):
+        return False, f"Prometheus không đọc được metrics của {down}"
+    if waiting := jobs(targets, lambda health: health != "up"):
+        return False, f"Prometheus chưa đọc lần nào metrics của {waiting}"
+    return True, f"Grafana trả lời tại /grafana/, Prometheus đọc metrics của {len(targets)} target"
+
+
+def monitoring_check(home: Path, url: str, certificate: str | None) -> Check:
+    try:
+        reply = fetch(f"{url}{GRAFANA_HEALTH_PATH}", certificate)
+    except (OSError, HTTPException) as error:
+        return Check(MONITORING_NAME, False, f"không kết nối được tới {url}: {error}")
+    return Check(
+        MONITORING_NAME, *monitoring_state(reply.status, reply.body, settled_targets(home))
+    )
+
+
 def app_state(name: str, api: int, page: int | None) -> tuple[bool, str]:
     api_path, page_path = f"/apps/{name}/api/", f"/apps/{name}/"
     if api != 200:
@@ -324,4 +399,6 @@ def run_checks(home: Path, url: str) -> list[Check]:
         certificate = caddy_root_certificate(home)
     waf_mode = parse_env(read_env_lines(home)).get("SAIGONOS_WAF_MODE") or "block"
     gateway = gateway_checks(url, certificate, waf_mode)
+    if any(check.name == GRAFANA for check in services):
+        gateway.append(monitoring_check(home, url, certificate))
     return [*services, *gateway, *app_checks(home, url, certificate)]

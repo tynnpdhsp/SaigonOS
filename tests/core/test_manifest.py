@@ -533,10 +533,10 @@ def test_names_used_by_core_are_reserved():
     created = re.findall(r"CREATE (?:SCHEMA|ROLE)(?: IF NOT EXISTS)? (\w+)", text)
     routes = [path.name.removesuffix(".json") for path in (CONFIG / "apisix" / "routes").iterdir()]
     realm = (CONFIG / "keycloak" / "setup-realm.lua").read_text(encoding="utf-8")
-    clients = re.findall(r'^local OPERATON = "([a-z-]+)"$', realm, re.MULTILINE)
+    clients = re.findall(r'^local (?:OPERATON|GRAFANA) = "([a-z-]+)"$', realm, re.MULTILINE)
 
     assert created
-    assert clients == ["operaton"]
+    assert clients == ["operaton", "grafana"]
     assert {name.replace("_", "-") for name in created} | set(routes) | set(clients) <= (
         RESERVED_NAMES
     )

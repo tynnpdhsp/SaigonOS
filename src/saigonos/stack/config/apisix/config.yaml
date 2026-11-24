@@ -21,6 +21,7 @@ plugins:
   - proxy-rewrite
   - limit-count
   - response-rewrite
+  - prometheus
 
 stream_plugins: []
 
@@ -30,6 +31,17 @@ wasm:
       priority: 7999
       http_request_phase: rewrite
       file: /usr/local/apisix/wasm/coraza-proxy-wasm.wasm
+
+plugin_attr:
+  prometheus:
+    refresh_interval: 5
+    export_addr:
+      ip: 0.0.0.0
+      port: 9091
+    metrics:
+      http_status:
+        extra_labels:
+          - denied_by: $sent_http_x_saigonos_denied_by
 
 nginx_config:
   worker_processes: 4

@@ -33,6 +33,7 @@ refused(decision, status, message) if {
 	decision.status_code == status
 	decision.reason == {"code": "SGN03", "message": message, "details": null, "hint": null}
 	decision.headers["Content-Type"] == "application/json; charset=utf-8"
+	decision.headers["X-SaigonOS-Denied-By"] == "opa"
 }
 
 test_app_without_rules_is_open if {

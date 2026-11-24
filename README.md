@@ -28,6 +28,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Triển khai trên máy chủ đã có reverse proxy](#triển-khai-trên-máy-chủ-đã-có-reverse-proxy)
 - [Luật truy cập](#luật-truy-cập)
 - [Tường lửa ứng dụng web](#tường-lửa-ứng-dụng-web)
+- [Giám sát](#giám-sát)
 - [Kiểm tra audit log](#kiểm-tra-audit-log)
 - [Quét mã độc](#quét-mã-độc)
 - [Quy trình](#quy-trình)
@@ -45,8 +46,8 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
-- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
-- Nên có 4 GB RAM cho các service. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Khi bật [giám sát](#giám-sát), cần thêm khoảng 3,6 GB cho image và tối đa 2 GB cho metrics. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
+- Nên có 4 GB RAM cho các service, hoặc 5 GB khi bật giám sát. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
 
 ### Dung lượng đĩa
 
@@ -130,8 +131,7 @@ Hệ thống dùng các cổng 9080, 9180, 9280, 9380 và 9480. Nếu một tron
 ### 3. Khởi động các service
 
 ```bash
-cd ~/saigonos
-docker compose up -d --wait
+saigonos up
 ```
 
 Ở lần chạy đầu tiên, Docker tải các image nên lệnh mất vài phút. Ở những lần sau, lệnh mất khoảng một phút.
@@ -184,6 +184,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 |---|---|---|
 | http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP. Cách tạo tài khoản được trình bày ở mục [Tài khoản quản trị](#tài-khoản-quản-trị) |
 | http://localhost:9080/operaton/ | Cockpit, Tasklist và Admin của [Operaton](#quy-trình), dùng để theo dõi và quản lý các quy trình | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP |
+| http://localhost:9080/grafana/ | Grafana, dùng để xem metrics và log của hệ thống khi [giám sát](#giám-sát) được bật | Tài khoản quản trị của realm `saigonos`, đăng nhập bằng mật khẩu và OTP |
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX, chỉ truy cập được từ chính máy cài đặt | Khóa quản trị (Admin Key) là giá trị `APISIX_ADMIN_KEY` |
 | http://127.0.0.1:9380/ | Admin UI của SeaweedFS, dùng để xem các bucket và file, chỉ truy cập được từ chính máy cài đặt | Tài khoản `admin`, mật khẩu là giá trị `SEAWEEDFS_ADMIN_PASSWORD` |
@@ -378,6 +379,7 @@ Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `sai
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway cũng từ chối các lời gọi có nội dung lớn hơn giá trị này |
 | `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy để nhận kết nối HTTPS trên máy chủ chưa có reverse proxy |
+| `--monitoring`, `--no-monitoring` | Tắt | Bật hoặc tắt [giám sát](#giám-sát) bằng Prometheus, Loki và Grafana |
 
 Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.
 
@@ -623,7 +625,7 @@ Coraza chạy trong APISIX dưới dạng plugin wasm. Ở lần khởi động 
 
 - Coraza kiểm tra đường dẫn, query string, header và body của lời gọi. Body JSON, form và XML được tách thành từng tham số để kiểm tra.
 - Bộ luật CRS chạy ở mức paranoia 1. Lời gọi bị chặn khi tổng điểm bất thường đạt 5, tức là chỉ cần một luật mức critical khớp.
-- Bộ luật CRS chạy đầy đủ, chưa tắt luật nào. Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
+- Bộ luật CRS chạy đầy đủ, chỉ tắt luật 920350. Luật này chặn lời gọi có header `Host` là địa chỉ IP, trong khi SaigonOS cho phép truy cập bằng địa chỉ IP trong mạng nội bộ như mục [Cấu hình](#cấu-hình). Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
 - Các phương thức được dùng là GET, HEAD, POST, OPTIONS, PUT, PATCH và DELETE.
 - Body của lời gọi tối đa 1 MB. Lời gọi có body lớn hơn nhận mã 413, vì tường lửa không kiểm tra được.
 - Body JSON không đúng định dạng không tách được thành tham số. PostgREST và service `core` từ chối body này với mã 400 hoặc 422.
@@ -653,6 +655,110 @@ SAIGONOS_WAF_MODE=detect
 ```
 
 Ở chế độ này, các luật khớp vẫn được ghi vào log nhưng lời gọi không bị chặn. Để chặn trở lại, xóa dòng trên hoặc đặt giá trị `block`, rồi chạy `saigonos up`. Khi giá trị không hợp lệ, lệnh `saigonos up` báo lỗi ở service `routes` và tường lửa giữ chế độ đang chạy. Lệnh `saigonos doctor` cho biết tường lửa đang chặn hay chỉ ghi log.
+
+## Giám sát
+
+Giám sát gồm Prometheus, Loki, Grafana và Grafana Alloy. Prometheus thu metrics của các service. Alloy đọc log của mọi container và gửi tới Loki. Grafana hiển thị metrics và log. Giám sát mặc định tắt.
+
+### Bật giám sát
+
+```bash
+saigonos init --monitoring
+saigonos up
+```
+
+Lệnh `saigonos init` thêm `monitoring` vào dòng `COMPOSE_PROFILES` của file `.env`. Do đó, lệnh `docker compose up -d --wait` cũng khởi động các service giám sát. Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa.
+
+Lúc mới khởi động, các service giám sát dùng khoảng 460 MB RAM, trong đó Grafana dùng khoảng 250 MB. APISIX dùng thêm khoảng 70 MB khi Prometheus đọc metrics. Do đó, RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB. RAM của Prometheus và Loki còn tăng dần theo lượng metrics và log.
+
+Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng `Giám sát`. Dòng này kiểm tra Grafana qua API Gateway và kiểm tra Prometheus đọc được metrics của mọi target:
+
+```text
+BÌNH THƯỜNG    Giám sát        Grafana trả lời tại /grafana/, Prometheus đọc metrics của 8 target
+```
+
+Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc metrics của mọi target lần đầu. Do đó, lệnh `saigonos doctor` chờ tối đa 30 giây trước khi báo kết quả của dòng `Giám sát`.
+
+### Grafana
+
+Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Người dùng đăng nhập bằng Keycloak qua client `grafana`. Chỉ tài khoản có realm role `admin` đăng nhập được và luôn phải nhập mã OTP, giống Operaton. Route `grafana` đi qua luật trang quản trị của OPA, nên giới hạn `SAIGONOS_ADMIN_NETWORKS` ở mục [Trang quản trị](#trang-quản-trị) cũng áp dụng cho Grafana.
+
+Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai.
+
+### Bảng theo dõi
+
+Trang chủ của Grafana là bảng SaigonOS. Bảng được nạp từ file `config/grafana/dashboards/saigonos.json` và không sửa được trong Grafana. Bảng gồm:
+
+- Năm ô số đếm trong khoảng thời gian đang xem: số request, số lỗi 4xx, số lỗi 5xx, số request bị tường lửa chặn và số request bị OPA từ chối.
+- Ba ô số cho biết tài nguyên hiện tại: phần trăm CPU của máy mà các container đang dùng, tổng RAM của các container và phần trăm đã dùng của ổ chứa dữ liệu Docker.
+- Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm CPU và RAM.
+- Biểu đồ số request mỗi giây theo mã trạng thái.
+- Khung Log. Ô Service và ô Tìm trong log ở đầu trang dùng để lọc log. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
+
+### Metrics
+
+Prometheus giữ metrics 7 ngày, tối đa 2 GB, trong volume `prometheus-data`. Prometheus đọc metrics của các nguồn sau:
+
+| Job | Nguồn |
+|---|---|
+| `apisix` | Plugin `prometheus` của APISIX, đếm mọi request qua API Gateway |
+| `keycloak` | Metrics có sẵn của Keycloak ở cổng quản lý 9000 |
+| `centrifugo` | Metrics có sẵn của Centrifugo ở cổng nội bộ 9000 |
+| `postgrest` | Admin server của PostgREST ở cổng 3001 |
+| `etcd` | Metrics có sẵn của etcd |
+| `loki` | Metrics của Loki |
+| `services` | Service `exporter`, cho biết trạng thái, healthcheck, CPU và RAM của từng container, cùng dung lượng ổ đĩa |
+| `prometheus` | Metrics của chính Prometheus |
+
+Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `waf` khi tường lửa ứng dụng web chặn request và `opa` khi luật OPA từ chối request. API Gateway lấy giá trị này từ header `X-SaigonOS-Denied-By` của phản hồi. Prometheus ghi các tổng sau bằng recording rule trong file `config/prometheus/rules.yml`:
+
+| Metrics | Ý nghĩa |
+|---|---|
+| `saigonos:http_requests:total` | Tổng số request qua API Gateway, trừ request tới Grafana |
+| `saigonos:http_client_errors:total` | Số request nhận mã 4xx |
+| `saigonos:http_server_errors:total` | Số request nhận mã 5xx |
+| `saigonos:waf_denied:total` | Số request bị tường lửa ứng dụng web chặn |
+| `saigonos:opa_denied:total` | Số request bị luật OPA từ chối |
+
+Ba tổng đầu không tính request tới route `grafana`, vì chính Grafana gửi request qua API Gateway mỗi khi bảng theo dõi làm mới. Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
+
+Service `exporter` cung cấp các metrics sau. Service chạy một lần không được tính.
+
+| Metrics | Ý nghĩa |
+|---|---|
+| `saigonos_service_up` | Bằng 1 khi service đang chạy và đạt healthcheck |
+| `saigonos_service_memory_bytes` | RAM của container, tính như lệnh `docker stats` |
+| `saigonos_service_cpu_seconds_total` | Tổng thời gian CPU container đã dùng, tính bằng giây |
+| `saigonos_host_cpus` | Số nhân CPU của máy, dùng để tính phần trăm CPU |
+| `saigonos_host_disk_used_bytes` | Dung lượng đã dùng của ổ chứa dữ liệu Docker, tính như lệnh `df` |
+| `saigonos_host_disk_available_bytes` | Dung lượng còn trống của ổ này, tính như lệnh `df` |
+
+Service `exporter` đọc dung lượng của hệ thống file gốc trong container của chính nó. Docker đặt hệ thống file này trên ổ chứa dữ liệu của Docker. Do đó, `exporter` không cần mount thư mục nào của máy cài đặt. Hai số này tính cả dữ liệu ngoài SaigonOS trên cùng ổ.
+
+### Log
+
+Alloy đọc log của mọi container trong project, kể cả service chạy một lần, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày trong volume `loki-data`. Trong Grafana, mở Explore, chọn nguồn Loki rồi lọc theo service. Ví dụ, truy vấn sau tìm các request bị tường lửa chặn:
+
+```
+{service="apisix"} |= "Coraza"
+```
+
+### Docker socket
+
+Alloy và `exporter` đọc Docker API qua service `socket-proxy`. Chỉ service này giữ Docker socket. Service `socket-proxy` chạy không có capability nào, với hệ thống file chỉ đọc. Service này chỉ nhận lời gọi từ Alloy và `exporter`, và chỉ cho các đường dẫn GET để liệt kê container, đọc cấu hình, log và RAM của container. Lời gọi tạo, sửa hay xóa container đều bị từ chối. Cấu hình của container gồm cả biến môi trường. Do đó, ba service này chỉ nằm trong hai mạng nội bộ `docker` và `monitoring`, không có kết nối Internet và không mở cổng nào.
+
+### Tắt giám sát
+
+```bash
+saigonos init --no-monitoring
+saigonos up
+```
+
+Lệnh `saigonos up` xóa container của các service giám sát rồi khởi động các service còn lại. Route `grafana` và client `grafana` cũng được gỡ. Metrics, log và dữ liệu của Grafana vẫn nằm trong các volume `prometheus-data`, `loki-data` và `grafana-data`. Nếu dùng trực tiếp Docker Compose, chạy lệnh sau trước lệnh `docker compose up -d --wait`:
+
+```bash
+docker compose rm --stop --force socket-proxy exporter prometheus loki-probe loki alloy grafana
+```
 
 ## Kiểm tra audit log
 
@@ -1442,7 +1548,7 @@ Ví dụ bản khai của một ứng dụng xin nghỉ phép:
 Bản khai tuân theo các quy tắc sau:
 
 - Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `nghi-phep`, `don-tu-2`.
-- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
+- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `grafana`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
 - Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `nghi-phep.quan-ly`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
 - Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
 - Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`. Mỗi cấp gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và không bắt đầu bằng dấu chấm. Do đó, đường dẫn không trỏ ra ngoài thư mục ứng dụng được. Ba thư mục không trùng nhau và không nằm trong nhau.
