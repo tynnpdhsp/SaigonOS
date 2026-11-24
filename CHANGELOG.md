@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.10.0] - 2026-11-24
+
 ### Thêm
 
 - Lệnh `saigonos backup` tạo gói sao lưu gồm toàn bộ cơ sở dữ liệu, các file trong SeaweedFS, file `.env`, thư mục `apps` và chứng chỉ của Caddy nếu có, kèm mã băm SHA-256 của từng phần. Gói có quyền 600 vì chứa mật khẩu. Service `seaweedfs` tạm dừng trong lúc chép file, rồi lệnh chờ service này đạt healthcheck trở lại.
@@ -305,7 +307,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.9.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0
 [0.8.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.1
 [0.8.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.0
