@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.12.0] - 2026-11-25
+
 ### Thêm
 
 - Mục `archive` trong bản khai ứng dụng khai các bảng có dòng cũ được chuyển xuống hồ dữ liệu, kèm cột thời gian và số ngày giữ ở bảng. Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. Mỗi mục có luật chất lượng `not_null`, `unique` và `range`.
@@ -332,7 +334,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.11.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0
 [0.10.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0
