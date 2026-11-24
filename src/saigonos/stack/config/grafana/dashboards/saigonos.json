@@ -55,7 +55,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "datasource": {
@@ -78,11 +78,14 @@
           "calcs": [
             "sum"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "locale",
           "decimals": 0,
           "noValue": "0",
           "thresholds": {
@@ -95,7 +98,24 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byValue",
+              "options": {
+                "reducer": "sum",
+                "op": "gte",
+                "value": 100000
+              }
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -104,7 +124,7 @@
       "title": "Lỗi 4xx",
       "description": "Số request nhận mã 4xx, gồm cả request bị WAF chặn và bị OPA từ chối",
       "gridPos": {
-        "x": 4,
+        "x": 3,
         "y": 0,
         "w": 3,
         "h": 5
@@ -129,11 +149,14 @@
           "calcs": [
             "sum"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "locale",
           "decimals": 0,
           "noValue": "0",
           "thresholds": {
@@ -145,12 +168,33 @@
               },
               {
                 "color": "orange",
-                "value": 1
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 1000
               }
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byValue",
+              "options": {
+                "reducer": "sum",
+                "op": "gte",
+                "value": 100000
+              }
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -159,7 +203,7 @@
       "title": "Lỗi 5xx",
       "description": "Số request nhận mã 5xx",
       "gridPos": {
-        "x": 7,
+        "x": 6,
         "y": 0,
         "w": 3,
         "h": 5
@@ -184,11 +228,14 @@
           "calcs": [
             "sum"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "locale",
           "decimals": 0,
           "noValue": "0",
           "thresholds": {
@@ -199,13 +246,34 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
               }
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byValue",
+              "options": {
+                "reducer": "sum",
+                "op": "gte",
+                "value": 100000
+              }
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -214,9 +282,9 @@
       "title": "Bị WAF chặn",
       "description": "Số request bị tường lửa ứng dụng web Coraza chặn",
       "gridPos": {
-        "x": 10,
+        "x": 9,
         "y": 0,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "datasource": {
@@ -239,11 +307,14 @@
           "calcs": [
             "sum"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "locale",
           "decimals": 0,
           "noValue": "0",
           "thresholds": {
@@ -255,12 +326,33 @@
               },
               {
                 "color": "orange",
-                "value": 1
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 200
               }
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byValue",
+              "options": {
+                "reducer": "sum",
+                "op": "gte",
+                "value": 100000
+              }
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -269,9 +361,9 @@
       "title": "Bị OPA từ chối",
       "description": "Số request bị luật truy cập của OPA từ chối",
       "gridPos": {
-        "x": 14,
+        "x": 12,
         "y": 0,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "datasource": {
@@ -294,11 +386,14 @@
           "calcs": [
             "sum"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "locale",
           "decimals": 0,
           "noValue": "0",
           "thresholds": {
@@ -310,12 +405,33 @@
               },
               {
                 "color": "orange",
-                "value": 1
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 200
               }
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byValue",
+              "options": {
+                "reducer": "sum",
+                "op": "gte",
+                "value": 100000
+              }
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -324,7 +440,7 @@
       "title": "CPU",
       "description": "Phần trăm CPU của cả máy mà các container đang dùng",
       "gridPos": {
-        "x": 18,
+        "x": 15,
         "y": 0,
         "w": 3,
         "h": 5
@@ -349,6 +465,9 @@
           "calcs": [
             "lastNotNull"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
@@ -383,7 +502,7 @@
       "title": "RAM",
       "description": "Tổng RAM của các container đang chạy",
       "gridPos": {
-        "x": 21,
+        "x": 18,
         "y": 0,
         "w": 3,
         "h": 5
@@ -408,6 +527,9 @@
           "calcs": [
             "lastNotNull"
           ]
+        },
+        "text": {
+          "valueSize": 30
         }
       },
       "fieldConfig": {
@@ -424,6 +546,69 @@
               {
                 "color": "orange",
                 "value": 3758096384
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Ổ cứng",
+      "description": "Phần trăm đã dùng của ổ chứa dữ liệu Docker, tính như lệnh df, gồm cả dữ liệu ngoài SaigonOS",
+      "gridPos": {
+        "x": 21,
+        "y": 0,
+        "w": 3,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(saigonos_host_disk_used_bytes) / (sum(saigonos_host_disk_used_bytes) + sum(saigonos_host_disk_available_bytes))",
+          "interval": "1m"
+        }
+      ],
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "text": {
+          "valueSize": 30
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
               }
             ]
           }

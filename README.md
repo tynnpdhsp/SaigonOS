@@ -686,8 +686,9 @@ Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/g
 
 Trang chủ của Grafana là bảng SaigonOS. Bảng được nạp từ file `config/grafana/dashboards/saigonos.json` và không sửa được trong Grafana. Bảng gồm:
 
-- Sáu ô số trong khoảng thời gian đang xem: số request, số lỗi 4xx, số lỗi 5xx, số request bị tường lửa chặn, số request bị OPA từ chối và tổng RAM của các container.
-- Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm RAM.
+- Năm ô số đếm trong khoảng thời gian đang xem: số request, số lỗi 4xx, số lỗi 5xx, số request bị tường lửa chặn và số request bị OPA từ chối.
+- Ba ô số cho biết tài nguyên hiện tại: phần trăm CPU của máy mà các container đang dùng, tổng RAM của các container và phần trăm đã dùng của ổ chứa dữ liệu Docker.
+- Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm CPU và RAM.
 - Biểu đồ số request mỗi giây theo mã trạng thái.
 - Khung Log. Ô Service và ô Tìm trong log ở đầu trang dùng để lọc log. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
 
