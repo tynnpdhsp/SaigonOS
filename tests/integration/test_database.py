@@ -360,6 +360,19 @@ def test_migrate_records_each_shipped_file(stack):
     assert shipped.items() <= recorded.items()
 
 
+@pytest.mark.parametrize("role", ["anon", "authenticated", "core_service"])
+def test_vietnamese_search_ignores_marks_and_case_for_every_role(stack, role):
+    query = (
+        f"SET ROLE {role}; SELECT core.search_vector('Nguyễn Văn ĐỨC', 'Ổn định'), "
+        "core.search_vector('nguyen van duc') @@ core.search_query('Nguyễn Văn'), "
+        "core.search_vector('Nguyễn Văn Đức') @@ core.search_query('\"nguyen van\" -an')"
+    )
+
+    result = stack.sql(query)[-1]
+
+    assert result == ["'dinh':5 'duc':3 'nguyen':1 'on':4 'van':2", "t", "t"]
+
+
 def test_api_role_cannot_read_records_of_migrate(stack):
     query = "SELECT has_table_privilege('authenticated', 'core.migrations', 'SELECT')"
 

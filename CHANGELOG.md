@@ -7,6 +7,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Cấu hình tìm kiếm toàn văn tiếng Việt `core.vietnamese` trong PostgreSQL. Cấu hình này bỏ dấu bằng extension `unaccent` và không phân biệt chữ hoa, chữ thường. Hai hàm `core.search_vector` và `core.search_query` dùng cấu hình này, mọi role đều gọi được.
+
 ## [0.10.0] - 2026-11-24
 
 ### Thêm
