@@ -30,6 +30,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
 - Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
 
+### Sửa
+
+- Tường lửa ứng dụng web không còn chặn lời gọi có header `Host` là địa chỉ IP. Trước đây luật 920350 của CRS đẩy tổng điểm bất thường lên 6, vượt ngưỡng 5, nên lời gọi tới `/api`, `/apps` và `/core` qua địa chỉ IP trong mạng nội bộ nhận mã 403. SaigonOS tắt luật 920350.
+
 ## [0.8.1] - 2026-11-23
 
 ### Sửa

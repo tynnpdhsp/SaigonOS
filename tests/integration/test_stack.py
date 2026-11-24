@@ -706,6 +706,16 @@ def test_waf_lets_valid_calls_of_api_and_core_through(stack):
     assert [reply.status for reply in replies] == [200, 404, 404, 201]
 
 
+def test_waf_lets_address_as_host_through_and_still_blocks_attack(stack):
+    address = f"http://127.0.0.1:{stack.env['SAIGONOS_HTTP_PORT']}"
+
+    allowed = stack.call("GET", f"{address}/api/")
+    attack = stack.call("GET", f"{address}{SQL_INJECTION}")
+
+    assert allowed.status == 200
+    assert waf_reply(attack) == (403, "application/json; charset=utf-8", "SGN04", WAF_BLOCKED)
+
+
 def test_waf_refuses_body_larger_than_it_checks(stack):
     reply = stack.call("POST", f"{stack.url}/api/notes", body={"body": "a" * 1_100_000})
 

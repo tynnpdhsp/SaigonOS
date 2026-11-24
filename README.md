@@ -625,7 +625,7 @@ Coraza chạy trong APISIX dưới dạng plugin wasm. Ở lần khởi động 
 
 - Coraza kiểm tra đường dẫn, query string, header và body của lời gọi. Body JSON, form và XML được tách thành từng tham số để kiểm tra.
 - Bộ luật CRS chạy ở mức paranoia 1. Lời gọi bị chặn khi tổng điểm bất thường đạt 5, tức là chỉ cần một luật mức critical khớp.
-- Bộ luật CRS chạy đầy đủ, chưa tắt luật nào. Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
+- Bộ luật CRS chạy đầy đủ, chỉ tắt luật 920350. Luật này chặn lời gọi có header `Host` là địa chỉ IP, trong khi SaigonOS cho phép truy cập bằng địa chỉ IP trong mạng nội bộ như mục [Cấu hình](#cấu-hình). Toàn bộ integration test của SaigonOS, gồm các luồng của ứng dụng thử, chạy qua tường lửa mà không bị chặn nhầm.
 - Các phương thức được dùng là GET, HEAD, POST, OPTIONS, PUT, PATCH và DELETE.
 - Body của lời gọi tối đa 1 MB. Lời gọi có body lớn hơn nhận mã 413, vì tường lửa không kiểm tra được.
 - Body JSON không đúng định dạng không tách được thành tham số. PostgREST và service `core` từ chối body này với mã 400 hoặc 422.

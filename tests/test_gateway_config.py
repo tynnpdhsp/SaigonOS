@@ -122,6 +122,13 @@ def test_waf_loads_crs_after_its_setup_and_allows_methods_of_api():
     assert "GET HEAD POST OPTIONS PUT PATCH DELETE" in DIRECTIVES[methods]
 
 
+def test_waf_removes_only_rule_against_address_as_host_after_loading_crs():
+    removed = [line for line in DIRECTIVES if line.startswith("SecRuleRemove")]
+
+    assert removed == ["SecRuleRemoveById 920350"]
+    assert DIRECTIVES.index(removed[0]) > DIRECTIVES.index("Include @owasp_crs/*.conf")
+
+
 def test_coraza_and_plugin_share_one_body_limit():
     limit = int(re.search(r"local LIMIT = (\d+)", PLUGIN)[1])
 
