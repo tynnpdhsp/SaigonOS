@@ -31,6 +31,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
 - Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
+- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB đĩa cho image.
 
 ### Sửa
 

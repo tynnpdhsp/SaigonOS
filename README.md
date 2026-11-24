@@ -46,8 +46,8 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Ba thành phần này có sẵn khi cài Docker theo hướng dẫn của Docker. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git.
 - Kết nối Internet để tải các image Docker, các thư viện của service `core` và bản cập nhật của cơ sở dữ liệu mã độc.
-- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
-- Nên có 4 GB RAM cho các service. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
+- Khoảng 6 GB dung lượng đĩa còn trống cho các image Docker và dữ liệu ban đầu, chưa tính các file được tải lên. Khi bật [giám sát](#giám-sát), cần thêm khoảng 3,6 GB cho image và tối đa 2 GB cho metrics. Cách kiểm tra ở mục [Dung lượng đĩa](#dung-lượng-đĩa).
+- Nên có 4 GB RAM cho các service, hoặc 5 GB khi bật giám sát. Tường lửa ứng dụng web dùng khoảng 300 MB trong số này, vì mỗi worker của APISIX giữ một bản Coraza. Máy có 2 GB RAM chạy được khi có thêm ít nhất 2 GB swap, như mục [Swap](#swap). Máy có 1 GB RAM không được hỗ trợ, vì Keycloak và ClamAV khởi động quá thời hạn của healthcheck.
 
 ### Dung lượng đĩa
 
@@ -667,7 +667,9 @@ saigonos init --monitoring
 saigonos up
 ```
 
-Lệnh `saigonos init` thêm `monitoring` vào dòng `COMPOSE_PROFILES` của file `.env`. Do đó, lệnh `docker compose up -d --wait` cũng khởi động các service giám sát. Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa. Các service giám sát dùng thêm khoảng 500 MB RAM, trong đó Grafana dùng khoảng 270 MB.
+Lệnh `saigonos init` thêm `monitoring` vào dòng `COMPOSE_PROFILES` của file `.env`. Do đó, lệnh `docker compose up -d --wait` cũng khởi động các service giám sát. Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa.
+
+Lúc mới khởi động, các service giám sát dùng khoảng 460 MB RAM, trong đó Grafana dùng khoảng 250 MB. APISIX dùng thêm khoảng 70 MB khi Prometheus đọc metrics. Do đó, RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB. RAM của Prometheus và Loki còn tăng dần theo lượng metrics và log.
 
 Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng `Giám sát`. Dòng này kiểm tra Grafana qua API Gateway và kiểm tra Prometheus đọc được metrics của mọi target:
 
