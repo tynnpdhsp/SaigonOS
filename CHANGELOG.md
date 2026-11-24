@@ -7,6 +7,11 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- Lệnh `saigonos backup` tạo gói sao lưu gồm toàn bộ cơ sở dữ liệu, các file trong SeaweedFS, file `.env`, thư mục `apps` và chứng chỉ của Caddy nếu có, kèm mã băm SHA-256 của từng phần. Gói có quyền 600 vì chứa mật khẩu. Service `seaweedfs` tạm dừng trong lúc chép file.
+- Service một lần `backup` chép volume của SeaweedFS. Service này không có mạng và chỉ chạy khi được gọi.
+
 ## [0.9.0] - 2026-11-24
 
 ### Thêm

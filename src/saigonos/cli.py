@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
 import shlex
+from datetime import datetime
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
 from urllib.parse import SplitResult, urlsplit
@@ -21,6 +22,7 @@ from saigonos.apps import (
     restore_old,
 )
 from saigonos.audit import verify as verify_chain
+from saigonos.backup import BACKUP_FOLDER, create_backup
 from saigonos.doctor import run_checks
 from saigonos.home import (
     APPS_FOLDER,
@@ -413,6 +415,32 @@ def doctor(ctx: click.Context, home: Path) -> None:
         click.echo(f"Có {failed} mục lỗi.")
         ctx.exit(1)
     click.echo("Hệ thống hoạt động bình thường.")
+
+
+@main.command(
+    short_help="Tạo gói sao lưu dữ liệu của hệ thống.",
+    help=(
+        "Tạo gói sao lưu gồm cơ sở dữ liệu, các file trong SeaweedFS, file .env, "
+        "thư mục apps và chứng chỉ của Caddy nếu có. Hệ thống phải đang chạy.\n\n"
+        "Trong lúc chép các file của SeaweedFS, service seaweedfs tạm dừng. "
+        "Gói chứa mật khẩu nên chỉ tài khoản tạo gói đọc được."
+    ),
+)
+@home_option
+@click.option(
+    "--output",
+    type=click.Path(file_okay=False, resolve_path=True, path_type=Path),
+    help=f"Thư mục lưu gói. Mặc định là thư mục {BACKUP_FOLDER} trong thư mục làm việc.",
+)
+def backup(home: Path, output: Path | None) -> None:
+    try:
+        bundle = create_backup(home, output or home / BACKUP_FOLDER, datetime.now().astimezone())
+    except compose.ComposeError as error:
+        raise click.ClickException(str(error)) from error
+    except OSError as error:
+        raise click.ClickException(f"Không tạo được gói sao lưu: {error}") from error
+    size = bundle.stat().st_size / 1024 / 1024
+    click.echo(f"Đã tạo gói sao lưu {bundle}, dung lượng {size:.1f} MB.")
 
 
 @main.group(help="Làm việc với audit log của cơ sở dữ liệu.")

@@ -23,6 +23,16 @@ def run(home: Path, *args: str) -> int:
     return subprocess.run(command(home, *args), cwd=home, check=False).returncode
 
 
+def to_file(home: Path, target: Path, *args: str) -> None:
+    with target.open("wb") as output:
+        result = subprocess.run(
+            command(home, *args), cwd=home, check=False, stdout=output, stderr=subprocess.PIPE
+        )
+    if result.returncode != 0:
+        reason = result.stderr.decode(errors="replace").strip() or f"mã thoát {result.returncode}"
+        raise ComposeError(f"Lệnh docker compose {args[0]} không chạy được: {reason}")
+
+
 def capture(home: Path, *args: str) -> str:
     result = subprocess.run(
         command(home, *args), cwd=home, check=False, capture_output=True, text=True

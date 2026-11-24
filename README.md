@@ -35,6 +35,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
 - [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
 - [Ứng dụng](#ứng-dụng)
+- [Sao lưu](#sao-lưu)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
 - [Tham gia phát triển](#tham-gia-phát-triển)
 - [Giấy phép](#giấy-phép)
@@ -1973,6 +1974,39 @@ Các quy tắc sau áp dụng cho giao diện:
 - Mỗi trả lời có các header `Content-Security-Policy`, `X-Content-Type-Options: nosniff` và `Referrer-Policy: same-origin`. Chính sách `Content-Security-Policy` chỉ cho trang tải script, ảnh, font và gọi API từ chính địa chỉ của hệ thống. Script viết trực tiếp trong file HTML không chạy, nên mọi script phải nằm trong file `.js` riêng.
 - Địa chỉ có `..`, kể cả ở dạng mã hóa như `%2e%2e`, nhận mã 404. File và thư mục có tên bắt đầu bằng dấu chấm, symlink và địa chỉ bắt đầu bằng `/apps/<tên ứng dụng>/api` không được phục vụ như file của giao diện.
 - Ứng dụng chưa cài đặt, kể cả khi thư mục đã được chép vào thư mục `apps`, nhận mã 404.
+
+## Sao lưu
+
+Lệnh sau tạo một gói sao lưu trong thư mục `backups` của thư mục làm việc. Hệ thống phải đang chạy.
+
+```bash
+saigonos backup
+```
+
+Gói có tên dạng `saigonos-20261124-153000.tar.gz` và gồm các phần sau:
+
+| Phần | Nội dung |
+|---|---|
+| `postgres.sql` | Toàn bộ cơ sở dữ liệu, tạo bằng `pg_dumpall` trong lúc hệ thống vẫn chạy |
+| `seaweedfs.tar` | Các file trong SeaweedFS |
+| `env` | File `.env` cùng các mật khẩu |
+| `apps.tar` | Thư mục `apps` chứa các ứng dụng đã cài đặt |
+| `caddy.tar` | Chứng chỉ của Caddy, chỉ có khi thư mục `data/caddy` tồn tại |
+| `manifest.json` | Phiên bản SaigonOS và thời điểm tạo gói |
+| `SHA256SUMS` | Mã băm SHA-256 của từng phần |
+
+Trong lúc chép các file của SeaweedFS, service `seaweedfs` tạm dừng. Do đó, lời gọi tải file lên hoặc tải file về phải chờ tới khi chép xong. Etcd, JWKS và cơ sở dữ liệu mã độc không nằm trong gói, vì lệnh `saigonos up` tự tạo lại. Metrics, log và dữ liệu của Grafana cũng không nằm trong gói.
+
+Gói chứa các mật khẩu của file `.env`, nên chỉ tài khoản tạo gói đọc được. Tùy chọn `--output` chọn thư mục khác để lưu gói. Nên chép gói sang một máy khác, để dữ liệu không mất cùng máy chủ.
+
+Nếu dùng trực tiếp Docker Compose, chạy các lệnh sau trong thư mục làm việc để lấy cơ sở dữ liệu và các file của SeaweedFS:
+
+```bash
+docker compose exec -T postgres pg_dumpall --username=postgres --clean --if-exists > postgres.sql
+docker compose pause seaweedfs
+docker compose run --rm -T backup -C /seaweedfs -cf - . > seaweedfs.tar
+docker compose unpause seaweedfs
+```
 
 ## Cập nhật phiên bản
 
