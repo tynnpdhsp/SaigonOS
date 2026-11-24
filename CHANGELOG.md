@@ -21,6 +21,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
+- Grafana chỉ ghi log mức cảnh báo và lỗi, và bỏ cảnh báo lặp lại của `search-manifest-watcher`. Trước đây, mỗi lần bảng theo dõi làm mới, Grafana ghi hai dòng INFO cho mỗi ô, khoảng 120 dòng mỗi phút, làm khung Log ngập log của chính Grafana.
 - Tên ứng dụng không được trùng `lake`, `main`, `memory`, `snapshots`, `system` và `temp`, vì lõi và DuckDB dùng các tên này.
 
 ## [0.11.0] - 2026-11-24

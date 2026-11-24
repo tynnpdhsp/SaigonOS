@@ -734,6 +734,8 @@ services:
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
       GF_CLOUD_MIGRATION_ENABLED: "false"
       GF_USERS_DEFAULT_THEME: light
+      GF_LOG_LEVEL: warn
+      GF_LOG_FILTERS: search-manifest-watcher:error
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/saigonos.json
     networks:
       - default

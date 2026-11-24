@@ -702,7 +702,7 @@ Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc met
 
 Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Người dùng đăng nhập bằng Keycloak qua client `grafana`. Chỉ tài khoản có realm role `admin` đăng nhập được và luôn phải nhập mã OTP, giống Operaton. Route `grafana` đi qua luật trang quản trị của OPA, nên giới hạn `SAIGONOS_ADMIN_NETWORKS` ở mục [Trang quản trị](#trang-quản-trị) cũng áp dụng cho Grafana.
 
-Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai.
+Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai. Grafana chỉ ghi log mức cảnh báo và lỗi. Nếu ghi cả mức INFO, mỗi lần bảng theo dõi làm mới, Grafana ghi hai dòng cho mỗi ô, làm khung Log ngập log của chính Grafana. Cảnh báo lặp lại của `search-manifest-watcher` trong Grafana cũng không được ghi, vì cảnh báo này không cần xử lý.
 
 ### Bảng theo dõi
 

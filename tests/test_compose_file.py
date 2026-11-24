@@ -228,6 +228,13 @@ def test_grafana_sends_nothing_outside_and_allows_only_keycloak_login():
     assert "GF_SERVER_ROOT_URL: ${SAIGONOS_URL:?}/grafana/" in grafana
 
 
+def test_grafana_logs_only_warnings_so_queries_of_dashboard_do_not_flood_logs():
+    grafana = services()["grafana"]
+
+    assert "GF_LOG_LEVEL: warn" in grafana
+    assert "GF_LOG_FILTERS: search-manifest-watcher:error" in grafana
+
+
 CONFIG = files("saigonos") / "stack" / "config"
 
 
