@@ -246,6 +246,7 @@ def test_prometheus_keeps_seven_days_and_reads_metrics_of_services():
         "postgrest:3001",
         "etcd:2379",
         "loki:3100",
+        "core:9100",
     ]
     assert 'KC_METRICS_ENABLED: "true"' in services()["keycloak"]
     assert "PGRST_ADMIN_SERVER_HOST: 0.0.0.0" in services()["postgrest"]
@@ -303,6 +304,7 @@ def test_dashboard_reads_only_provisioned_sources_and_existing_metrics():
     known = {"apisix_http_status", "saigonos_service_up", "saigonos_service_memory_bytes"}
     known |= {"saigonos_service_cpu_seconds_total", "saigonos_host_cpus"}
     known |= {"saigonos_host_disk_used_bytes", "saigonos_host_disk_available_bytes"}
+    known |= {"saigonos_lake_failed_checks_total", "saigonos_lake_files", "saigonos_lake_rows"}
     known |= set(re.findall(r"- record: (\S+)", rules))
 
     for panel in dashboard["panels"]:

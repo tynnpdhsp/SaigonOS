@@ -10,7 +10,7 @@ from saigonos.home import MONITORING_PROFILE, OPTIONAL_SERVICES
 
 pytestmark = pytest.mark.integration
 
-TARGETS = 8
+TARGETS = 9
 ATTACK = f"/api/?kiem_tra={quote('<script>alert(1)</script>')}"
 DENIED = "Chỉ tài khoản quản trị mới vào được trang này."
 TOTALS = ("http_requests", "http_client_errors", "waf_denied", "opa_denied")

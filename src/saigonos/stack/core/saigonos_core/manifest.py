@@ -56,6 +56,9 @@ RESERVED_NAMES = frozenset(
         "grafana",
         "information-schema",
         "keycloak",
+        "lake",
+        "main",
+        "memory",
         "operaton",
         "postgres",
         "public",
@@ -63,6 +66,9 @@ RESERVED_NAMES = frozenset(
         "realtime",
         "saigonos",
         "security-admin-console",
+        "snapshots",
+        "system",
+        "temp",
         "workflow",
     }
 )

@@ -18,6 +18,8 @@ from saigonos_core.clamav import ClamAV
 from saigonos_core.database import Database
 from saigonos_core.deliveries import EMAIL, TELEGRAM, Channel, Deliveries
 from saigonos_core.downloads import DownloadLinks
+from saigonos_core.lake_timer import INTERVAL, LakeTimer
+from saigonos_core.metrics import PORT, Metrics
 from saigonos_core.operaton import Operaton
 from saigonos_core.processes import Processes
 from saigonos_core.realtime import SubscriptionTokens
@@ -78,6 +80,8 @@ class Settings:
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_from_name: str = ""
+    lake_interval: float = 0
+    metrics_port: int = 0
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -99,6 +103,8 @@ class Settings:
             optional("TELEGRAM_API_URL") or DEFAULT_API_URL,
             *map(optional, ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_TOPIC_ID")),
             *map(optional, SMTP_VARIABLES),
+            lake_interval=INTERVAL,
+            metrics_port=PORT,
         )
 
 
@@ -193,16 +199,24 @@ def create_app(
     steps = steps or Steps(database, operaton, definitions)
     deliveries = tuple(deliveries or deliveries_of(settings, database))
 
+    timers = [LakeTimer(settings.lake_interval)] if settings.lake_interval else []
+    metrics = Metrics(database, settings.metrics_port) if settings.metrics_port else None
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.open()
-        workers = [asyncio.create_task(worker.run()) for worker in (scans, steps, *deliveries)]
+        if metrics is not None:
+            await metrics.start()
+        running = (scans, steps, *deliveries, *timers)
+        workers = [asyncio.create_task(worker.run()) for worker in running]
         yield
         for worker in workers:
             worker.cancel()
         for worker in workers:
             with suppress(asyncio.CancelledError):
                 await worker
+        if metrics is not None:
+            await metrics.close()
         await database.close()
 
     app = FastAPI(
@@ -227,6 +241,8 @@ def create_app(
     app.state.steps = steps
     app.state.deliveries = deliveries
     app.state.subscription_tokens = SubscriptionTokens(settings.subscription_key)
+    app.state.timers = timers
+    app.state.metrics = metrics
     app.state.apps_folder = ui.APPS
     app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(router)

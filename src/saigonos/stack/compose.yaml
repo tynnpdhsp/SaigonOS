@@ -322,7 +322,7 @@ services:
       - -s3.port.lance=0
       - -admin.port.legacy=0
     environment:
-      S3_BUCKET: quarantine,clean
+      S3_BUCKET: quarantine,clean,lake
       AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:?}
       AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:?}
       WEED_ADMIN_PASSWORD: ${SEAWEEDFS_ADMIN_PASSWORD:?}
@@ -424,6 +424,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      LAKE_TIMEZONE: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     volumes:
       - ./apps:/apps:ro
     networks:
@@ -607,6 +608,8 @@ services:
       loki:
         condition: service_healthy
       exporter:
+        condition: service_healthy
+      core:
         condition: service_healthy
     command:
       - --config.file=/etc/prometheus/prometheus.yml

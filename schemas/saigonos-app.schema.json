@@ -384,6 +384,9 @@
               "grafana",
               "information-schema",
               "keycloak",
+              "lake",
+              "main",
+              "memory",
               "operaton",
               "postgres",
               "public",
@@ -391,6 +394,9 @@
               "realtime",
               "saigonos",
               "security-admin-console",
+              "snapshots",
+              "system",
+              "temp",
               "workflow"
             ]
           },

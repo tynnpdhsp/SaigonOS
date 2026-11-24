@@ -53,6 +53,7 @@ MARKS = {True: ("BÌNH THƯỜNG", "green"), False: ("LỖI", "red")}
 MARK_WIDTH = max(len(label) for label, _ in MARKS.values())
 COLUMN_GAP = " " * 4
 CHECK_FOLDER = "/check"
+LAKE = ("exec", "-T", "core", "python", "-m", "saigonos_core.lake")
 
 home_option = click.option(
     "--home",
@@ -520,3 +521,58 @@ def verify(ctx: click.Context, home: Path) -> None:
     click.echo(verdict.detail)
     if not verdict.ok:
         ctx.exit(1)
+
+
+@main.group(help="Làm việc với hồ dữ liệu của các ứng dụng.")
+def lake() -> None:
+    pass
+
+
+@lake.command(
+    "run",
+    short_help="Chốt số liệu các tháng đã hết rồi chuyển dòng cũ xuống hồ.",
+    help=(
+        "Chạy ngay việc mà service core làm mỗi giờ: chốt số liệu các tháng đã hết của các mục "
+        "snapshots, rồi chuyển dòng cũ hơn hạn của các bảng trong mục archive xuống hồ dữ liệu. "
+        "Hệ thống phải đang chạy.\n\n"
+        "Khi dữ liệu không đạt luật chất lượng hoặc có lỗi, lệnh kết thúc với mã thoát 1."
+    ),
+)
+@home_option
+@click.pass_context
+def lake_run(ctx: click.Context, home: Path) -> None:
+    run_compose(ctx, home, *LAKE, "run")
+
+
+@lake.command(
+    "query",
+    short_help="Chạy câu truy vấn SQL của DuckDB trên hồ dữ liệu.",
+    help=(
+        "Chạy câu truy vấn SQL của DuckDB trên các file Parquet của hồ dữ liệu. Mỗi bảng trong "
+        "mục archive là một view cùng tên, ví dụ nghi_phep.don. Mỗi mục snapshots là một view "
+        "trong catalog snapshots, ví dụ snapshots.nghi_phep.chot_don. Bảng lineage chứa phả hệ "
+        "của các file.\n\n"
+        "Trước khi đọc, lệnh kiểm tra mã băm của từng file. Câu truy vấn không đọc được file "
+        "trên máy chủ và không ra được mạng."
+    ),
+)
+@home_option
+@click.option("--csv", "as_csv", is_flag=True, help="In kết quả dạng CSV.")
+@click.argument("sql", metavar="SQL")
+@click.pass_context
+def lake_query(ctx: click.Context, home: Path, as_csv: bool, sql: str) -> None:
+    run_compose(ctx, home, *LAKE, "query", *(["--csv"] if as_csv else []), "--", sql)
+
+
+@lake.command(
+    "verify",
+    short_help="Tính lại mã băm của mọi file trong hồ dữ liệu.",
+    help=(
+        "Tính lại mã băm của mọi file trong hồ dữ liệu và so với bảng phả hệ core.lineage.\n\n"
+        "Khi một file đã bị sửa hoặc bị mất, lệnh chỉ ra file đó và kết thúc với mã thoát 1."
+    ),
+)
+@home_option
+@click.pass_context
+def lake_verify(ctx: click.Context, home: Path) -> None:
+    run_compose(ctx, home, *LAKE, "verify")
