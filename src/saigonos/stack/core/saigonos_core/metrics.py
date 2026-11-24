@@ -28,7 +28,7 @@ def render(rows: Sequence[Any]) -> str:
     for name, kind, field, description in METRICS:
         lines += [f"# HELP {name} {description}", f"# TYPE {name} {kind}"]
         lines += [
-            f'{name}{{app="{row["app"]}",job="{row["job"]}"}} {int(row[field])}' for row in rows
+            f'{name}{{app="{row["app"]}",type="{row["job"]}"}} {int(row[field])}' for row in rows
         ]
     return "\n".join(lines) + "\n"
 

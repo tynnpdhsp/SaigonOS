@@ -2169,7 +2169,7 @@ Service `core` trả metrics của hồ ở cổng 9100 bên trong mạng Docker
 
 | Metrics | Ý nghĩa |
 |---|---|
-| `saigonos_lake_files` | Số file trong hồ, theo ứng dụng và việc |
+| `saigonos_lake_files` | Số file trong hồ. Label `app` là tên ứng dụng, label `type` là `archive` hoặc `snapshot` |
 | `saigonos_lake_rows` | Số dòng trong các file của hồ |
 | `saigonos_lake_bytes` | Dung lượng các file của hồ, tính bằng byte |
 | `saigonos_lake_failed_checks_total` | Số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống |

@@ -27,20 +27,20 @@ ROWS = [
 EXPECTED = """\
 # HELP saigonos_lake_failed_checks_total Số lần kiểm luật chất lượng không đạt
 # TYPE saigonos_lake_failed_checks_total counter
-saigonos_lake_failed_checks_total{app="nghi-phep",job="archive"} 1
-saigonos_lake_failed_checks_total{app="nghi-phep",job="snapshot"} 0
+saigonos_lake_failed_checks_total{app="nghi-phep",type="archive"} 1
+saigonos_lake_failed_checks_total{app="nghi-phep",type="snapshot"} 0
 # HELP saigonos_lake_files Số file trong hồ dữ liệu
 # TYPE saigonos_lake_files gauge
-saigonos_lake_files{app="nghi-phep",job="archive"} 3
-saigonos_lake_files{app="nghi-phep",job="snapshot"} 2
+saigonos_lake_files{app="nghi-phep",type="archive"} 3
+saigonos_lake_files{app="nghi-phep",type="snapshot"} 2
 # HELP saigonos_lake_rows Số dòng trong các file của hồ dữ liệu
 # TYPE saigonos_lake_rows gauge
-saigonos_lake_rows{app="nghi-phep",job="archive"} 120
-saigonos_lake_rows{app="nghi-phep",job="snapshot"} 40
+saigonos_lake_rows{app="nghi-phep",type="archive"} 120
+saigonos_lake_rows{app="nghi-phep",type="snapshot"} 40
 # HELP saigonos_lake_bytes Dung lượng các file của hồ dữ liệu, tính bằng byte
 # TYPE saigonos_lake_bytes gauge
-saigonos_lake_bytes{app="nghi-phep",job="archive"} 4096
-saigonos_lake_bytes{app="nghi-phep",job="snapshot"} 900
+saigonos_lake_bytes{app="nghi-phep",type="archive"} 4096
+saigonos_lake_bytes{app="nghi-phep",type="snapshot"} 900
 """
 
 
