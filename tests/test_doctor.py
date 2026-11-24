@@ -6,6 +6,7 @@ import ssl
 
 import pytest
 
+from saigonos import doctor
 from saigonos.doctor import (
     WAF_PROBE_PATH,
     api_state,
@@ -17,6 +18,7 @@ from saigonos.doctor import (
     operaton_state,
     realtime_state,
     service_state,
+    settled_targets,
     waf_state,
     websocket_accept,
 )
@@ -642,7 +644,7 @@ def targets(*healths):
 @pytest.mark.parametrize(
     ("status", "body", "found", "ok", "detail"),
     [
-        (200, GRAFANA_HEALTH, targets("up", "unknown"), True, MONITORING_OK),
+        (200, GRAFANA_HEALTH, targets("up", "up"), True, MONITORING_OK),
         (403, b"", targets("up"), False, "lời gọi /grafana/api/health nhận mã 403, đúng ra là 200"),
         (200, b'{"database": "failing"}', targets("up"), False, "nhận mã 200, đúng ra là 200"),
         (200, b"khong-phai-json", targets("up"), False, "nhận mã 200, đúng ra là 200"),
@@ -654,14 +656,64 @@ def targets(*healths):
             False,
             "Prometheus không đọc được metrics của apisix, loki",
         ),
+        (200, GRAFANA_HEALTH, [], False, "Prometheus chưa có target nào"),
+        (
+            200,
+            GRAFANA_HEALTH,
+            targets("up", "unknown", "unknown"),
+            False,
+            "Prometheus chưa đọc lần nào metrics của keycloak, loki",
+        ),
     ],
-    ids=["dat", "bi-chan", "co-so-du-lieu-loi", "khong-phai-json", "khong-co-target", "target-loi"],
+    ids=[
+        "dat",
+        "bi-chan",
+        "co-so-du-lieu-loi",
+        "khong-phai-json",
+        "khong-doc-duoc",
+        "target-loi",
+        "danh-sach-rong",
+        "chua-doc-lan-nao",
+    ],
 )
 def test_monitoring_state_needs_grafana_and_every_target(status, body, found, ok, detail):
     state = monitoring_state(status, body, found)
 
     assert state[0] is ok
     assert detail in state[1]
+
+
+@pytest.fixture
+def scrapes(monkeypatch):
+    replies, sleeps = [], []
+    monkeypatch.setattr(doctor, "prometheus_targets", lambda home: replies.pop(0))
+    monkeypatch.setattr(doctor.time, "sleep", sleeps.append)
+    return replies, sleeps
+
+
+def test_doctor_waits_until_prometheus_has_read_every_target_once(scrapes, tmp_path):
+    replies, sleeps = scrapes
+    replies += [[], targets("up", "unknown"), targets("up", "down")]
+
+    assert settled_targets(tmp_path) == targets("up", "down")
+    assert sleeps == [doctor.TARGETS_POLL] * 2
+
+
+def test_doctor_stops_waiting_for_targets_after_its_limit(scrapes, monkeypatch, tmp_path):
+    replies, sleeps = scrapes
+    replies += [targets("unknown")]
+    monkeypatch.setattr(doctor, "TARGETS_WAIT", 0)
+
+    assert settled_targets(tmp_path) == targets("unknown")
+    assert sleeps == []
+
+
+def test_doctor_does_not_wait_when_targets_cannot_be_read(scrapes, tmp_path):
+    replies, sleeps = scrapes
+    replies += [None]
+
+    assert settled_targets(tmp_path) is None
+    assert sleeps == []
 
 
 @pytest.fixture

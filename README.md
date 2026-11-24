@@ -675,6 +675,8 @@ Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các servic
 BÌNH THƯỜNG    Giám sát        Grafana trả lời tại /grafana/, Prometheus đọc metrics của 8 target
 ```
 
+Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc metrics của mọi target lần đầu. Do đó, lệnh `saigonos doctor` chờ tối đa 30 giây trước khi báo kết quả của dòng `Giám sát`.
+
 ### Grafana
 
 Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Người dùng đăng nhập bằng Keycloak qua client `grafana`. Chỉ tài khoản có realm role `admin` đăng nhập được và luôn phải nhập mã OTP, giống Operaton. Route `grafana` đi qua luật trang quản trị của OPA, nên giới hạn `SAIGONOS_ADMIN_NETWORKS` ở mục [Trang quản trị](#trang-quản-trị) cũng áp dụng cho Grafana.

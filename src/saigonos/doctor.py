@@ -4,6 +4,8 @@ import hashlib
 import json
 import secrets
 import ssl
+import time
+from collections.abc import Callable
 from functools import partial
 from http.client import HTTPConnection, HTTPException, HTTPMessage, HTTPSConnection
 from pathlib import Path
@@ -37,6 +39,8 @@ GRAFANA = "grafana"
 PROMETHEUS = "prometheus"
 GRAFANA_HEALTH_PATH = "/grafana/api/health"
 TARGETS_URL = "http://127.0.0.1:9090/api/v1/targets?state=active"
+TARGETS_WAIT = 30
+TARGETS_POLL = 2
 MONITORING_NAME = "Giám sát"
 CADDY_ROOT_CERTIFICATE = "/data/caddy/pki/authorities/local/root.crt"
 TIMEOUT = 5
@@ -301,6 +305,31 @@ def prometheus_targets(home: Path) -> list[dict[str, Any]] | None:
     return targets if isinstance(targets, list) else None
 
 
+def first_scrape_done(targets: list[dict[str, Any]] | None) -> bool:
+    if targets is None:
+        return True
+    return bool(targets) and all(target.get("health") != "unknown" for target in targets)
+
+
+def settled_targets(home: Path) -> list[dict[str, Any]] | None:
+    deadline = time.monotonic() + TARGETS_WAIT
+    targets = prometheus_targets(home)
+    while not first_scrape_done(targets) and time.monotonic() < deadline:
+        time.sleep(TARGETS_POLL)
+        targets = prometheus_targets(home)
+    return targets
+
+
+def jobs(targets: list[dict[str, Any]], wanted: Callable[[Any], bool]) -> str:
+    return ", ".join(
+        sorted(
+            str(target.get("labels", {}).get("job"))
+            for target in targets
+            if wanted(target.get("health"))
+        )
+    )
+
+
 def monitoring_state(
     status: int, body: bytes, targets: list[dict[str, Any]] | None
 ) -> tuple[bool, str]:
@@ -312,13 +341,12 @@ def monitoring_state(
         return False, f"lời gọi {GRAFANA_HEALTH_PATH} nhận mã {status}, đúng ra là 200"
     if targets is None:
         return False, "không đọc được danh sách target của Prometheus"
-    down = sorted(
-        str(target.get("labels", {}).get("job"))
-        for target in targets
-        if target.get("health") == "down"
-    )
-    if down:
-        return False, f"Prometheus không đọc được metrics của {', '.join(down)}"
+    if not targets:
+        return False, "Prometheus chưa có target nào"
+    if down := jobs(targets, lambda health: health == "down"):
+        return False, f"Prometheus không đọc được metrics của {down}"
+    if waiting := jobs(targets, lambda health: health != "up"):
+        return False, f"Prometheus chưa đọc lần nào metrics của {waiting}"
     return True, f"Grafana trả lời tại /grafana/, Prometheus đọc metrics của {len(targets)} target"
 
 
@@ -328,7 +356,7 @@ def monitoring_check(home: Path, url: str, certificate: str | None) -> Check:
     except (OSError, HTTPException) as error:
         return Check(MONITORING_NAME, False, f"không kết nối được tới {url}: {error}")
     return Check(
-        MONITORING_NAME, *monitoring_state(reply.status, reply.body, prometheus_targets(home))
+        MONITORING_NAME, *monitoring_state(reply.status, reply.body, settled_targets(home))
     )
 
 

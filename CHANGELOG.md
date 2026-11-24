@@ -22,7 +22,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Alloy đọc log của mọi container trong project qua `socket-proxy`, kể cả service một lần đã chạy xong, rồi gửi tới Loki với label `service` và `stream`. Loki giữ log 7 ngày.
 - Grafana có địa chỉ `/grafana/` qua API Gateway. Route `grafana` đi qua luật trang quản trị của OPA như Operaton. Grafana chỉ cho đăng nhập bằng Keycloak qua client `grafana`, dùng luồng đăng nhập chỉ cho realm role `admin` và bắt buộc OTP. Grafana không có tài khoản cục bộ.
 - Route có label `saigonos.profile` chỉ được service `routes` nạp khi profile đó được bật và được gỡ khi profile bị tắt. Service `realm` cũng tạo client `grafana` khi bật giám sát và xóa client này khi tắt.
-- Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus.
+- Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus. Ngay sau khi khởi động, lệnh chờ tối đa 30 giây để Prometheus đọc metrics của mọi target lần đầu.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
 - Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ đĩa, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
 - README có mục Giám sát.
