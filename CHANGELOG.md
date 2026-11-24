@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.9.0] - 2026-11-24
+
 ### Thêm
 
 - Giám sát bằng Prometheus 3.16.0, Loki 3.7.10, Grafana 13.3.1 và Grafana Alloy 1.22.0 trong profile `monitoring`. Lệnh `saigonos init --monitoring` bật và `--no-monitoring` tắt giám sát. Các service này không mở cổng nào ra máy cài đặt, không gửi thống kê và không kiểm tra bản mới.
@@ -296,7 +298,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.8.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0
 [0.8.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.1
 [0.8.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.8.0
 [0.7.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.7.0
