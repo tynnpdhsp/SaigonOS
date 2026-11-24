@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import os
+import shutil
 import sys
 from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +25,11 @@ class Service(NamedTuple):
     memory: int | None
     cpu: float | None = None
     cpus: int | None = None
+
+
+class Disk(NamedTuple):
+    used: int
+    available: int
 
 
 class Docker:
@@ -94,7 +100,12 @@ def read_services(docker: Docker, project: str) -> list[Service]:
     return sorted(found.values())
 
 
-def render(services: list[Service]) -> str:
+def read_disk(path: str = "/") -> Disk:
+    usage = shutil.disk_usage(path)
+    return Disk(usage.used, usage.free)
+
+
+def render(services: list[Service], disk: Disk | None = None) -> str:
     lines = [
         "# HELP saigonos_service_up Bằng 1 khi service đang chạy và đạt healthcheck.",
         "# TYPE saigonos_service_up gauge",
@@ -124,6 +135,15 @@ def render(services: list[Service]) -> str:
             "# TYPE saigonos_host_cpus gauge",
             f"saigonos_host_cpus {cpus}",
         ]
+    if disk is not None:
+        lines += [
+            "# HELP saigonos_host_disk_used_bytes Dung lượng đã dùng của ổ chứa dữ liệu Docker.",
+            "# TYPE saigonos_host_disk_used_bytes gauge",
+            f"saigonos_host_disk_used_bytes {disk.used}",
+            "# HELP saigonos_host_disk_available_bytes Dung lượng còn trống của ổ này.",
+            "# TYPE saigonos_host_disk_available_bytes gauge",
+            f"saigonos_host_disk_available_bytes {disk.available}",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -134,7 +154,7 @@ def handler(docker: Docker, project: str) -> type[BaseHTTPRequestHandler]:
                 self.reply(200, "ok\n")
             elif self.path == "/metrics":
                 try:
-                    self.reply(200, render(read_services(docker, project)))
+                    self.reply(200, render(read_services(docker, project), read_disk()))
                 except DockerError as error:
                     print(error, file=sys.stderr, flush=True)
                     self.reply(503, f"{error}\n")

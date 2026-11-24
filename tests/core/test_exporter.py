@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import os
 import threading
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from saigonos_core.exporter import (
+    Disk,
     Docker,
     DockerError,
     Service,
@@ -15,6 +17,7 @@ from saigonos_core.exporter import (
     handler,
     memory_used,
     online_cpus,
+    read_disk,
     read_services,
     render,
 )
@@ -197,6 +200,8 @@ def test_exporter_serves_metrics_health_and_nothing_else(exporter):
     assert status == 200
     assert content_type == "text/plain; version=0.0.4; charset=utf-8"
     assert 'saigonos_service_up{service="core"} 1' in body
+    assert "\nsaigonos_host_disk_used_bytes " in body
+    assert "\nsaigonos_host_disk_available_bytes " in body
     assert exporter("/health")[0::2] == (200, "ok\n")
     assert exporter("/khac")[0] == 404
 
@@ -230,3 +235,28 @@ def test_cpu_metrics_are_rendered_only_when_known():
     assert 'saigonos_service_cpu_seconds_total{service="apisix"} 2.5' in text
     assert "core" not in text.split("cpu_seconds_total counter", 1)[1].split("# HELP", 1)[0]
     assert text.endswith("saigonos_host_cpus 8\n")
+
+
+def test_disk_of_own_root_is_counted_like_df(monkeypatch):
+    paths = []
+
+    def statvfs(path):
+        paths.append(path)
+        return os.statvfs_result((4096, 4096, 1000, 300, 250, 0, 0, 0, 0, 255))
+
+    monkeypatch.setattr(os, "statvfs", statvfs)
+
+    assert read_disk() == Disk(700 * 4096, 250 * 4096)
+    assert paths == ["/"]
+
+
+def test_disk_metrics_are_rendered_after_services():
+    text = render([Service("apisix", True, 1)], Disk(300, 700))
+
+    assert text.endswith(
+        "# TYPE saigonos_host_disk_used_bytes gauge\n"
+        "saigonos_host_disk_used_bytes 300\n"
+        "# HELP saigonos_host_disk_available_bytes Dung lượng còn trống của ổ này.\n"
+        "# TYPE saigonos_host_disk_available_bytes gauge\n"
+        "saigonos_host_disk_available_bytes 700\n"
+    )

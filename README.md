@@ -703,7 +703,7 @@ Prometheus giữ metrics 7 ngày, tối đa 2 GB, trong volume `prometheus-data`
 | `postgrest` | Admin server của PostgREST ở cổng 3001 |
 | `etcd` | Metrics có sẵn của etcd |
 | `loki` | Metrics của Loki |
-| `services` | Service `exporter`, cho biết trạng thái, healthcheck và RAM của từng container |
+| `services` | Service `exporter`, cho biết trạng thái, healthcheck, CPU và RAM của từng container, cùng dung lượng ổ đĩa |
 | `prometheus` | Metrics của chính Prometheus |
 
 Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `waf` khi tường lửa ứng dụng web chặn request và `opa` khi luật OPA từ chối request. API Gateway lấy giá trị này từ header `X-SaigonOS-Denied-By` của phản hồi. Prometheus ghi các tổng sau bằng recording rule trong file `config/prometheus/rules.yml`:
@@ -718,7 +718,18 @@ Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `w
 
 Ba tổng đầu không tính request tới route `grafana`, vì chính Grafana gửi request qua API Gateway mỗi khi bảng theo dõi làm mới. Các tổng bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
 
-Service `exporter` cung cấp hai metrics. Metrics `saigonos_service_up` bằng 1 khi service đang chạy và đạt healthcheck. Metrics `saigonos_service_memory_bytes` là RAM của container, tính như lệnh `docker stats`. Metrics `saigonos_service_cpu_seconds_total` là tổng thời gian CPU container đã dùng, và `saigonos_host_cpus` là số nhân CPU của máy, dùng để tính phần trăm CPU. Service chạy một lần không được tính.
+Service `exporter` cung cấp các metrics sau. Service chạy một lần không được tính.
+
+| Metrics | Ý nghĩa |
+|---|---|
+| `saigonos_service_up` | Bằng 1 khi service đang chạy và đạt healthcheck |
+| `saigonos_service_memory_bytes` | RAM của container, tính như lệnh `docker stats` |
+| `saigonos_service_cpu_seconds_total` | Tổng thời gian CPU container đã dùng, tính bằng giây |
+| `saigonos_host_cpus` | Số nhân CPU của máy, dùng để tính phần trăm CPU |
+| `saigonos_host_disk_used_bytes` | Dung lượng đã dùng của ổ chứa dữ liệu Docker, tính như lệnh `df` |
+| `saigonos_host_disk_available_bytes` | Dung lượng còn trống của ổ này, tính như lệnh `df` |
+
+Service `exporter` đọc dung lượng của hệ thống file gốc trong container của chính nó. Docker đặt hệ thống file này trên ổ chứa dữ liệu của Docker. Do đó, `exporter` không cần mount thư mục nào của máy cài đặt. Hai số này tính cả dữ liệu ngoài SaigonOS trên cùng ổ.
 
 ### Log
 
