@@ -268,12 +268,25 @@ class Stack:
         return subprocess.run(command, check=False, capture_output=True, text=True, timeout=600)
 
     def up(self):
-        started = self.saigonos("up")
-        if started.returncode == 0:
+        return self.ready(self.saigonos("up"))
+
+    def restore(self, bundle):
+        return self.ready(self.saigonos("restore", "--yes", str(bundle)))
+
+    def ready(self, result):
+        if result.returncode == 0:
             if "caddy" in self.compose("config", "--services").split():
                 self.trust_caddy()
             self.wait_until_answers(*ROUTES)
-        return started
+        return result
+
+    def remove(self):
+        if not self.home.exists():
+            return
+        self.saigonos("down", "--volumes")
+        profiles = ("--profile", "apps", "--profile", "monitoring")
+        self.compose_result(*profiles, "down", "--volumes", "--rmi", "local")
+        self.remove_data()
 
     def answers(self, path, token=None):
         try:
@@ -762,6 +775,13 @@ class Stack:
         self.run_docker("run", *options, services["postgres"]["image"], "-rf", "/home/data")
 
 
+def show_logs(stack, request):
+    if request.session.testsfailed:
+        capture = request.config.pluginmanager.getplugin("capturemanager")
+        with capture.global_and_fixture_disabled():
+            print(stack.compose("logs", "--tail", "50"))
+
+
 def run_stack(stack, request):
     try:
         started = stack.up()
@@ -769,15 +789,9 @@ def run_stack(stack, request):
             pytest.fail(f"{started.stderr}\n{stack.compose('logs', '--tail', '50')}")
         stack.create_client()
         yield stack
-        if request.session.testsfailed:
-            capture = request.config.pluginmanager.getplugin("capturemanager")
-            with capture.global_and_fixture_disabled():
-                print(stack.compose("logs", "--tail", "50"))
+        show_logs(stack, request)
     finally:
-        stack.saigonos("down", "--volumes")
-        profiles = ("--profile", "apps", "--profile", "monitoring")
-        stack.compose_result(*profiles, "down", "--volumes", "--rmi", "local")
-        stack.remove_data()
+        stack.remove()
 
 
 @pytest.fixture(scope="module")
@@ -791,6 +805,16 @@ def stack(tmp_path_factory, request):
 @pytest.fixture(scope="module")
 def idle_stack(tmp_path_factory):
     return Stack(tmp_path_factory.getbasetemp() / f"saigonos-idle-{secrets.token_hex(4)}")
+
+
+@pytest.fixture(scope="module")
+def new_home_stack(tmp_path_factory, request):
+    stack = Stack(tmp_path_factory.getbasetemp() / f"saigonos-moi-{secrets.token_hex(4)}")
+    try:
+        yield stack
+        show_logs(stack, request)
+    finally:
+        stack.remove()
 
 
 @pytest.fixture(scope="module")
