@@ -2027,7 +2027,7 @@ Khi khôi phục, lệnh làm các việc sau:
 4. Khởi động PostgreSQL rồi nạp cơ sở dữ liệu từ gói. Sau đó nạp các file của SeaweedFS, và chứng chỉ của Caddy nếu gói có.
 5. Khởi động hệ thống như lệnh `saigonos up`.
 
-Lệnh dùng được với thư mục làm việc chưa có, ví dụ trên một máy mới vừa cài package `saigonos`. Gói được giải nén tạm trong thư mục làm việc, nên máy cần còn trống dung lượng gấp khoảng hai lần dữ liệu trong gói. Sau khi khôi phục, chạy `saigonos doctor` và `saigonos audit verify` để kiểm tra. Nếu máy mới có địa chỉ truy cập khác máy cũ, chạy lệnh `saigonos init` với tùy chọn `--url`, rồi chạy `saigonos up`.
+Lệnh dùng được với thư mục làm việc chưa có, ví dụ trên một máy mới vừa cài package `saigonos`. Tên project của Docker Compose là tên của thư mục làm việc. Lệnh khôi phục xóa các volume ở bước 3 của project này. Do đó, nếu máy đã có một thư mục làm việc khác, thư mục khôi phục phải có tên khác với thư mục đó, ví dụ `~/saigonos-moi`. Gói được giải nén tạm trong thư mục làm việc, nên máy cần còn trống dung lượng gấp khoảng hai lần dữ liệu trong gói. Sau khi khôi phục, chạy `saigonos doctor` và `saigonos audit verify` để kiểm tra. Nếu máy mới có địa chỉ truy cập khác máy cũ, chạy lệnh `saigonos init` với tùy chọn `--url`, rồi chạy `saigonos up`.
 
 Nếu dùng trực tiếp Docker Compose, trước hết giải nén gói và kiểm tra mã băm:
 
