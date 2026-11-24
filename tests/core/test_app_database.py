@@ -21,6 +21,7 @@ from saigonos_core.app_database import (
     RECORD,
     REMOVE,
     RUN,
+    SEARCH,
     SECURE,
     WAS_REMOVED,
     ApplyError,
@@ -177,6 +178,7 @@ def test_new_files_run_in_name_order_with_role_of_app(server, folder):
         ("ghi_chu", "commit"),
         ("ghi_chu", "close"),
         ("postgres", CLOSE_LOGIN, "ghi-chu"),
+        ("postgres", SEARCH, "ghi-chu", "[]"),
         ("postgres", FINISH, "ghi-chu", "Ghi chú", "0.2.0", json.dumps(DATA), True),
         ("postgres", "close"),
     ]
@@ -213,7 +215,15 @@ def test_app_without_new_file_never_opens_login(server, folder):
     assert result is False
     assert said == []
     assert len(server.connections) == 1
-    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, APPLIED, FINISH, "close"]
+    assert server.queries("postgres") == [
+        LOCK,
+        WAS_REMOVED,
+        PREPARE,
+        APPLIED,
+        SEARCH,
+        FINISH,
+        "close",
+    ]
     assert server.events[-2][-1] is False
 
 
@@ -223,7 +233,15 @@ def test_app_without_database_folder_runs_no_file(server, folder):
     _, said = apply(folder, data)
 
     assert said == ["Đã tạo schema ghi_chu, role ghi_chu và role ghi_chu_user của ứng dụng."]
-    assert server.queries("postgres") == [LOCK, WAS_REMOVED, PREPARE, APPLIED, FINISH, "close"]
+    assert server.queries("postgres") == [
+        LOCK,
+        WAS_REMOVED,
+        PREPARE,
+        APPLIED,
+        SEARCH,
+        FINISH,
+        "close",
+    ]
 
 
 def test_changed_file_stops_before_any_file_runs(server, folder):
@@ -328,10 +346,46 @@ def test_step_before_finish_runs_after_files_and_its_error_stops_apply(server, f
     with pytest.raises(ApplyError, match="mã 500"):
         asyncio.run(apply_database(Manifest.model_validate(DATA), folder, [].append, before_finish))
 
-    assert seen[0][0][-1] == CLOSE_LOGIN
+    assert seen[0][0][-2:] == [CLOSE_LOGIN, SEARCH]
     assert seen[0][1] is False
     assert FINISH not in server.queries("postgres")
     assert server.events[-1] == ("postgres", "close")
+
+
+SEARCHED = DATA | {
+    "search": [
+        {"table": "notes", "columns": ["body"]},
+        {"table": "tags", "columns": ["name", "note"]},
+    ]
+}
+
+
+def test_search_tables_are_sent_after_files_and_reported(server, folder):
+    server.answers[APPLIED] = [
+        ("0001_notes.sql", checksum(FIRST)),
+        ("0002_tags.sql", checksum(SECOND)),
+    ]
+    server.answers[PREPARE] = False
+    server.answers[SEARCH] = ["Đã tạo tìm kiếm cho bảng notes.", "Đã tạo tìm kiếm cho bảng tags."]
+
+    result, said = apply(folder, SEARCHED)
+
+    assert result is True
+    assert said == ["Đã tạo tìm kiếm cho bảng notes.", "Đã tạo tìm kiếm cho bảng tags."]
+    assert ("postgres", SEARCH, "ghi-chu", json.dumps(SEARCHED["search"])) in server.events
+    assert server.events[-2][-1] is True
+
+
+def test_error_of_search_stops_apply_before_finish(server, folder):
+    failure = postgres_error(
+        "22023", "Mục search khai cột body của bảng notes, nhưng bảng không có cột này"
+    )
+    server.failures[(SEARCH, "ghi-chu")] = failure
+
+    message = failure_of(folder, SEARCHED)
+
+    assert message == "Mục search khai cột body của bảng notes, nhưng bảng không có cột này."
+    assert FINISH not in server.queries("postgres")
 
 
 def test_database_without_functions_of_this_version_asks_to_update(server, folder):

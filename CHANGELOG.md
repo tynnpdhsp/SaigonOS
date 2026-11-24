@@ -11,6 +11,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Cấu hình tìm kiếm toàn văn tiếng Việt `core.vietnamese` trong PostgreSQL. Cấu hình này bỏ dấu bằng extension `unaccent` và không phân biệt chữ hoa, chữ thường. Hai hàm `core.search_vector` và `core.search_query` dùng cấu hình này, mọi role đều gọi được.
 - Lời gọi `GET /core/files?q=` của service `core` tìm file theo tên, chỉ trong các file người gọi được đọc. Kết quả xếp theo độ khớp.
+- Mục `search` trong bản khai ứng dụng khai các bảng và cột cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm `search_<bảng>` chạy với role `<schema>_user`. Kết quả xếp theo độ khớp và vẫn theo phân quyền từng dòng. Bỏ bảng khỏi bản khai thì lõi gỡ index và hàm của bảng đó.
 
 ## [0.10.0] - 2026-11-24
 

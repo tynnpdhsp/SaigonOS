@@ -40,8 +40,12 @@ from saigonos_core.manifest import (
     RESERVED_NAMES,
     RESERVED_PREFIX,
     ROLE_LENGTH,
+    SEARCH_COLUMNS,
+    SEARCH_TABLES,
+    TABLE_LENGTH,
     TITLE_LENGTH,
     Manifest,
+    SearchTable,
 )
 from saigonos_core.notifications import Notification
 from saigonos_core.processes import rules_of
@@ -385,6 +389,17 @@ def test_readme_states_limits_of_manifest():
     assert (
         f"Tên hiển thị dài tối đa {TITLE_LENGTH} ký tự, "
         f"mô tả của role dài tối đa {DESCRIPTION_LENGTH} ký tự."
+    ) in PROSE
+
+
+def test_readme_example_and_limits_of_search_match_manifest():
+    [block] = [block for block in JSON_BLOCKS if block.startswith('"search"')]
+    tables = json.loads("{" + block + "}")["search"]
+
+    assert [SearchTable.model_validate(table).model_dump() for table in tables] == tables
+    assert f"tối đa {SEARCH_TABLES} bảng" in README
+    assert (
+        f"Tên bảng dài tối đa {TABLE_LENGTH} ký tự. Mỗi bảng có từ 1 tới {SEARCH_COLUMNS} cột"
     ) in PROSE
 
 
