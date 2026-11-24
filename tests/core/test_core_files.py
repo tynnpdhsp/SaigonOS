@@ -20,6 +20,9 @@ from saigonos_core.files import (
     LOCK_PENDING,
     MB,
     NOT_DOWNLOADABLE,
+    SEARCH,
+    SEARCH_LENGTH,
+    SEARCH_LIMIT,
     SPOOL_SIZE,
     FileInfo,
 )
@@ -56,6 +59,13 @@ class FakeConnection:
         self.files.queries.append((self.kind, query))
         subject = self.caller.claims.get("sub") if self.caller else None
         return self.files.answer(query, arguments, subject, self.kind)
+
+    async def fetch(self, query, *arguments):
+        self.files.queries.append((self.kind, query, *arguments))
+        assert query == SEARCH
+        subject = self.caller.claims.get("sub") if self.caller else None
+        found = [row for row in self.files.rows.values() if row["owner"] == subject]
+        return [self.files.visible(row) for row in found][: arguments[1]]
 
 
 class FakeFiles:
@@ -295,6 +305,7 @@ def test_name_that_breaks_a_rule_is_refused(client, files, owner, name, message)
         ("PUT", "/files/{id}/content"),
         ("GET", "/files/{id}"),
         ("POST", "/files/{id}/download-url"),
+        ("GET", "/files?q=may"),
     ],
 )
 def test_file_calls_need_token_of_logged_in_user(client, files, method, path):
@@ -432,6 +443,47 @@ def test_upload_waits_when_storage_is_down(client, files, storage, owner):
     )
     assert files.rows[next(iter(files.rows))]["status"] == "pending_upload"
     assert upload(client, owner, file).status_code == 200
+
+
+def test_search_runs_as_caller_and_returns_files_in_order_of_query(client, files, owner, stranger):
+    first = declared(client, owner, name="ảnh máy hỏng.png")
+    second = declared(client, owner, name="biên bản sửa máy.pdf", type="application/pdf")
+    declared(client, stranger, name="máy của người khác.png")
+
+    reply = client.get("/files", params={"q": "may"}, headers=owner)
+
+    assert reply.status_code == 200
+    assert [file["id"] for file in reply.json()] == [first["id"], second["id"]]
+    assert files.queries[-1] == (CALLER, SEARCH, "may", 20)
+
+
+def test_search_passes_limit_to_query(client, files, owner):
+    for _ in range(3):
+        declared(client, owner)
+
+    reply = client.get("/files", params={"q": "may", "limit": 2}, headers=owner)
+
+    assert reply.status_code == 200
+    assert len(reply.json()) == 2
+    assert files.queries[-1] == (CALLER, SEARCH, "may", 2)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"q": ""},
+        {"q": "a" * (SEARCH_LENGTH + 1)},
+        {"q": "may", "limit": 0},
+        {"q": "may", "limit": SEARCH_LIMIT + 1},
+    ],
+    ids=["thieu-q", "q-rong", "q-qua-dai", "limit-0", "limit-qua-lon"],
+)
+def test_search_refuses_missing_text_and_limit_out_of_range(client, files, owner, params):
+    reply = client.get("/files", params=params, headers=owner)
+
+    assert reply.status_code == 422
+    assert all(query[1] != SEARCH for query in files.queries)
 
 
 def test_owner_reads_file_as_caller(client, files, owner):
@@ -676,6 +728,7 @@ def test_api_document_describes_file_calls(client):
         "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
     }
     assert set(paths["/files/{file_id}"]["get"]["responses"]) >= {"200", "401", "404"}
+    assert set(paths["/files"]["get"]["responses"]) >= {"200", "401", "422"}
 
 
 def test_api_document_describes_download_calls(client):

@@ -43,6 +43,18 @@ UPDATE core.files SET status = 'pending_scan', sha256 = $2, uploaded_at = now()
 WHERE id = $1
 RETURNING id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
 """
+SEARCH = """
+SELECT id, name, type, size, sha256, status, malware, created_at, uploaded_at, scanned_at
+FROM core.files
+WHERE core.search_vector(pg_catalog.translate(name, '-_.', '   ')) @@ core.search_query($1)
+ORDER BY pg_catalog.ts_rank(
+    core.search_vector(pg_catalog.translate(name, '-_.', '   ')), core.search_query($1)
+) DESC, created_at DESC
+LIMIT $2
+"""
+SEARCH_LENGTH = 200
+SEARCH_LIMIT = 100
+DEFAULT_LIMIT = 20
 PENDING_UPLOAD = "pending_upload"
 SCANNED_CLEAN = "clean"
 NOT_FOUND = "Không tìm thấy file"
@@ -186,6 +198,36 @@ async def create_file(request: Request, user: User, declared: NewFile) -> Create
     async with request.app.state.database.service_session(user) as connection:
         row = await connection.fetchrow(CREATE, name, type, declared.size)
     return CreatedFile(**row, upload_url=f"{settings.public_url}/files/{row['id']}/content")
+
+
+@router.get(
+    "",
+    summary="Tìm file theo tên",
+    description=(
+        "Tìm trong các file mà người gọi xem được. Chữ cần tìm gõ có dấu hay không dấu đều được. "
+        "Kết quả xếp theo độ khớp, rồi tới file mới khai báo trước."
+    ),
+    responses=UNAUTHORIZED | UNAVAILABLE,
+)
+async def search_files(
+    request: Request,
+    user: User,
+    q: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=SEARCH_LENGTH,
+            description="Chữ cần tìm trong tên file",
+            examples=["may hong"],
+        ),
+    ],
+    limit: Annotated[
+        int, Query(ge=1, le=SEARCH_LIMIT, description="Số file trả về tối đa")
+    ] = DEFAULT_LIMIT,
+) -> list[FileInfo]:
+    async with request.app.state.database.session(user) as connection:
+        rows = await connection.fetch(SEARCH, q, limit)
+    return [FileInfo(**row) for row in rows]
 
 
 @router.put(

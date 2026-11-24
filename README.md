@@ -22,6 +22,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [API của service core](#api-của-service-core)
 - [Tải file lên](#tải-file-lên)
 - [Tải file về](#tải-file-về)
+- [Tìm file](#tìm-file)
 - [Cấu hình](#cấu-hình)
 - [Khởi động và dừng](#khởi-động-và-dừng)
 - [Triển khai trên máy chủ chưa có reverse proxy](#triển-khai-trên-máy-chủ-chưa-có-reverse-proxy)
@@ -364,6 +365,21 @@ Các mã lỗi của hai lời gọi:
 | 403 | Tải về | Đường dẫn không hợp lệ hoặc đã hết hạn |
 | 503 | Tải về | SeaweedFS chưa sẵn sàng |
 | 500 | Tải về | Nội dung trong bucket `clean` không khớp mã băm đã ghi. File không được gửi |
+
+## Tìm file
+
+Lời gọi `GET /core/files?q=<chữ cần tìm>` kèm access token tìm file theo tên. Kết quả chỉ gồm các file mà chính sách phân quyền từng dòng của bảng `core.files` cho người gọi đọc. Tham số `limit` đặt số file trả về tối đa, mặc định là 20, tối đa là 100.
+
+```js
+const reply = await fetch(`/core/files?q=${encodeURIComponent("máy hỏng")}`, {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+const files = await reply.json();
+```
+
+Chữ cần tìm gõ có dấu hay không dấu đều được. Chữ hoa và chữ thường được coi như nhau. Ví dụ, `may hong` tìm thấy file `Ảnh máy hỏng.png`. Dấu gạch ngang, dấu gạch dưới và dấu chấm trong tên file được coi là khoảng trắng, nên `bien ban` tìm thấy file `bien-ban_sua-may.pdf`.
+
+Khi chữ cần tìm có nhiều từ, file phải có đủ các từ. Cú pháp giống ô tìm kiếm của các trang web. Cụm từ đặt trong dấu nháy kép phải xuất hiện liền nhau và đúng thứ tự. Từ có dấu trừ ở trước thì file chứa từ đó bị loại. Kết quả xếp theo độ khớp, rồi tới file được khai báo sau.
 
 ## Cấu hình
 
