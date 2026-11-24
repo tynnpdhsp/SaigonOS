@@ -961,8 +961,8 @@
     {
       "id": 14,
       "type": "stat",
-      "title": "Dòng trong hồ dữ liệu",
-      "description": "Tổng số dòng trong các file của hồ dữ liệu",
+      "title": "Dung lượng hồ dữ liệu",
+      "description": "Tổng dung lượng các file trong hồ dữ liệu",
       "gridPos": {
         "x": 8,
         "y": 23,
@@ -976,7 +976,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(saigonos_lake_rows)"
+          "expr": "sum(saigonos_lake_bytes)"
         }
       ],
       "options": {
@@ -995,8 +995,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "locale",
-          "decimals": 0,
+          "unit": "bytes",
+          "decimals": 1,
           "noValue": "0",
           "thresholds": {
             "mode": "absolute",
@@ -1008,24 +1008,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byValue",
-              "options": {
-                "reducer": "lastNotNull",
-                "op": "gte",
-                "value": 100000
-              }
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              }
-            ]
-          }
-        ]
+        "overrides": []
       }
     },
     {

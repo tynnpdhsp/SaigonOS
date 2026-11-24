@@ -712,7 +712,7 @@ Trang chủ của Grafana là bảng SaigonOS. Bảng được nạp từ file `
 - Ba ô số cho biết tài nguyên hiện tại: phần trăm CPU của máy mà các container đang dùng, tổng RAM của các container và phần trăm đã dùng của ổ chứa dữ liệu Docker.
 - Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm CPU và RAM.
 - Biểu đồ số request mỗi giây theo mã trạng thái.
-- Ba ô số của [hồ dữ liệu](#hồ-dữ-liệu): số file trong hồ, số dòng trong các file và số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống. Ô cuối chuyển đỏ khi có ít nhất một lần không đạt.
+- Ba ô số của [hồ dữ liệu](#hồ-dữ-liệu): số file trong hồ, tổng dung lượng các file và số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống. Ô cuối chuyển đỏ khi có ít nhất một lần không đạt.
 - Khung Log. Ô Service và ô Tìm trong log ở đầu trang dùng để lọc log. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
 
 ### Metrics

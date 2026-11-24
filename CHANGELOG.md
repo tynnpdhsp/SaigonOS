@@ -18,7 +18,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos lake query` chạy câu truy vấn SQL của DuckDB trên hồ sau khi kiểm mã băm của từng file. Câu truy vấn không đọc được file khác trên máy chủ và không tải được extension. Lệnh `saigonos lake verify` tính lại mã băm của mọi file và chỉ ra file đã bị sửa.
 - Role `lake` của cơ sở dữ liệu đọc và xóa dòng cho hồ dữ liệu. Lệnh cài đặt chỉ cấp quyền cho role này trên các bảng, view đã khai và thu lại quyền khi một mục bị bỏ khỏi bản khai.
 - Service `core` trả metrics `saigonos_lake_files`, `saigonos_lake_rows`, `saigonos_lake_bytes` và `saigonos_lake_failed_checks_total` ở cổng 9100 bên trong mạng Docker. Prometheus đọc thêm target `core`.
-- Bảng SaigonOS của Grafana có thêm ba ô số của hồ dữ liệu: số file, số dòng và số lần kiểm luật chất lượng không đạt.
+- Bảng SaigonOS của Grafana có thêm ba ô số của hồ dữ liệu: số file, dung lượng và số lần kiểm luật chất lượng không đạt.
 - Giá trị `SAIGONOS_TIMEZONE` trong file `.env` đặt múi giờ để tính tháng của hồ dữ liệu, mặc định là `Asia/Ho_Chi_Minh`.
 
 ### Thay đổi
