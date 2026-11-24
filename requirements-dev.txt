@@ -40,6 +40,10 @@ cryptography==50.0.2
     # via
     #   -c src/saigonos/stack/core/requirements.txt
     #   pyjwt
+duckdb==2.0.1
+    # via
+    #   -c src/saigonos/stack/core/requirements.txt
+    #   saigonos (pyproject.toml:core)
 fastapi==0.163.1
     # via
     #   -c src/saigonos/stack/core/requirements.txt

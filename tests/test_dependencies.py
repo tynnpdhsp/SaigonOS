@@ -41,7 +41,7 @@ def test_read_declared_splits_product_core_and_dev_dependencies():
     runtime, core, dev = dependencies.read_declared(dependencies.PROJECT_FILE)
 
     assert runtime == {"click"}
-    assert core == {"asyncpg", "fastapi", "pyjwt", "uvicorn"}
+    assert core == {"asyncpg", "duckdb", "fastapi", "pyjwt", "uvicorn"}
     assert {"pytest", "reuse", "ruff"} <= dev
     assert not dev & (runtime | core)
 

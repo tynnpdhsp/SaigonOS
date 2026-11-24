@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal, NamedTuple
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -55,6 +56,9 @@ RESERVED_NAMES = frozenset(
         "grafana",
         "information-schema",
         "keycloak",
+        "lake",
+        "main",
+        "memory",
         "operaton",
         "postgres",
         "public",
@@ -62,6 +66,9 @@ RESERVED_NAMES = frozenset(
         "realtime",
         "saigonos",
         "security-admin-console",
+        "snapshots",
+        "system",
+        "temp",
         "workflow",
     }
 )
@@ -83,6 +90,13 @@ TABLE_LENGTH = 47
 COLUMN_LENGTH = 63
 SEARCH_TABLES = 20
 SEARCH_COLUMNS = 10
+RELATION_LENGTH = 63
+ARCHIVE_TABLES = 20
+SNAPSHOTS = 20
+QUALITY_RULES = 20
+RULE_COLUMNS = 10
+KEEP_DAYS = 36500
+RULE_KINDS = ("not_null", "unique", "range")
 SEGMENT = "[A-Za-z0-9_-][A-Za-z0-9_.-]*"
 FOLDER_PATTERN = f"^{SEGMENT}(?:/{SEGMENT})*/?$"
 REQUIRED_FILES = {
@@ -93,6 +107,14 @@ REQUIRED_FILES = {
 TEXT_RULE = (
     "Giá trị không được để trống, không có khoảng trắng ở đầu hoặc cuối "
     "và không chứa ký tự điều khiển."
+)
+TABLE_RULE = (
+    "Tên bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+    "hoặc dấu gạch dưới. Ví dụ: don_nghi."
+)
+COLUMN_RULE = (
+    "Tên cột gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+    "hoặc dấu gạch dưới. Ví dụ: ly_do."
 )
 FOLDER_RULE = (
     "Đường dẫn tính từ thư mục ứng dụng, ví dụ ui hoặc web/dist. "
@@ -123,14 +145,19 @@ RULES = {
         "Tên role có dạng <tên ứng dụng>.<vai trò>. Vai trò viết theo quy tắc của "
         "tên ứng dụng. Ví dụ: nghi-phep.quan-ly."
     ),
-    ("search", "table"): (
-        "Tên bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
-        "hoặc dấu gạch dưới. Ví dụ: don_nghi."
+    ("search", "table"): TABLE_RULE,
+    ("search", "columns"): COLUMN_RULE,
+    ("archive", "table"): TABLE_RULE,
+    ("archive", "column"): COLUMN_RULE,
+    ("archive", "rules", "columns"): COLUMN_RULE,
+    ("archive", "rules", "column"): COLUMN_RULE,
+    ("snapshots", "view"): (
+        "Tên view hoặc bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng "
+        "chữ cái hoặc dấu gạch dưới. Ví dụ: chot_don."
     ),
-    ("search", "columns"): (
-        "Tên cột gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
-        "hoặc dấu gạch dưới. Ví dụ: ly_do."
-    ),
+    ("snapshots", "column"): COLUMN_RULE,
+    ("snapshots", "rules", "columns"): COLUMN_RULE,
+    ("snapshots", "rules", "column"): COLUMN_RULE,
 }
 MESSAGES = {
     "missing": "Thiếu trường bắt buộc.",
@@ -143,7 +170,16 @@ MESSAGES = {
     "too_long": "Danh sách có tối đa {max_length} phần tử.",
     "bool_type": "Giá trị phải là true hoặc false.",
     "literal_error": "Phương thức phải là GET, POST, PATCH, PUT hoặc DELETE.",
+    "int_type": "Giá trị phải là một số nguyên.",
+    "float_type": "Giá trị phải là một số.",
+    "finite_number": "Giá trị phải là một số hữu hạn.",
+    "greater_than_equal": "Giá trị phải lớn hơn hoặc bằng {ge}.",
+    "less_than_equal": "Giá trị phải nhỏ hơn hoặc bằng {le}.",
+    "model_attributes_type": "Giá trị phải là một đối tượng JSON.",
+    "union_tag_invalid": "Luật phải là not_null, unique hoặc range.",
+    "union_tag_not_found": "Thiếu trường rule. Luật phải là not_null, unique hoặc range.",
 }
+DUPLICATE_TABLE = 'Bảng "{table}" được khai báo hai lần.'
 CUSTOM_ERRORS = {
     "reserved_prefix",
     "reserved_name",
@@ -155,6 +191,9 @@ CUSTOM_ERRORS = {
     "access_role",
     "duplicate_table",
     "duplicate_column",
+    "duplicate_view",
+    "range_bound",
+    "range_order",
 }
 JSON_MESSAGES = {
     "Expecting value": "thiếu giá trị",
@@ -274,12 +313,111 @@ class SearchTable(BaseModel):
     @field_validator("columns")
     @classmethod
     def columns_are_unique(cls, columns: list[str]) -> list[str]:
-        for index, column in enumerate(columns):
-            if column in columns[:index]:
-                raise PydanticCustomError(
-                    "duplicate_column", 'Cột "{column}" được khai báo hai lần.', {"column": column}
-                )
-        return columns
+        return unique_columns(columns)
+
+
+def unique_columns(columns: list[str]) -> list[str]:
+    for index, column in enumerate(columns):
+        if column in columns[:index]:
+            raise PydanticCustomError(
+                "duplicate_column", 'Cột "{column}" được khai báo hai lần.', {"column": column}
+            )
+    return columns
+
+
+RelationName = Annotated[str, Field(pattern=SQL_NAME_PATTERN, max_length=RELATION_LENGTH)]
+RuleColumns = Annotated[
+    list[ColumnName],
+    Field(min_length=1, max_length=RULE_COLUMNS),
+    AfterValidator(unique_columns),
+]
+Bound = Annotated[float, Field(strict=True, allow_inf_nan=False)]
+KeepDays = Annotated[int, Field(strict=True, ge=1, le=KEEP_DAYS)]
+TIME_COLUMN = "Cột thời gian của dòng, có kiểu timestamptz, timestamp hoặc date."
+
+
+class NotNullRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule: Literal["not_null"] = Field(description="Các cột phải có giá trị ở mọi dòng.")
+    columns: RuleColumns = Field(description="Các cột không được có giá trị NULL.")
+
+
+class UniqueRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule: Literal["unique"] = Field(description="Không có hai dòng trùng mã.")
+    columns: RuleColumns = Field(
+        description=(
+            "Các cột tạo thành mã. Hai dòng không được trùng giá trị ở mọi cột này. "
+            "Dòng có cột rỗng không được tính."
+        )
+    )
+
+
+class RangeRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule: Literal["range"] = Field(description="Giá trị của cột phải nằm trong khoảng.")
+    column: ColumnName = Field(
+        description="Cột kiểu số cần kiểm. Dòng có cột rỗng không bị tính là vi phạm."
+    )
+    min: Bound | None = Field(None, description="Giá trị nhỏ nhất được phép.")
+    max: Bound | None = Field(None, description="Giá trị lớn nhất được phép.")
+
+    @model_validator(mode="after")
+    def has_bounds(self) -> "RangeRule":
+        if self.min is None and self.max is None:
+            raise PydanticCustomError(
+                "range_bound", "Luật range phải có ít nhất một trong hai giá trị min và max."
+            )
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise PydanticCustomError("range_order", "Giá trị min phải nhỏ hơn hoặc bằng max.")
+        return self
+
+
+QualityRule = Annotated[NotNullRule | UniqueRule | RangeRule, Field(discriminator="rule")]
+Rules = Annotated[list[QualityRule], Field(max_length=QUALITY_RULES)]
+
+
+class ArchiveTable(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    table: RelationName = Field(description="Tên bảng trong schema của ứng dụng. Ví dụ: don_nghi.")
+    column: ColumnName = Field(description=f"{TIME_COLUMN} Ví dụ: tao_luc.")
+    keep_days: KeepDays = Field(
+        description="Số ngày dòng được giữ ở bảng. Dòng cũ hơn được chuyển xuống hồ dữ liệu."
+    )
+    rules: Rules = Field(
+        default_factory=list,
+        description="Luật chất lượng mà các dòng cũ phải đạt trước khi được chuyển xuống hồ.",
+    )
+
+
+class Snapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    view: RelationName = Field(
+        description="Tên view hoặc bảng trong schema của ứng dụng. Ví dụ: chot_don."
+    )
+    column: ColumnName = Field(
+        description=f"{TIME_COLUMN} Lõi dùng cột này để chia các dòng theo tháng."
+    )
+    rules: Rules = Field(
+        default_factory=list,
+        description="Luật chất lượng mà các dòng của tháng phải đạt trước khi được chốt.",
+    )
+
+
+def duplicates(entries: list[Any], field: str, kind: str, text: str) -> list[InitErrorDetails]:
+    names = [getattr(entry, field) for entry in entries]
+    return [
+        InitErrorDetails(
+            type=PydanticCustomError(kind, text, {field: name}), loc=(index, field), input=name
+        )
+        for index, name in enumerate(names)
+        if name in names[:index]
+    ]
 
 
 FOLDER = TypeAdapter(Folder)
@@ -383,6 +521,22 @@ class Manifest(BaseModel):
             "search_<bảng> cho mỗi bảng. Hàm này tìm không phân biệt có dấu hay không dấu."
         ),
     )
+    archive: list[ArchiveTable] = Field(
+        default_factory=list,
+        max_length=ARCHIVE_TABLES,
+        description=(
+            "Các bảng có dòng cũ được chuyển xuống hồ dữ liệu. Mỗi giờ, lõi chuyển các dòng "
+            "cũ hơn keep_days ngày sang file Parquet rồi xóa các dòng này khỏi bảng."
+        ),
+    )
+    snapshots: list[Snapshot] = Field(
+        default_factory=list,
+        max_length=SNAPSHOTS,
+        description=(
+            "Các view hoặc bảng được chốt số liệu theo tháng. Khi một tháng kết thúc, lõi ghi "
+            "các dòng của tháng đó vào một file Parquet không bị ghi đè."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -456,21 +610,28 @@ class Manifest(BaseModel):
     @field_validator("search")
     @classmethod
     def search_tables_are_unique(cls, search: list[SearchTable]) -> list[SearchTable]:
-        names = [entry.table for entry in search]
-        errors = [
-            InitErrorDetails(
-                type=PydanticCustomError(
-                    "duplicate_table", 'Bảng "{table}" được khai báo hai lần.', {"table": name}
-                ),
-                loc=(index, "table"),
-                input=name,
-            )
-            for index, name in enumerate(names)
-            if name in names[:index]
-        ]
+        errors = duplicates(search, "table", "duplicate_table", DUPLICATE_TABLE)
         if errors:
             raise ValidationError.from_exception_data("search", errors)
         return search
+
+    @field_validator("archive")
+    @classmethod
+    def archive_tables_are_unique(cls, archive: list[ArchiveTable]) -> list[ArchiveTable]:
+        errors = duplicates(archive, "table", "duplicate_table", DUPLICATE_TABLE)
+        if errors:
+            raise ValidationError.from_exception_data("archive", errors)
+        return archive
+
+    @field_validator("snapshots")
+    @classmethod
+    def snapshot_views_are_unique(cls, snapshots: list[Snapshot]) -> list[Snapshot]:
+        errors = duplicates(
+            snapshots, "view", "duplicate_view", 'View "{view}" được khai báo hai lần.'
+        )
+        if errors:
+            raise ValidationError.from_exception_data("snapshots", errors)
+        return snapshots
 
 
 class Problem(NamedTuple):
@@ -504,9 +665,22 @@ def schema_text() -> str:
     return json.dumps(schema(), ensure_ascii=False, indent=2) + "\n"
 
 
+def without_rule_kind(loc: tuple[str | int, ...]) -> tuple[str | int, ...]:
+    return tuple(
+        part
+        for index, part in enumerate(loc)
+        if not (
+            part in RULE_KINDS
+            and index >= 2
+            and loc[index - 2] == "rules"
+            and isinstance(loc[index - 1], int)
+        )
+    )
+
+
 def location(loc: tuple[str | int, ...]) -> str:
     text = ""
-    for part in loc:
+    for part in without_rule_kind(loc):
         if isinstance(part, int):
             text += f"[{part}]"
         else:
@@ -521,7 +695,9 @@ def message(error: Any) -> str:
     if kind == "model_type" and not error["loc"]:
         return "Nội dung của bản khai phải là một đối tượng JSON."
     if kind == "string_pattern_mismatch":
-        return RULES[tuple(part for part in error["loc"] if isinstance(part, str))]
+        return RULES[
+            tuple(part for part in without_rule_kind(error["loc"]) if isinstance(part, str))
+        ]
     return MESSAGES.get(kind, "Giá trị không hợp lệ.").format(**error.get("ctx", {}))
 
 

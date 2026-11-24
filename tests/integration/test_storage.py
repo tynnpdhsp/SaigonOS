@@ -8,7 +8,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-BUCKETS = ["clean", "quarantine"]
+BUCKETS = ["clean", "lake", "quarantine"]
 ADMIN_UI_PORT = "12535"
 TELEMETRY = "Reporting anonymous cluster statistics"
 # ghép từ hai phần để phần mềm diệt virus không xóa file này
@@ -76,7 +76,7 @@ def test_doctor_reports_seaweedfs_clamav_and_freshclam(stack):
         assert re.search(rf"BÌNH THƯỜNG\s+{service}\s+đang chạy", result.stdout)
 
 
-def test_seaweedfs_has_only_the_two_buckets(stack):
+def test_seaweedfs_has_only_the_buckets_of_core(stack):
     status, body = stack.s3("GET", "/", stack.s3_key)
 
     assert status == 200

@@ -14,6 +14,7 @@ from saigonos_core.app_database import (
     FINISH,
     INSTALLED,
     KNOWN,
+    LAKE,
     LOCK,
     OPEN_LOGIN,
     PREPARE,
@@ -179,6 +180,7 @@ def test_new_files_run_in_name_order_with_role_of_app(server, folder):
         ("ghi_chu", "close"),
         ("postgres", CLOSE_LOGIN, "ghi-chu"),
         ("postgres", SEARCH, "ghi-chu", "[]"),
+        ("postgres", LAKE, "ghi-chu", "[]", "[]"),
         ("postgres", FINISH, "ghi-chu", "Ghi chú", "0.2.0", json.dumps(DATA), True),
         ("postgres", "close"),
     ]
@@ -221,6 +223,7 @@ def test_app_without_new_file_never_opens_login(server, folder):
         PREPARE,
         APPLIED,
         SEARCH,
+        LAKE,
         FINISH,
         "close",
     ]
@@ -239,6 +242,7 @@ def test_app_without_database_folder_runs_no_file(server, folder):
         PREPARE,
         APPLIED,
         SEARCH,
+        LAKE,
         FINISH,
         "close",
     ]
@@ -346,7 +350,7 @@ def test_step_before_finish_runs_after_files_and_its_error_stops_apply(server, f
     with pytest.raises(ApplyError, match="mã 500"):
         asyncio.run(apply_database(Manifest.model_validate(DATA), folder, [].append, before_finish))
 
-    assert seen[0][0][-2:] == [CLOSE_LOGIN, SEARCH]
+    assert seen[0][0][-3:] == [CLOSE_LOGIN, SEARCH, LAKE]
     assert seen[0][1] is False
     assert FINISH not in server.queries("postgres")
     assert server.events[-1] == ("postgres", "close")
@@ -385,6 +389,58 @@ def test_error_of_search_stops_apply_before_finish(server, folder):
     message = failure_of(folder, SEARCHED)
 
     assert message == "Mục search khai cột body của bảng notes, nhưng bảng không có cột này."
+    assert FINISH not in server.queries("postgres")
+
+
+LAKED = DATA | {
+    "archive": [
+        {
+            "table": "notes",
+            "column": "created_at",
+            "keep_days": 30,
+            "rules": [{"rule": "range", "column": "stars", "min": 1, "max": 5}],
+        }
+    ],
+    "snapshots": [{"view": "monthly", "column": "day"}],
+}
+
+
+def test_lake_entries_are_sent_after_search_and_reported(server, folder):
+    server.answers[APPLIED] = [
+        ("0001_notes.sql", checksum(FIRST)),
+        ("0002_tags.sql", checksum(SECOND)),
+    ]
+    server.answers[PREPARE] = False
+    server.answers[LAKE] = ["Đã bật lưu trữ cho bảng notes.", "Đã bật chốt số liệu cho monthly."]
+
+    result, said = apply(folder, LAKED)
+
+    archive = [
+        LAKED["archive"][0]
+        | {"rules": [{"rule": "range", "column": "stars", "min": 1.0, "max": 5.0}]}
+    ]
+    snapshots = [LAKED["snapshots"][0] | {"rules": []}]
+    assert result is True
+    assert said == ["Đã bật lưu trữ cho bảng notes.", "Đã bật chốt số liệu cho monthly."]
+    assert (
+        "postgres",
+        LAKE,
+        "ghi-chu",
+        json.dumps(archive),
+        json.dumps(snapshots),
+    ) in server.events
+    assert server.queries("postgres")[-4:] == [SEARCH, LAKE, FINISH, "close"]
+    assert server.events[-2][-1] is True
+
+
+def test_error_of_lake_stops_apply_before_finish(server, folder):
+    server.failures[(LAKE, "ghi-chu")] = postgres_error(
+        "22023", "Mục archive khai bảng notes, nhưng schema ghi_chu không có bảng này"
+    )
+
+    message = failure_of(folder, LAKED)
+
+    assert message == "Mục archive khai bảng notes, nhưng schema ghi_chu không có bảng này."
     assert FINISH not in server.queries("postgres")
 
 

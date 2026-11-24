@@ -23,6 +23,7 @@ SECURE = "SELECT core.secure_app()"
 RECORD = "SELECT core.record_migration($1, $2)"
 FINISH = "SELECT core.finish_app($1, $2, $3, $4::jsonb, $5)"
 SEARCH = "SELECT core.apply_search($1, $2::jsonb)"
+LAKE = "SELECT core.apply_lake($1, $2::jsonb, $3::jsonb)"
 WAS_REMOVED = "SELECT removed_at IS NOT NULL FROM core.apps WHERE name = $1"
 INSTALLED = "SELECT name FROM core.apps WHERE applied_at IS NOT NULL ORDER BY name"
 KNOWN = "SELECT EXISTS (SELECT FROM core.apps WHERE name = $1)"
@@ -198,12 +199,16 @@ async def apply_database(
         searched = await admin.fetchval(SEARCH, app, wanted) or []
         for line in searched:
             say(line)
+        archive = json.dumps([entry.model_dump(mode="json") for entry in manifest.archive])
+        snapshots = json.dumps([entry.model_dump(mode="json") for entry in manifest.snapshots])
+        lake = await admin.fetchval(LAKE, app, archive, snapshots) or []
+        for line in lake:
+            say(line)
         if before_finish is not None:
             before_finish(removed)
         content = json.dumps(manifest.model_dump(mode="json", by_alias=True, exclude_defaults=True))
-        return await admin.fetchval(
-            FINISH, app, manifest.title, manifest.version, content, bool(pending or searched)
-        )
+        changed = bool(pending or searched or lake)
+        return await admin.fetchval(FINISH, app, manifest.title, manifest.version, content, changed)
 
 
 async def installed_apps() -> list[str]:

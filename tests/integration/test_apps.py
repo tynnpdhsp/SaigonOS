@@ -296,6 +296,8 @@ def notes_app(
     ui=None,
     access=None,
     search=None,
+    archive=None,
+    snapshots=None,
 ):
     manifest = {
         "name": name,
@@ -308,6 +310,10 @@ def notes_app(
         manifest["access"] = access
     if search is not None:
         manifest["search"] = search
+    if archive is not None:
+        manifest["archive"] = archive
+    if snapshots is not None:
+        manifest["snapshots"] = snapshots
     if ui is not None:
         manifest["ui"] = "giao-dien"
         for file, text in ui.items():
@@ -818,6 +824,374 @@ def test_search_of_app_answers_within_a_second_on_ten_thousand_rows(stack, tmp_p
     assert elapsed < 1
 
 
+LAKE_SQL = """\
+CREATE TABLE yeu_cau (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ma text,
+    diem numeric,
+    tao_luc timestamptz NOT NULL
+);
+ALTER TABLE yeu_cau ENABLE ROW LEVEL SECURITY;
+CREATE POLICY khong_ai_doc ON yeu_cau USING (false);
+CREATE TRIGGER audit AFTER INSERT OR UPDATE OR DELETE ON yeu_cau
+    FOR EACH ROW EXECUTE FUNCTION core.audit();
+CREATE VIEW chot_yeu_cau AS SELECT ma, diem, tao_luc FROM yeu_cau;
+"""
+QUALITY = [
+    {"rule": "not_null", "columns": ["ma"]},
+    {"rule": "unique", "columns": ["ma"]},
+    {"rule": "range", "column": "diem", "min": 1, "max": 5},
+]
+ARCHIVED = [{"table": "yeu_cau", "column": "tao_luc", "keep_days": 30, "rules": QUALITY}]
+FROZEN = [{"view": "chot_yeu_cau", "column": "tao_luc", "rules": QUALITY}]
+LOCAL = "'Asia/Ho_Chi_Minh'"
+CASCADE_SQL = "CREATE TABLE y_kien (yeu_cau_id bigint REFERENCES yeu_cau ON DELETE CASCADE);\n"
+FLIP = """\
+import hashlib, io, os, sys
+from saigonos_core.storage import Storage
+storage = Storage(os.environ["S3_URL"], os.environ["S3_ACCESS_KEY"], os.environ["S3_SECRET_KEY"])
+content = io.BytesIO()
+storage.get("lake", sys.argv[1], content)
+data = bytearray(content.getvalue())
+data[len(data) // 2] ^= 1
+digest = hashlib.sha256(data).hexdigest()
+storage.put("lake", sys.argv[1], io.BytesIO(data), len(data), digest, "application/octet-stream")
+"""
+
+
+def lake_app(stack, tmp_path, archive=None, snapshots=None):
+    name = new_name()
+    files = {"0002_yeu_cau.sql": LAKE_SQL}
+    folder = notes_app(tmp_path / name, name, files=files, archive=archive, snapshots=snapshots)
+    result = plug(stack, folder)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return name
+
+
+def add_rows(stack, name, rows):
+    values = ", ".join(f"({ma}, {diem}, {moment})" for ma, diem, moment in rows)
+    stack.sql(f"INSERT INTO {schema_of(name)}.yeu_cau (ma, diem, tao_luc) VALUES {values}")
+
+
+def month_start(months_ago):
+    month = f"date_trunc('month', now() AT TIME ZONE {LOCAL}) - interval '{months_ago} months'"
+    return f"(({month}) AT TIME ZONE {LOCAL})"
+
+
+def period_of(stack, months_ago):
+    [[period]] = stack.sql(
+        f"SELECT to_char({month_start(months_ago)} AT TIME ZONE {LOCAL}, 'YYYY-MM')"
+    )
+    return period
+
+
+def shown(period):
+    return f"{period[5:]}/{period[:4]}"
+
+
+def lineage_of(stack, name, kind):
+    columns = "period, rows, file" if kind == "file" else "passed, rows"
+    return stack.sql(
+        f"SELECT {columns} FROM core.lineage WHERE app = '{name}' AND kind = '{kind}' ORDER BY id"
+    )
+
+
+def lake(stack, *args):
+    return stack.saigonos("lake", *args)
+
+
+def test_old_rows_move_to_lake_by_local_month_and_new_rows_stay(stack, tmp_path):
+    name = lake_app(stack, tmp_path, archive=ARCHIVED)
+    schema = schema_of(name)
+    add_rows(
+        stack,
+        name,
+        [
+            ("'YC-1'", "3.5", "'2025-03-10 09:00+07'"),
+            ("'YC-2'", "4", "'2025-03-31 23:30+07'"),
+            ("'YC-3'", "2.25", "'2025-04-01 00:15+07'"),
+            ("'YC-4'", "5", "now()"),
+            ("'YC-5'", "1", "now() - interval '1 day'"),
+        ],
+    )
+    old = f"SELECT count(*), sum(diem) FROM {schema}.yeu_cau WHERE tao_luc < '2026-01-01'"
+    before = stack.sql(old)
+
+    moved = lake(stack, "run")
+    again = lake(stack, "run")
+    summed = lake(stack, "query", "--csv", f"SELECT count(*), sum(diem) FROM {schema}.yeu_cau")
+
+    assert moved.returncode == 0, moved.stdout + moved.stderr
+    assert (
+        f"Đã chuyển 3 dòng cũ của bảng yeu_cau trong ứng dụng {name} xuống hồ dữ liệu, "
+        "gồm 2 file.\n"
+    ) in moved.stdout
+    assert f"ứng dụng {name}" not in again.stdout
+    assert stack.sql(f"SELECT ma FROM {schema}.yeu_cau ORDER BY ma") == [["YC-4"], ["YC-5"]]
+    assert before == [["3", "9.75"]]
+    assert summed.returncode == 0, summed.stdout + summed.stderr
+    assert summed.stdout.splitlines()[1:] == ["3,9.75"]
+    [[check]] = stack.sql(f"SELECT id FROM core.lineage WHERE app = '{name}' AND kind = 'check'")
+    folder = f"archive/{name}/yeu_cau"
+    assert lineage_of(stack, name, "file") == [
+        ["2025-03", "2", f"{folder}/2025/03/{check}.parquet"],
+        ["2025-04", "1", f"{folder}/2025/04/{check}.parquet"],
+    ]
+    assert stack.sql(
+        f"SELECT time_from, time_to FROM core.lineage WHERE app = '{name}' AND period = '2025-04'"
+    ) == [["2025-03-31 17:00:00+00", "2025-04-30 17:00:00+00"]]
+    assert stack.sql(
+        "SELECT count(*) FROM core.audit_log WHERE db_role = 'lake' AND operation = 'DELETE' "
+        f"AND table_schema = '{schema}'"
+    ) == [["3"]]
+
+
+def test_old_rows_breaking_quality_rules_stay_until_fixed_and_admin_is_told(stack, tmp_path):
+    name = lake_app(stack, tmp_path, archive=ARCHIVED)
+    schema = schema_of(name)
+    add_rows(
+        stack,
+        name,
+        [
+            ("NULL", "3", "'2025-05-02 08:00+07'"),
+            ("'YC-9'", "9", "'2025-05-03 08:00+07'"),
+            ("'YC-9'", "2", "'2025-05-04 08:00+07'"),
+        ],
+    )
+    [[first, second]] = stack.sql(f"SELECT min(id), min(id) + 1 FROM {schema}.yeu_cau")
+
+    refused = lake(stack, "run")
+    rows = stack.sql(f"SELECT count(*) FROM {schema}.yeu_cau")
+    stack.sql(f"UPDATE {schema}.yeu_cau SET ma = 'YC-' || id, diem = 3")
+    fixed = lake(stack, "run")
+
+    text = (
+        f"Chưa chuyển dòng cũ của bảng yeu_cau trong ứng dụng {name} xuống hồ dữ liệu vì dữ liệu "
+        "không đạt luật chất lượng. "
+        f'Luật not_null của cột ma không đạt ở 1 dòng, ví dụ {{"id": {first}, "ma": null}}. '
+        'Luật unique của cột ma không đạt ở 2 dòng, ví dụ {"ma": "YC-9"} có 2 dòng. '
+        f"Luật range của cột diem (từ 1 đến 5) không đạt ở 1 dòng, "
+        f'ví dụ {{"id": {second}, "diem": 9}}.'
+    )
+    assert refused.returncode == 1
+    assert f"{text}\n" in refused.stdout
+    assert rows == [["3"]]
+    assert stack.sql(
+        f"SELECT channel, title, body FROM core.deliveries WHERE dedup_key LIKE 'lake:{name}:%'"
+    ) == [["telegram", f"Dữ liệu của ứng dụng {name} không đạt luật chất lượng", text]]
+    assert (
+        f"Đã chuyển 3 dòng cũ của bảng yeu_cau trong ứng dụng {name} xuống hồ dữ liệu, "
+        "gồm 1 file.\n"
+    ) in fixed.stdout
+    assert lineage_of(stack, name, "check") == [["f", "3"], ["t", "3"]]
+
+
+def test_finished_months_are_frozen_once_and_never_overwritten(stack, tmp_path):
+    name = lake_app(stack, tmp_path, snapshots=FROZEN)
+    schema = schema_of(name)
+    add_rows(
+        stack,
+        name,
+        [
+            ("'YC-1'", "3", f"{month_start(2)} + interval '3 days'"),
+            ("'YC-2'", "4", f"{month_start(2)} + interval '10 days'"),
+            ("'YC-3'", "5", month_start(1)),
+            ("'YC-4'", "2", "now()"),
+        ],
+    )
+    older, last = period_of(stack, 2), period_of(stack, 1)
+
+    first = lake(stack, "run")
+    files = lineage_of(stack, name, "file")
+    add_rows(stack, name, [("'YC-5'", "1", f"{month_start(1)} + interval '1 day'")])
+    second = lake(stack, "run")
+    frozen = lake(
+        stack, "query", "--csv", f"SELECT ma FROM snapshots.{schema}.chot_yeu_cau ORDER BY ma"
+    )
+
+    where = f"trong ứng dụng {name}"
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert f"Đã chốt số liệu của chot_yeu_cau tháng {shown(older)} {where}: 2 dòng.\n" in (
+        first.stdout
+    )
+    assert f"Đã chốt số liệu của chot_yeu_cau tháng {shown(last)} {where}: 1 dòng.\n" in (
+        first.stdout
+    )
+    assert f"ứng dụng {name}" not in second.stdout
+    folder = f"snapshots/{name}/chot_yeu_cau"
+    assert files == [
+        [older, "2", f"{folder}/{older}.parquet"],
+        [last, "1", f"{folder}/{last}.parquet"],
+    ]
+    assert lineage_of(stack, name, "file") == files
+    assert frozen.stdout.splitlines() == ["ma", "YC-1", "YC-2", "YC-3"]
+
+
+def test_month_with_row_breaking_rule_is_frozen_only_after_fix_and_admin_is_told(stack, tmp_path):
+    name = lake_app(stack, tmp_path, snapshots=FROZEN)
+    schema = schema_of(name)
+    add_rows(
+        stack,
+        name,
+        [
+            ("'YC-1'", "9", f"{month_start(1)} + interval '2 days'"),
+            ("'YC-2'", "3", f"{month_start(1)} + interval '3 days'"),
+        ],
+    )
+    period = period_of(stack, 1)
+    [[moment]] = stack.sql(
+        f"SELECT to_char(({month_start(1)} + interval '2 days') AT TIME ZONE {LOCAL}, "
+        "'YYYY-MM-DD\"T\"HH24:MI:SS') || '+07:00'"
+    )
+
+    refused = lake(stack, "run")
+    files = lineage_of(stack, name, "file")
+    stack.sql(f"UPDATE {schema}.yeu_cau SET diem = 4 WHERE ma = 'YC-1'")
+    fixed = lake(stack, "run")
+
+    text = (
+        f"Chưa chốt số liệu của chot_yeu_cau tháng {shown(period)} trong ứng dụng {name} vì dữ "
+        "liệu không đạt luật chất lượng. Luật range của cột diem (từ 1 đến 5) không đạt ở 1 "
+        f'dòng, ví dụ {{"diem": 9, "tao_luc": "{moment}"}}.'
+    )
+    assert refused.returncode == 1
+    assert f"{text}\n" in refused.stdout
+    assert files == []
+    assert stack.sql(
+        f"SELECT body FROM core.deliveries WHERE dedup_key LIKE 'lake:{name}:snapshot:%'"
+    ) == [[text]]
+    assert (
+        f"Đã chốt số liệu của chot_yeu_cau tháng {shown(period)} trong ứng dụng {name}: 2 dòng.\n"
+    ) in fixed.stdout
+    assert lineage_of(stack, name, "check") == [["f", "2"], ["t", "2"]]
+
+
+@pytest.mark.parametrize(
+    ("archive", "snapshots", "files", "expected"),
+    [
+        (
+            [{"table": "khong_co", "column": "tao_luc", "keep_days": 1}],
+            None,
+            {},
+            "Mục archive khai bảng khong_co, nhưng schema {schema} không có bảng này.",
+        ),
+        (
+            [{"table": "yeu_cau", "column": "ma", "keep_days": 1}],
+            None,
+            {},
+            "Cột ma của bảng yeu_cau có kiểu text. "
+            "Cột thời gian phải có kiểu timestamptz, timestamp hoặc date.",
+        ),
+        (
+            None,
+            [
+                {
+                    "view": "chot_yeu_cau",
+                    "column": "tao_luc",
+                    "rules": [QUALITY[0] | {"columns": ["so"]}],
+                }
+            ],
+            {},
+            "Mục snapshots khai cột so của chot_yeu_cau, nhưng chot_yeu_cau không có cột này.",
+        ),
+        (
+            ARCHIVED,
+            None,
+            {"0003_y_kien.sql": CASCADE_SQL},
+            "Bảng yeu_cau được bảng {schema}.y_kien tham chiếu với ON DELETE CASCADE. Khi dòng cũ "
+            "được chuyển xuống hồ, dòng của bảng {schema}.y_kien bị đổi theo mà không được lưu vào "
+            "hồ. Hãy đổi khóa ngoại sang ON DELETE RESTRICT hoặc bỏ bảng yeu_cau khỏi mục archive.",
+        ),
+    ],
+    ids=["thieu-bang", "cot-thoi-gian-la-chu", "thieu-cot-cua-luat", "khoa-ngoai-cascade"],
+)
+def test_lake_entries_not_matching_database_stop_apply(
+    stack, tmp_path, archive, snapshots, files, expected
+):
+    name = new_name()
+    sql = {"0002_yeu_cau.sql": LAKE_SQL} | files
+    folder = notes_app(tmp_path / name, name, files=sql, archive=archive, snapshots=snapshots)
+
+    result = plug(stack, folder)
+
+    assert result.returncode == 1, result.stdout
+    assert printed_last(result.stdout, expected.format(schema=schema_of(name)) + "\n")
+
+
+def test_lake_role_gets_only_declared_rights_and_loses_them_when_left_out(stack, tmp_path):
+    name = new_name()
+    schema = schema_of(name)
+    files = {"0002_yeu_cau.sql": LAKE_SQL}
+    rights = (
+        f"SELECT has_table_privilege('lake', '{schema}.yeu_cau', 'SELECT'), "
+        f"has_table_privilege('lake', '{schema}.yeu_cau', 'DELETE'), "
+        f"has_table_privilege('lake', '{schema}.chot_yeu_cau', 'SELECT'), "
+        f"has_table_privilege('lake', '{schema}.notes', 'SELECT'), "
+        f"has_schema_privilege('lake', '{schema}', 'USAGE')"
+    )
+
+    first = plug(
+        stack, notes_app(tmp_path / name, name, files=files, archive=ARCHIVED, snapshots=FROZEN)
+    )
+    granted = stack.sql(rights)
+    later = plug(stack, notes_app(tmp_path / "sau" / name, name, version="0.2.0", files=files))
+
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "Đã bật lưu trữ cho bảng yeu_cau.\nĐã bật chốt số liệu cho chot_yeu_cau.\n" in (
+        first.stdout
+    )
+    assert granted == [["t", "t", "t", "f", "t"]]
+    assert later.returncode == 0, later.stdout + later.stderr
+    assert "Đã tắt lưu trữ của bảng yeu_cau.\nĐã tắt chốt số liệu của chot_yeu_cau.\n" in (
+        later.stdout
+    )
+    assert stack.sql(rights) == [["f", "f", "f", "f", "f"]]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["SELECT * FROM read_csv('/etc/passwd')", "INSTALL httpfs"],
+    ids=["doc-file", "cai-extension"],
+)
+def test_lake_query_cannot_reach_files_or_network_of_server(stack, text):
+    result = lake(stack, "query", text)
+
+    assert result.returncode == 1
+    assert result.stdout.startswith("Câu truy vấn bị lỗi: Permission Error: ")
+
+
+def flip_byte(stack, key):
+    result = stack.exec("core", "python", "-c", FLIP, key)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_changing_one_byte_of_a_lake_file_is_found_by_verify_and_blocks_query(stack, tmp_path):
+    name = lake_app(stack, tmp_path, snapshots=FROZEN)
+    add_rows(stack, name, [("'YC-1'", "3", f"{month_start(1)} + interval '1 day'")])
+    frozen = lake(stack, "run")
+    [[_, _, key]] = lineage_of(stack, name, "file")
+    clean = lake(stack, "verify")
+
+    flip_byte(stack, key)
+    try:
+        changed = lake(stack, "verify")
+        refused = lake(stack, "query", "SELECT 1")
+    finally:
+        flip_byte(stack, key)
+    restored = lake(stack, "verify")
+
+    assert f"trong ứng dụng {name}: 1 dòng.\n" in frozen.stdout
+    assert clean.returncode == 0, clean.stdout
+    assert clean.stdout.endswith("Mã băm của mọi file khớp với phả hệ.\n")
+    assert changed.returncode == 1
+    assert f"File {key} không khớp mã băm trong phả hệ. Nội dung file đã bị sửa.\n" in (
+        changed.stdout
+    )
+    assert refused.returncode == 1
+    assert f"File {key} không khớp mã băm trong phả hệ nên không được đọc." in refused.stdout
+    assert restored.returncode == 0, restored.stdout
+
+
 def rpc(stack, name, token, function, body):
     return table_call(stack, "POST", name, token, body, table=f"rpc/{function}")
 
@@ -1056,9 +1430,19 @@ def test_functions_for_plugging_apps_are_closed_to_other_roles(stack):
         "core.record_migration(text, text)",
         "core.secure_app()",
         "core.apply_search(text, jsonb)",
+        "core.apply_lake(text, jsonb, jsonb)",
+        "core.check_lake_entry(text, oid, text, jsonb, text)",
         "core.pre_config()",
     ]
-    roles = ["anon", "authenticated", "authenticator", "core_service", "workflow", "centrifugo"]
+    roles = [
+        "anon",
+        "authenticated",
+        "authenticator",
+        "core_service",
+        "workflow",
+        "centrifugo",
+        "lake",
+    ]
 
     granted = stack.sql(
         "SELECT r, f FROM unnest(ARRAY['"

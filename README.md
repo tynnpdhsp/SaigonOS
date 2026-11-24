@@ -36,6 +36,7 @@ Phiên bản hiện tại cung cấp đăng nhập một lần, API Gateway và 
 - [Cập nhật tức thời](#cập-nhật-tức-thời)
 - [Thông báo cho người dùng](#thông-báo-cho-người-dùng)
 - [Ứng dụng](#ứng-dụng)
+- [Hồ dữ liệu](#hồ-dữ-liệu)
 - [Sao lưu](#sao-lưu)
 - [Khôi phục](#khôi-phục)
 - [Cập nhật phiên bản](#cập-nhật-phiên-bản)
@@ -383,7 +384,7 @@ Khi chữ cần tìm có nhiều từ, file phải có đủ các từ. Cú phá
 
 ## Cấu hình
 
-Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram, SMTP và dải mạng của trang quản trị được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram), mục [Gửi email](#gửi-email) và mục [Trang quản trị](#trang-quản-trị).
+Các giá trị cấu hình được đặt bằng tùy chọn của lệnh `saigonos init`. Lệnh này có thể chạy lại nhiều lần. Các mật khẩu đã tạo và các dòng được thêm bằng tay vào file `.env` được giữ nguyên. Riêng cấu hình Telegram, SMTP, dải mạng của trang quản trị và múi giờ của hồ dữ liệu được ghi trực tiếp vào file `.env`, như ở mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram), mục [Gửi email](#gửi-email), mục [Trang quản trị](#trang-quản-trị) và mục [Hồ dữ liệu](#hồ-dữ-liệu).
 
 | Tùy chọn | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -692,7 +693,7 @@ Lúc mới khởi động, các service giám sát dùng khoảng 460 MB RAM, tr
 Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng `Giám sát`. Dòng này kiểm tra Grafana qua API Gateway và kiểm tra Prometheus đọc được metrics của mọi target:
 
 ```text
-BÌNH THƯỜNG    Giám sát        Grafana trả lời tại /grafana/, Prometheus đọc metrics của 8 target
+BÌNH THƯỜNG    Giám sát        Grafana trả lời tại /grafana/, Prometheus đọc metrics của 9 target
 ```
 
 Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc metrics của mọi target lần đầu. Do đó, lệnh `saigonos doctor` chờ tối đa 30 giây trước khi báo kết quả của dòng `Giám sát`.
@@ -701,7 +702,7 @@ Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc met
 
 Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Người dùng đăng nhập bằng Keycloak qua client `grafana`. Chỉ tài khoản có realm role `admin` đăng nhập được và luôn phải nhập mã OTP, giống Operaton. Route `grafana` đi qua luật trang quản trị của OPA, nên giới hạn `SAIGONOS_ADMIN_NETWORKS` ở mục [Trang quản trị](#trang-quản-trị) cũng áp dụng cho Grafana.
 
-Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai.
+Nguồn dữ liệu Prometheus và Loki được nạp từ thư mục `config/grafana/provisioning` và không sửa được trong Grafana. Grafana không gửi thống kê sử dụng, không kiểm tra bản mới, không tải plugin và không cho chia sẻ dashboard công khai. Grafana chỉ ghi log mức cảnh báo và lỗi. Nếu ghi cả mức INFO, mỗi lần bảng theo dõi làm mới, Grafana ghi hai dòng cho mỗi ô, làm khung Log ngập log của chính Grafana. Cảnh báo lặp lại của `search-manifest-watcher` trong Grafana cũng không được ghi, vì cảnh báo này không cần xử lý.
 
 ### Bảng theo dõi
 
@@ -711,6 +712,7 @@ Trang chủ của Grafana là bảng SaigonOS. Bảng được nạp từ file `
 - Ba ô số cho biết tài nguyên hiện tại: phần trăm CPU của máy mà các container đang dùng, tổng RAM của các container và phần trăm đã dùng của ổ chứa dữ liệu Docker.
 - Bảng Service cho biết từng service đang chạy hay không theo healthcheck, kèm CPU và RAM.
 - Biểu đồ số request mỗi giây theo mã trạng thái.
+- Ba ô số của [hồ dữ liệu](#hồ-dữ-liệu): số file trong hồ, tổng dung lượng các file và số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống. Ô cuối chuyển đỏ khi có ít nhất một lần không đạt.
 - Khung Log. Ô Service và ô Tìm trong log ở đầu trang dùng để lọc log. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
 
 ### Metrics
@@ -726,6 +728,7 @@ Prometheus giữ metrics 7 ngày, tối đa 2 GB, trong volume `prometheus-data`
 | `etcd` | Metrics có sẵn của etcd |
 | `loki` | Metrics của Loki |
 | `services` | Service `exporter`, cho biết trạng thái, healthcheck, CPU và RAM của từng container, cùng dung lượng ổ đĩa |
+| `core` | Service `core` ở cổng 9100, cho biết số file, số dòng và số lần kiểm luật chất lượng không đạt của [hồ dữ liệu](#hồ-dữ-liệu) |
 | `prometheus` | Metrics của chính Prometheus |
 
 Metrics `apisix_http_status` có label `denied_by`. Label này có giá trị `waf` khi tường lửa ứng dụng web chặn request và `opa` khi luật OPA từ chối request. API Gateway lấy giá trị này từ header `X-SaigonOS-Denied-By` của phản hồi. Prometheus ghi các tổng sau bằng recording rule trong file `config/prometheus/rules.yml`:
@@ -1563,11 +1566,13 @@ Ví dụ bản khai của một ứng dụng xin nghỉ phép:
 | `ui` | Không | Thư mục chứa giao diện, có file `index.html` |
 | `access` | Không | Danh sách luật truy cập API của ứng dụng, tối đa 20 luật, như mục [Luật truy cập của ứng dụng](#luật-truy-cập-của-ứng-dụng) |
 | `search` | Không | Danh sách bảng cần tìm kiếm toàn văn, tối đa 20 bảng, như mục [Tìm kiếm trong ứng dụng](#tìm-kiếm-trong-ứng-dụng) |
+| `archive` | Không | Danh sách bảng có dòng cũ được chuyển xuống hồ dữ liệu, tối đa 20 bảng, như mục [Lưu trữ và chốt số liệu của ứng dụng](#lưu-trữ-và-chốt-số-liệu-của-ứng-dụng) |
+| `snapshots` | Không | Danh sách view hoặc bảng được chốt số liệu theo tháng, tối đa 20 mục, như mục [Lưu trữ và chốt số liệu của ứng dụng](#lưu-trữ-và-chốt-số-liệu-của-ứng-dụng) |
 
 Bản khai tuân theo các quy tắc sau:
 
 - Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `nghi-phep`, `don-tu-2`.
-- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak và đường dẫn của API Gateway. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `grafana`, `information-schema`, `keycloak`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console` và `workflow`.
+- Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak, đường dẫn của API Gateway và catalog, schema của DuckDB khi đọc hồ dữ liệu. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `grafana`, `information-schema`, `keycloak`, `lake`, `main`, `memory`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console`, `snapshots`, `system`, `temp` và `workflow`.
 - Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `nghi-phep.quan-ly`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
 - Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
 - Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`. Mỗi cấp gồm chữ cái không dấu, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới và không bắt đầu bằng dấu chấm. Do đó, đường dẫn không trỏ ra ngoài thư mục ứng dụng được. Ba thư mục không trùng nhau và không nằm trong nhau.
@@ -1793,6 +1798,66 @@ Mục `search` tuân theo các quy tắc sau:
 Mỗi lần cài đặt, lõi tạo lại index và hàm khi danh sách cột thay đổi hoặc khi index đã mất, ví dụ vì file SQL đã xóa một cột được tìm. Bỏ một bảng khỏi mục `search` thì lõi gỡ index và hàm của bảng đó.
 
 Lõi có sẵn cấu hình tìm kiếm `core.vietnamese` của PostgreSQL. Cấu hình này bỏ dấu bằng extension `unaccent` và đổi chữ hoa thành chữ thường. Hàm `core.search_vector(VARIADIC text[])` tạo vector tìm kiếm từ các chuỗi, còn hàm `core.search_query(text)` đọc chữ cần tìm theo cú pháp trên. File SQL của ứng dụng dùng được hai hàm này để tự viết câu tìm kiếm, ví dụ `WHERE core.search_vector(ly_do) @@ core.search_query('gia dinh')`.
+
+### Lưu trữ và chốt số liệu của ứng dụng
+
+Mục `archive` của bản khai khai các bảng có dòng cũ được chuyển xuống hồ dữ liệu. Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. File của hai việc này nằm trong hồ dữ liệu như mục [Hồ dữ liệu](#hồ-dữ-liệu). Ví dụ:
+
+```json
+"archive": [
+  {
+    "table": "don",
+    "column": "tao_luc",
+    "keep_days": 365,
+    "rules": [
+      { "rule": "not_null", "columns": ["ma", "nguoi_gui"] },
+      { "rule": "unique", "columns": ["ma"] },
+      { "rule": "range", "column": "so_ngay", "min": 0.5, "max": 30 }
+    ]
+  }
+],
+"snapshots": [
+  { "view": "chot_don", "column": "tao_luc", "rules": [{ "rule": "not_null", "columns": ["ma"] }] }
+]
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `table` | Bảng trong schema của ứng dụng, có dòng cũ được chuyển xuống hồ |
+| `view` | View hoặc bảng trong schema của ứng dụng, được chốt số liệu theo tháng |
+| `column` | Cột thời gian của dòng, có kiểu `timestamptz`, `timestamp` hoặc `date` |
+| `keep_days` | Số ngày dòng được giữ ở bảng, từ 1 đến 36500 |
+| `rules` | Luật chất lượng, tối đa 20 luật. Mỗi luật có tối đa 10 cột |
+
+Mỗi giờ, service `core` làm hai việc theo thứ tự sau. Lệnh `saigonos lake run` làm ngay hai việc này.
+
+1. Chốt số liệu. Với mỗi mục trong `snapshots`, lõi chốt từng tháng đã hết mà chưa được chốt, bắt đầu từ tháng của dòng cũ nhất. File của một tháng gồm mọi dòng có cột thời gian thuộc tháng đó. File đã chốt không bị ghi đè, kể cả khi dữ liệu của tháng thay đổi sau đó.
+2. Lưu trữ. Với mỗi bảng trong `archive`, lõi chuyển các dòng cũ hơn `keep_days` ngày sang file Parquet, mỗi tháng một file. Lõi ghi file, đọc lại để so mã băm SHA-256 và đếm số dòng trong file, rồi mới xóa các dòng này khỏi bảng. Việc đọc, ghi phả hệ và xóa nằm trong cùng một transaction. Số dòng trong file, số dòng đã chọn và số dòng đã xóa phải bằng nhau. Khi có sai lệch hay lỗi, transaction bị hủy và bảng giữ nguyên.
+
+Khi ứng dụng có mục `snapshots`, dòng từ tháng chưa chốt sớm nhất trở đi được giữ lại ở bảng, kể cả khi cũ hơn `keep_days` ngày. Nhờ đó, dòng không bị chuyển xuống hồ trước khi tháng của nó được chốt. Dòng có cột thời gian rỗng luôn được giữ ở bảng.
+
+Luật chất lượng được kiểm bằng câu SQL trên các dòng sắp chuyển xuống hồ, hoặc trên các dòng của tháng sắp chốt:
+
+| Luật | Ý nghĩa |
+|---|---|
+| `not_null` | Các cột trong `columns` không được rỗng |
+| `unique` | Không có hai dòng trùng giá trị ở mọi cột trong `columns`. Dòng có cột rỗng không được tính |
+| `range` | Giá trị của cột `column` nằm trong khoảng từ `min` đến `max`, tính cả hai đầu. Luật cần ít nhất một trong hai giá trị. Dòng có cột rỗng không bị tính là vi phạm |
+
+Khi một luật không đạt, tháng đó không được chốt hoặc dòng cũ không được chuyển xuống hồ. Lõi gửi tin cho admin qua kênh `role:admin` như mục [Nghe kênh](#nghe-kênh) và qua nhóm Telegram như mục [Gửi thông báo qua Telegram](#gửi-thông-báo-qua-telegram). Tin chỉ ra luật bị vi phạm, số dòng vi phạm và tối đa 3 dòng ví dụ. Mỗi dòng ví dụ gồm khóa chính và cột vi phạm. Với view không có khóa chính, dòng ví dụ gồm cột thời gian và cột vi phạm. Ví dụ:
+
+```text
+Chưa chốt số liệu của chot_don tháng 10/2026 trong ứng dụng nghi-phep vì dữ liệu không đạt luật chất lượng. Luật not_null của cột ma không đạt ở 1 dòng, ví dụ {"ma": null, "tao_luc": "2026-10-18T09:00:00+07:00"}.
+```
+
+Tin giống nhau chỉ được gửi một lần. Lõi kiểm lại ở mỗi lần chạy, nên tháng được chốt và dòng cũ được chuyển xuống hồ ngay lần chạy sau khi dữ liệu đã được sửa. Kết quả của mỗi lần kiểm được ghi vào bảng `core.lineage`.
+
+Lệnh cài đặt kiểm tra các mục này sau khi chạy các file SQL và dừng khi có sai:
+
+- Bảng, view và các cột đã khai phải có trong schema của ứng dụng. Cột của luật `range` phải có kiểu số.
+- Bảng trong mục `archive` không được bảng khác tham chiếu bằng khóa ngoại `ON DELETE CASCADE`, `SET NULL` hay `SET DEFAULT`. Khi đó, dòng của bảng kia bị đổi theo mà không được lưu vào hồ.
+
+Lõi đọc và xóa dòng bằng role `lake` của cơ sở dữ liệu. Role này bỏ qua chính sách phân quyền từng dòng để đọc đủ mọi dòng. Lệnh cài đặt chỉ cấp cho role `lake` quyền `SELECT` trên các bảng, view đã khai và quyền `DELETE` trên các bảng trong mục `archive`. Bỏ một mục khỏi bản khai thì quyền của mục đó được thu lại. View chạy với quyền của role sở hữu schema, nên view đọc được mọi dòng của các bảng trong schema. Audit log ghi việc xóa dòng với role `lake` trong cột `db_role`.
 
 ### Luật truy cập của ứng dụng
 
@@ -2024,6 +2089,91 @@ Các quy tắc sau áp dụng cho giao diện:
 - Mỗi trả lời có các header `Content-Security-Policy`, `X-Content-Type-Options: nosniff` và `Referrer-Policy: same-origin`. Chính sách `Content-Security-Policy` chỉ cho trang tải script, ảnh, font và gọi API từ chính địa chỉ của hệ thống. Script viết trực tiếp trong file HTML không chạy, nên mọi script phải nằm trong file `.js` riêng.
 - Địa chỉ có `..`, kể cả ở dạng mã hóa như `%2e%2e`, nhận mã 404. File và thư mục có tên bắt đầu bằng dấu chấm, symlink và địa chỉ bắt đầu bằng `/apps/<tên ứng dụng>/api` không được phục vụ như file của giao diện.
 - Ứng dụng chưa cài đặt, kể cả khi thư mục đã được chép vào thư mục `apps`, nhận mã 404.
+
+## Hồ dữ liệu
+
+Hồ dữ liệu giữ dữ liệu lịch sử của các ứng dụng dưới dạng file Parquet trong bucket `lake` của SeaweedFS. Dữ liệu vào hồ bằng hai việc lưu trữ và chốt số liệu, như mục [Lưu trữ và chốt số liệu của ứng dụng](#lưu-trữ-và-chốt-số-liệu-của-ứng-dụng). Service `core` ghi và đọc file bằng DuckDB. Bucket `lake` chỉ đọc được bằng khóa S3 của service `core`. Do đó, người dùng của ứng dụng không đọc được file trong hồ. Admin đọc hồ bằng các lệnh ở mục này trên máy cài đặt.
+
+Tháng của dữ liệu tính theo múi giờ `Asia/Ho_Chi_Minh`. Để dùng múi giờ khác, thêm dòng sau vào file `.env` rồi chạy `saigonos up`:
+
+```
+SAIGONOS_TIMEZONE=Asia/Bangkok
+```
+
+### File trong hồ
+
+| Việc | Đường dẫn trong bucket `lake` |
+|---|---|
+| Lưu trữ | `archive/<tên ứng dụng>/<bảng>/<năm>/<tháng>/<số>.parquet` |
+| Chốt số liệu | `snapshots/<tên ứng dụng>/<view>/<năm>-<tháng>.parquet` |
+
+Mỗi file chỉ được ghi một lần. Một tháng của bảng có thể có nhiều file lưu trữ, mỗi lần chạy một file. Giá trị của cột được giữ đúng kiểu, ví dụ số thập phân, ngày giờ có múi giờ và JSON. Mảng và kiểu tổ hợp được lưu dạng JSON. Kiểu `interval` và các kiểu khác được lưu dạng chuỗi.
+
+Lệnh `saigonos backup` sao lưu cả hồ dữ liệu, vì hồ nằm trong SeaweedFS.
+
+### Phả hệ
+
+Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm luật chất lượng. Bảng chỉ cho thêm dòng, không cho sửa hay xóa. Mỗi dòng mới cũng được ghi vào audit log. Các cột của bảng như sau:
+
+| Cột | Ý nghĩa |
+|---|---|
+| `kind` | `check` cho một lần kiểm luật chất lượng, `file` cho một file trong hồ |
+| `job` | `archive` cho lưu trữ, `snapshot` cho chốt số liệu |
+| `started_by` | `timer` khi hẹn giờ của service `core` chạy, `command` khi chạy bằng lệnh |
+| `app`, `source` | Tên ứng dụng và bảng hoặc view nguồn, dạng `<schema>.<tên>` |
+| `period` | Tháng của dữ liệu, dạng `YYYY-MM` |
+| `time_from`, `time_to` | Khoảng thời gian của các dòng, tính cả `time_from` và không tính `time_to` |
+| `rows` | Số dòng đã kiểm, hoặc số dòng trong file |
+| `passed`, `results` | Kết quả chung và kết quả của từng luật, ở dòng `check` |
+| `check_id` | Dòng `check` đã đạt trước khi file được ghi, ở dòng `file` |
+| `file`, `size`, `sha256` | Đường dẫn trong bucket, dung lượng và mã băm SHA-256 của file |
+| `created_at` | Lúc ghi dòng |
+
+Ví dụ, lệnh sau xem các file của hồ:
+
+```bash
+docker compose exec postgres psql -U postgres -d saigonos -c "SELECT id, job, source, period, rows, file FROM core.lineage WHERE kind = 'file' ORDER BY id"
+```
+
+### Truy vấn hồ
+
+Lệnh `saigonos lake query "SQL"` chạy một câu truy vấn SQL của DuckDB trên hồ. Mỗi bảng trong mục `archive` là một view cùng tên, ví dụ `nghi_phep.don`. Mỗi mục `snapshots` là một view trong catalog `snapshots`, ví dụ `snapshots.nghi_phep.chot_don`. Bảng `lineage` chứa các dòng của `core.lineage`. Ví dụ:
+
+```bash
+saigonos lake query "SELECT date_trunc('month', tao_luc) AS thang, count(*) FROM nghi_phep.don GROUP BY 1 ORDER BY 1"
+saigonos lake query --csv "SELECT * FROM snapshots.nghi_phep.chot_don"
+```
+
+Trước khi đọc, lệnh tải các file vào một thư mục tạm của container `core` và so mã băm của từng file với phả hệ. Khi một file không khớp, lệnh dừng mà không trả kết quả. Câu truy vấn không đọc được file khác trên máy chủ, không tải được extension và không đổi được các thiết lập này. DuckDB dùng tối đa 512 MB RAM cho mỗi lệnh. Lệnh tương đương bằng Docker Compose như sau:
+
+```bash
+docker compose exec -T core python -m saigonos_core.lake query "SELECT count(*) FROM nghi_phep.don"
+```
+
+### Kiểm tra mã băm
+
+```bash
+saigonos lake verify
+```
+
+Lệnh đọc lại mọi file trong hồ và so mã băm SHA-256 với bảng `core.lineage`. Khi một file đã bị sửa dù chỉ một byte, hoặc đã bị xóa, lệnh chỉ ra file đó và kết thúc với mã thoát 1. Ví dụ:
+
+```text
+Hồ dữ liệu có 6 file. Mã băm của mọi file khớp với phả hệ.
+```
+
+### Hẹn giờ
+
+Service `core` chạy việc của hồ lần đầu sau khi khởi động 1 phút, rồi mỗi giờ một lần. Mỗi lần chạy là một tiến trình riêng, nên RAM của DuckDB được trả lại khi chạy xong. Thông báo của việc này nằm trong log của service `core`. Hai lần chạy không chồng lên nhau. Khi hẹn giờ đang chạy, lệnh `saigonos lake run` chờ lần chạy đó xong rồi mới chạy. Lệnh kết thúc với mã thoát 1 khi dữ liệu không đạt luật chất lượng hoặc khi có lỗi.
+
+Service `core` trả metrics của hồ ở cổng 9100 bên trong mạng Docker. Khi bật [giám sát](#giám-sát), Prometheus đọc các metrics sau. Bảng SaigonOS của Grafana có ba ô số lấy từ các metrics này.
+
+| Metrics | Ý nghĩa |
+|---|---|
+| `saigonos_lake_files` | Số file trong hồ. Label `app` là tên ứng dụng, label `type` là `archive` hoặc `snapshot` |
+| `saigonos_lake_rows` | Số dòng trong các file của hồ |
+| `saigonos_lake_bytes` | Dung lượng các file của hồ, tính bằng byte |
+| `saigonos_lake_failed_checks_total` | Số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống |
 
 ## Sao lưu
 

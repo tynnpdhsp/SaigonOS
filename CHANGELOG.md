@@ -7,6 +7,25 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [0.12.0] - 2026-11-25
+
+### Thêm
+
+- Mục `archive` trong bản khai ứng dụng khai các bảng có dòng cũ được chuyển xuống hồ dữ liệu, kèm cột thời gian và số ngày giữ ở bảng. Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. Mỗi mục có luật chất lượng `not_null`, `unique` và `range`.
+- Hồ dữ liệu gồm các file Parquet trong bucket `lake` của SeaweedFS. Service `core` ghi và đọc file bằng DuckDB 2.0.1. Mỗi giờ, service `core` chốt số liệu các tháng đã hết rồi chuyển dòng cũ hơn hạn xuống hồ, mỗi tháng một file. Dòng chỉ bị xóa khỏi bảng khi file đọc lại đúng mã băm và số dòng khớp. Lệnh `saigonos lake run` chạy ngay việc này.
+- Luật chất lượng được kiểm bằng SQL trước khi chốt số liệu và trước khi chuyển dòng cũ. Khi không đạt, tháng không được chốt và dòng cũ ở lại bảng. Admin nhận tin qua kênh `role:admin` và nhóm Telegram, chỉ ra luật và các dòng vi phạm.
+- Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm luật chất lượng. Bảng chỉ cho thêm dòng, mỗi dòng mới được ghi vào audit log.
+- Lệnh `saigonos lake query` chạy câu truy vấn SQL của DuckDB trên hồ sau khi kiểm mã băm của từng file. Câu truy vấn không đọc được file khác trên máy chủ và không tải được extension. Lệnh `saigonos lake verify` tính lại mã băm của mọi file và chỉ ra file đã bị sửa.
+- Role `lake` của cơ sở dữ liệu đọc và xóa dòng cho hồ dữ liệu. Lệnh cài đặt chỉ cấp quyền cho role này trên các bảng, view đã khai và thu lại quyền khi một mục bị bỏ khỏi bản khai.
+- Service `core` trả metrics `saigonos_lake_files`, `saigonos_lake_rows`, `saigonos_lake_bytes` và `saigonos_lake_failed_checks_total` ở cổng 9100 bên trong mạng Docker. Prometheus đọc thêm target `core`.
+- Bảng SaigonOS của Grafana có thêm ba ô số của hồ dữ liệu: số file, dung lượng và số lần kiểm luật chất lượng không đạt.
+- Giá trị `SAIGONOS_TIMEZONE` trong file `.env` đặt múi giờ để tính tháng của hồ dữ liệu, mặc định là `Asia/Ho_Chi_Minh`.
+
+### Thay đổi
+
+- Grafana chỉ ghi log mức cảnh báo và lỗi, và bỏ cảnh báo lặp lại của `search-manifest-watcher`. Trước đây, mỗi lần bảng theo dõi làm mới, Grafana ghi hai dòng INFO cho mỗi ô, khoảng 120 dòng mỗi phút, làm khung Log ngập log của chính Grafana.
+- Tên ứng dụng không được trùng `lake`, `main`, `memory`, `snapshots`, `system` và `temp`, vì lõi và DuckDB dùng các tên này.
+
 ## [0.11.0] - 2026-11-24
 
 ### Thêm
@@ -315,7 +334,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.11.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0
 [0.10.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.9.0

@@ -287,7 +287,11 @@ def test_settings_come_from_environment(environment, settings):
         operaton_password="mat-khau-khac",
         subscription_key="khoa-ky-token-kenh-khac-cua-centrifugo",
         site_url="https://dx-khac.example.com",
+        lake_interval=3600,
+        metrics_port=9100,
     )
+    assert [timer.interval for timer in app.state.timers] == [3600]
+    assert (app.state.metrics.database, app.state.metrics.port) == (database, 9100)
     assert app.state.downloads == DownloadLinks("khoa-khac")
     assert app.state.subscription_tokens == SubscriptionTokens(
         "khoa-ky-token-kenh-khac-cua-centrifugo"

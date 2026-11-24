@@ -9,14 +9,20 @@ import pytest
 
 from saigonos_core.manifest import (
     ACCESS_RULES,
+    ARCHIVE_TABLES,
+    KEEP_DAYS,
     LABEL_LENGTH,
     MANIFEST,
     NAME_LENGTH,
+    QUALITY_RULES,
+    RELATION_LENGTH,
     RESERVED_NAMES,
     RESERVED_PREFIX,
     ROLE_LENGTH,
+    RULE_COLUMNS,
     SEARCH_COLUMNS,
     SEARCH_TABLES,
+    SNAPSHOTS,
     TABLE_LENGTH,
     check_app,
     schema_text,
@@ -831,3 +837,215 @@ def test_role_check_of_access_waits_for_valid_roles(app):
     change = {"roles": "nghi-phep.quan-ly", "access": [{"roles": ["nghi-phep.khac"]}]}
 
     assert problems(app, VALID | change) == ["roles: Giá trị phải là một danh sách."]
+
+
+ARCHIVED = {"table": "don", "column": "tao_luc", "keep_days": 365}
+SNAPSHOT = {"view": "chot_don", "column": "tao_luc"}
+RULES = [
+    {"rule": "not_null", "columns": ["ma", "ly_do"]},
+    {"rule": "unique", "columns": ["ma"]},
+    {"rule": "range", "column": "so_ngay", "min": 0.5, "max": 30},
+    {"rule": "range", "column": "so_ngay", "min": 1},
+]
+VIEW_RULE = (
+    "Tên view hoặc bảng gồm chữ thường không dấu, chữ số và dấu gạch dưới, bắt đầu bằng chữ cái "
+    "hoặc dấu gạch dưới. Ví dụ: chot_don."
+)
+
+
+@pytest.mark.parametrize(
+    ("archive", "snapshots"),
+    [
+        ([ARCHIVED], []),
+        ([ARCHIVED | {"rules": RULES}], [SNAPSHOT | {"rules": RULES}]),
+        (
+            [ARCHIVED, ARCHIVED | {"table": "_nhat_ky", "keep_days": 1}],
+            [{"view": "don", **SNAPSHOT}],
+        ),
+        ([], []),
+    ],
+    ids=["mot-bang", "co-luat", "bang-vua-luu-vua-chot", "khong-co-gi"],
+)
+def test_archive_and_snapshots_are_accepted(app, archive, snapshots):
+    write(app, VALID | {"archive": archive, "snapshots": snapshots})
+
+    checked = check_app(app)
+
+    assert checked.problems == []
+    assert [
+        entry.model_dump(exclude_defaults=True) for entry in checked.manifest.archive
+    ] == archive
+    assert [
+        entry.model_dump(exclude_defaults=True) for entry in checked.manifest.snapshots
+    ] == snapshots
+
+
+def test_bounds_of_range_rule_are_kept_as_numbers(app):
+    write(app, VALID | {"snapshots": [SNAPSHOT | {"rules": RULES}]})
+
+    [snapshot] = check_app(app).manifest.snapshots
+
+    assert [(rule.rule, getattr(rule, "min", None)) for rule in snapshot.rules] == [
+        ("not_null", None),
+        ("unique", None),
+        ("range", 0.5),
+        ("range", 1.0),
+    ]
+    assert snapshot.rules[3].max is None
+
+
+@pytest.mark.parametrize(
+    ("archive", "expected"),
+    [
+        ([ARCHIVED | {"table": "Don"}], f"archive[0].table: {TABLE_RULE}"),
+        (
+            [ARCHIVED | {"table": "d" * (RELATION_LENGTH + 1)}],
+            f"archive[0].table: Giá trị dài tối đa {RELATION_LENGTH} ký tự.",
+        ),
+        ([ARCHIVED | {"column": "tạo_lúc"}], f"archive[0].column: {COLUMN_RULE}"),
+        ([ARCHIVED | {"keep_days": 0}], "archive[0].keep_days: Giá trị phải lớn hơn hoặc bằng 1."),
+        (
+            [ARCHIVED | {"keep_days": KEEP_DAYS + 1}],
+            f"archive[0].keep_days: Giá trị phải nhỏ hơn hoặc bằng {KEEP_DAYS}.",
+        ),
+        ([ARCHIVED | {"keep_days": "30"}], "archive[0].keep_days: Giá trị phải là một số nguyên."),
+        ([ARCHIVED | {"keep_days": 30.0}], "archive[0].keep_days: Giá trị phải là một số nguyên."),
+        ([ARCHIVED | {"keep_days": True}], "archive[0].keep_days: Giá trị phải là một số nguyên."),
+        ([{"table": "don", "column": "tao_luc"}], "archive[0].keep_days: Thiếu trường bắt buộc."),
+        (
+            [ARCHIVED, ARCHIVED | {"keep_days": 30}],
+            'archive[1].table: Bảng "don" được khai báo hai lần.',
+        ),
+        (
+            [ARCHIVED | {"days": 30}],
+            "archive[0].days: Không có trường này. Hãy kiểm tra lỗi chính tả.",
+        ),
+        (["don"], "archive[0]: Giá trị phải là một đối tượng JSON."),
+    ],
+    ids=[
+        "bang-chu-hoa",
+        "bang-qua-dai",
+        "cot-co-dau",
+        "giu-0-ngay",
+        "giu-qua-lau",
+        "so-ngay-la-chuoi",
+        "so-ngay-la-so-thuc",
+        "so-ngay-la-true",
+        "thieu-so-ngay",
+        "bang-trung",
+        "truong-la",
+        "khong-phai-doi-tuong",
+    ],
+)
+def test_each_invalid_archive_table_has_its_own_message(app, archive, expected):
+    assert problems(app, VALID | {"archive": archive}) == [expected]
+
+
+@pytest.mark.parametrize(
+    ("snapshots", "expected"),
+    [
+        ([SNAPSHOT | {"view": "chot-don"}], f"snapshots[0].view: {VIEW_RULE}"),
+        ([SNAPSHOT | {"column": "Ngay"}], f"snapshots[0].column: {COLUMN_RULE}"),
+        ([{"view": "chot_don"}], "snapshots[0].column: Thiếu trường bắt buộc."),
+        ([SNAPSHOT, SNAPSHOT], 'snapshots[1].view: View "chot_don" được khai báo hai lần.'),
+        (
+            [SNAPSHOT | {"period": "month"}],
+            "snapshots[0].period: Không có trường này. Hãy kiểm tra lỗi chính tả.",
+        ),
+    ],
+    ids=["view-gach-ngang", "cot-chu-hoa", "thieu-cot", "view-trung", "truong-la"],
+)
+def test_each_invalid_snapshot_has_its_own_message(app, snapshots, expected):
+    assert problems(app, VALID | {"snapshots": snapshots}) == [expected]
+
+
+@pytest.mark.parametrize(
+    ("rule", "expected"),
+    [
+        ({"rule": "not_null", "columns": []}, "columns: Danh sách phải có ít nhất 1 phần tử."),
+        ({"rule": "not_null", "columns": ["Ma"]}, f"columns[0]: {COLUMN_RULE}"),
+        ({"rule": "unique", "columns": ["ma", "ma"]}, 'columns: Cột "ma" được khai báo hai lần.'),
+        ({"rule": "unique"}, "columns: Thiếu trường bắt buộc."),
+        (
+            {"rule": "range", "column": "so_ngay"},
+            ": Luật range phải có ít nhất một trong hai giá trị min và max.",
+        ),
+        (
+            {"rule": "range", "column": "so_ngay", "min": 5, "max": 1},
+            ": Giá trị min phải nhỏ hơn hoặc bằng max.",
+        ),
+        ({"rule": "range", "column": "so_ngay", "min": "1"}, "min: Giá trị phải là một số."),
+        ({"rule": "range", "column": "so_ngay", "max": True}, "max: Giá trị phải là một số."),
+        (
+            {"rule": "range", "column": "so_ngay", "max": float("inf")},
+            "max: Giá trị phải là một số hữu hạn.",
+        ),
+        ({"rule": "range", "column": "Đ", "min": 1}, f"column: {COLUMN_RULE}"),
+        (
+            {"rule": "range", "column": "so_ngay", "min": 1, "step": 1},
+            "step: Không có trường này. Hãy kiểm tra lỗi chính tả.",
+        ),
+        ({"rule": "check", "sql": "so_ngay > 0"}, ": Luật phải là not_null, unique hoặc range."),
+        (
+            {"columns": ["ma"]},
+            ": Thiếu trường rule. Luật phải là not_null, unique hoặc range.",
+        ),
+        ("not_null", ": Giá trị phải là một đối tượng JSON."),
+    ],
+    ids=[
+        "khong-co-cot",
+        "cot-chu-hoa",
+        "cot-trung",
+        "thieu-cot",
+        "range-khong-co-gioi-han",
+        "range-nguoc",
+        "min-la-chuoi",
+        "max-la-true",
+        "max-vo-han",
+        "range-cot-co-dau",
+        "truong-la",
+        "luat-la",
+        "thieu-rule",
+        "khong-phai-doi-tuong",
+    ],
+)
+def test_each_invalid_quality_rule_has_its_own_message(app, rule, expected):
+    where, text = expected.split(": ", 1)
+    suffix = f".{where}" if where else ""
+
+    archived = problems(app, VALID | {"archive": [ARCHIVED | {"rules": [rule]}]})
+    snapshot = problems(app, VALID | {"snapshots": [SNAPSHOT | {"rules": [rule]}]})
+
+    assert archived == [f"archive[0].rules[0]{suffix}: {text}"]
+    assert snapshot == [f"snapshots[0].rules[0]{suffix}: {text}"]
+
+
+def test_too_many_archive_tables_snapshots_rules_or_rule_columns_are_refused(app):
+    tables = [ARCHIVED | {"table": f"bang_{index}"} for index in range(ARCHIVE_TABLES + 1)]
+    views = [SNAPSHOT | {"view": f"view_{index}"} for index in range(SNAPSHOTS + 1)]
+    rules = [{"rule": "unique", "columns": ["ma"]}] * (QUALITY_RULES + 1)
+    columns = [f"cot_{index}" for index in range(RULE_COLUMNS + 1)]
+
+    assert problems(app, VALID | {"archive": tables}) == [
+        f"archive: Danh sách có tối đa {ARCHIVE_TABLES} phần tử."
+    ]
+    assert problems(app, VALID | {"snapshots": views}) == [
+        f"snapshots: Danh sách có tối đa {SNAPSHOTS} phần tử."
+    ]
+    assert problems(app, VALID | {"archive": [ARCHIVED | {"rules": rules}]}) == [
+        f"archive[0].rules: Danh sách có tối đa {QUALITY_RULES} phần tử."
+    ]
+    assert problems(
+        app,
+        VALID | {"snapshots": [SNAPSHOT | {"rules": [{"rule": "not_null", "columns": columns}]}]},
+    ) == [f"snapshots[0].rules[0].columns: Danh sách có tối đa {RULE_COLUMNS} phần tử."]
+
+
+def test_schema_describes_quality_rules_by_their_kind():
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+    rules = schema["$defs"]["ArchiveTable"]["properties"]["rules"]["items"]
+
+    assert rules["discriminator"]["propertyName"] == "rule"
+    assert sorted(rules["discriminator"]["mapping"]) == ["not_null", "range", "unique"]
+    assert schema["$defs"]["ArchiveTable"]["required"] == ["table", "column", "keep_days"]
+    assert schema["$defs"]["Snapshot"]["required"] == ["view", "column"]

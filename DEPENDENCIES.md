@@ -24,6 +24,7 @@ Các thư viện này được cài đặt vào image của service `core` khi D
 | cffi | 2.1.1 | MIT-0 | Phụ thuộc gián tiếp | https://pypi.org/project/cffi/2.1.1/ |
 | click | 8.5.1 | BSD-3-Clause | Phụ thuộc gián tiếp | https://pypi.org/project/click/8.5.1/ |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | Phụ thuộc gián tiếp | https://pypi.org/project/cryptography/50.0.2/ |
+| duckdb | 2.0.1 | MIT | Ghi và đọc file Parquet của hồ dữ liệu | https://pypi.org/project/duckdb/2.0.1/ |
 | fastapi | 0.163.1 | MIT | Xây dựng REST API của service `core` | https://pypi.org/project/fastapi/0.163.1/ |
 | h11 | 0.16.0 | MIT | Phụ thuộc gián tiếp | https://pypi.org/project/h11/0.16.0/ |
 | idna | 3.20 | BSD-3-Clause | Phụ thuộc gián tiếp | https://pypi.org/project/idna/3.20/ |

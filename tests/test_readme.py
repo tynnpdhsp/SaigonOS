@@ -33,13 +33,16 @@ from saigonos_core.deliveries import MAX_ATTEMPTS, POLL, RETRY_DELAYS
 from saigonos_core.files import FileInfo
 from saigonos_core.forms import CHECKS, START_FORM, TASK_FORM, submitted
 from saigonos_core.kinds import KINDS
+from saigonos_core.lake import BUCKET
 from saigonos_core.manifest import (
     DESCRIPTION_LENGTH,
     MANIFEST,
     NAME_LENGTH,
+    QUALITY_RULES,
     RESERVED_NAMES,
     RESERVED_PREFIX,
     ROLE_LENGTH,
+    RULE_COLUMNS,
     SEARCH_COLUMNS,
     SEARCH_TABLES,
     TABLE_LENGTH,
@@ -401,6 +404,21 @@ def test_readme_example_and_limits_of_search_match_manifest():
     assert (
         f"Tên bảng dài tối đa {TABLE_LENGTH} ký tự. Mỗi bảng có từ 1 tới {SEARCH_COLUMNS} cột"
     ) in PROSE
+
+
+def test_readme_example_and_limits_of_lake_entries_match_manifest():
+    [block] = [block for block in JSON_BLOCKS if block.startswith('"archive"')]
+    example = json.loads("{" + block + "}")
+
+    manifest = Manifest.model_validate(MANIFEST_EXAMPLE | example)
+
+    assert [entry.model_dump(exclude_defaults=True) for entry in manifest.archive] == (
+        example["archive"]
+    )
+    assert [entry.view for entry in manifest.snapshots] == ["chot_don"]
+    assert f"tối đa {QUALITY_RULES} luật. Mỗi luật có tối đa {RULE_COLUMNS} cột" in PROSE
+    assert f"bucket `{BUCKET}` của SeaweedFS" in PROSE
+    assert f"S3_BUCKET: quarantine,clean,{BUCKET}" in COMPOSE
 
 
 def test_readme_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
