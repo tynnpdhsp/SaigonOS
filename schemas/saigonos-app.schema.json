@@ -88,6 +88,135 @@
       "title": "AccessRule",
       "type": "object"
     },
+    "ArchiveTable": {
+      "additionalProperties": false,
+      "properties": {
+        "table": {
+          "description": "Tên bảng trong schema của ứng dụng. Ví dụ: don_nghi.",
+          "maxLength": 63,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "column": {
+          "description": "Cột thời gian của dòng, có kiểu timestamptz, timestamp hoặc date. Ví dụ: tao_luc.",
+          "maxLength": 63,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "keep_days": {
+          "description": "Số ngày dòng được giữ ở bảng. Dòng cũ hơn được chuyển xuống hồ dữ liệu.",
+          "maximum": 36500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rules": {
+          "description": "Luật chất lượng mà các dòng cũ phải đạt trước khi được chuyển xuống hồ.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "not_null": "#/$defs/NotNullRule",
+                "range": "#/$defs/RangeRule",
+                "unique": "#/$defs/UniqueRule"
+              },
+              "propertyName": "rule"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NotNullRule"
+              },
+              {
+                "$ref": "#/$defs/UniqueRule"
+              },
+              {
+                "$ref": "#/$defs/RangeRule"
+              }
+            ]
+          },
+          "maxItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "table",
+        "column",
+        "keep_days"
+      ],
+      "title": "ArchiveTable",
+      "type": "object"
+    },
+    "NotNullRule": {
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "const": "not_null",
+          "description": "Các cột phải có giá trị ở mọi dòng.",
+          "type": "string"
+        },
+        "columns": {
+          "description": "Các cột không được có giá trị NULL.",
+          "items": {
+            "maxLength": 63,
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule",
+        "columns"
+      ],
+      "title": "NotNullRule",
+      "type": "object"
+    },
+    "RangeRule": {
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "const": "range",
+          "description": "Giá trị của cột phải nằm trong khoảng.",
+          "type": "string"
+        },
+        "column": {
+          "description": "Cột kiểu số cần kiểm. Dòng có cột rỗng không bị tính là vi phạm.",
+          "maxLength": 63,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Giá trị nhỏ nhất được phép."
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Giá trị lớn nhất được phép."
+        }
+      },
+      "required": [
+        "rule",
+        "column"
+      ],
+      "title": "RangeRule",
+      "type": "object"
+    },
     "Role": {
       "additionalProperties": false,
       "properties": {
@@ -137,6 +266,82 @@
         "columns"
       ],
       "title": "SearchTable",
+      "type": "object"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "view": {
+          "description": "Tên view hoặc bảng trong schema của ứng dụng. Ví dụ: chot_don.",
+          "maxLength": 63,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "column": {
+          "description": "Cột thời gian của dòng, có kiểu timestamptz, timestamp hoặc date. Lõi dùng cột này để chia các dòng theo tháng.",
+          "maxLength": 63,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "rules": {
+          "description": "Luật chất lượng mà các dòng của tháng phải đạt trước khi được chốt.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "not_null": "#/$defs/NotNullRule",
+                "range": "#/$defs/RangeRule",
+                "unique": "#/$defs/UniqueRule"
+              },
+              "propertyName": "rule"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NotNullRule"
+              },
+              {
+                "$ref": "#/$defs/UniqueRule"
+              },
+              {
+                "$ref": "#/$defs/RangeRule"
+              }
+            ]
+          },
+          "maxItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "view",
+        "column"
+      ],
+      "title": "Snapshot",
+      "type": "object"
+    },
+    "UniqueRule": {
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "const": "unique",
+          "description": "Không có hai dòng trùng mã.",
+          "type": "string"
+        },
+        "columns": {
+          "description": "Các cột tạo thành mã. Hai dòng không được trùng giá trị ở mọi cột này. Dòng có cột rỗng không được tính.",
+          "items": {
+            "maxLength": 63,
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule",
+        "columns"
+      ],
+      "title": "UniqueRule",
       "type": "object"
     }
   },
@@ -271,6 +476,22 @@
       "description": "Các bảng cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm search_<bảng> cho mỗi bảng. Hàm này tìm không phân biệt có dấu hay không dấu.",
       "items": {
         "$ref": "#/$defs/SearchTable"
+      },
+      "maxItems": 20,
+      "type": "array"
+    },
+    "archive": {
+      "description": "Các bảng có dòng cũ được chuyển xuống hồ dữ liệu. Mỗi giờ, lõi chuyển các dòng cũ hơn keep_days ngày sang file Parquet rồi xóa các dòng này khỏi bảng.",
+      "items": {
+        "$ref": "#/$defs/ArchiveTable"
+      },
+      "maxItems": 20,
+      "type": "array"
+    },
+    "snapshots": {
+      "description": "Các view hoặc bảng được chốt số liệu theo tháng. Khi một tháng kết thúc, lõi ghi các dòng của tháng đó vào một file Parquet không bị ghi đè.",
+      "items": {
+        "$ref": "#/$defs/Snapshot"
       },
       "maxItems": 20,
       "type": "array"
