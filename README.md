@@ -37,11 +37,13 @@ Lần chạy đầu tiên mất vài phút để tải các image. Hệ thống 
 
 ## Ứng dụng mẫu
 
+Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Ứng dụng nằm trong thư mục `examples` của repo. Do đó, lệnh sau được chạy trong thư mục `SaigonOS` đã clone ở trên, hoặc trong thư mục giải nén từ file release, với môi trường `saigonos` đang được kích hoạt:
+
 ```bash
 saigonos apply examples/phong-may
 ```
 
-Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học, tại http://localhost:9080/apps/phong-may/. Trang [Viết ứng dụng đầu tiên](docs/first-app.md) đi qua từng file của ứng dụng này và cách gán role cho người dùng.
+Sau khi cài đặt, ứng dụng chạy tại http://localhost:9080/apps/phong-may/. Trang [Viết ứng dụng đầu tiên](docs/first-app.md) đi qua từng file của ứng dụng này và cách gán role cho người dùng.
 
 ## Tham gia phát triển
 
