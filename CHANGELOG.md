@@ -11,6 +11,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Logo của SaigonOS trong thư mục `docs/assets/logo`, gồm logo và logo kèm chữ ở dạng SVG và PNG nhiều kích thước, cùng favicon, icon cho iPhone và ảnh xem trước khi chia sẻ link.
 
+### Thay đổi
+
+- Giao diện của ứng dụng mẫu dùng hai màu của logo. Trạng thái "Đã duyệt" có màu xanh lá, trạng thái "Sẵn sàng" có màu xanh đậm.
+
 ## [1.0.0] - 2026-11-25
 
 ### Thêm
