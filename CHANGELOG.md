@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.0.1] - 2026-11-26
+
 ### Thêm
 
 - Logo của SaigonOS trong thư mục `docs/assets/logo`, gồm logo và logo kèm chữ ở dạng SVG và PNG nhiều kích thước, cùng favicon, icon cho iPhone và ảnh xem trước khi chia sẻ link.
@@ -367,7 +369,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
 [0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0
