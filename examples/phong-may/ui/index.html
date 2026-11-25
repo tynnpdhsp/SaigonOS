@@ -1,0 +1,48 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Đặt phòng máy</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="Menu chính">
+        <div class="sidebar-name">Đặt phòng máy</div>
+        <nav class="menu" id="menu"></nav>
+      </aside>
+      <div class="backdrop" id="backdrop" hidden></div>
+      <div class="shell">
+        <header class="topbar">
+          <button type="button" class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu" aria-controls="sidebar" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          </button>
+          <span class="topbar-date" id="today"></span>
+          <div class="topbar-right" id="account" hidden>
+            <button type="button" class="icon-button" id="bell" aria-label="Thông báo" title="Thông báo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+              <span class="badge" id="bell-count" hidden></span>
+            </button>
+            <div class="user">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+              <div class="user-text">
+                <span class="user-name" id="account-name"></span>
+                <span class="user-role" id="account-roles"></span>
+              </div>
+            </div>
+            <button type="button" class="icon-button" id="logout" aria-label="Đăng xuất" title="Đăng xuất">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h5v16h-5"/><polyline points="10 8 6 12 10 16"/><line x1="6" y1="12" x2="15" y2="12"/></svg>
+            </button>
+          </div>
+        </header>
+        <main class="content" id="main">
+          <p class="muted">Đang mở trang đăng nhập…</p>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

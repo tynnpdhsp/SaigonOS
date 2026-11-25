@@ -23,6 +23,7 @@
   ],
   "database": "database",
   "processes": "processes",
+  "ui": "ui",
   "access": [
     {
       "roles": [
