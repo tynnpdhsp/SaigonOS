@@ -5,7 +5,7 @@ SaigonOS dùng Centrifugo để gửi cập nhật tức thời tới ứng dụ
 
 ## Kết nối
 
-Sau khi mở WebSocket, ứng dụng gửi access token do Keycloak cấp trong lệnh connect. Centrifugo tự kiểm tra chữ ký, issuer, thời hạn và audience `saigonos` của access token. ID token và access token không mang mã người dùng (`sub`) đều bị từ chối. Centrifugo chỉ nhận kết nối từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống. Lệnh `saigonos init` ghi địa chỉ này vào cấu hình của Centrifugo dưới dạng mẫu glob. Ví dụ, địa chỉ `http://[2001:db8::1]:9080` được ghi thành `http://\[2001:db8::1\]:9080`.
+Sau khi mở WebSocket, ứng dụng gửi access token do Keycloak cấp trong lệnh connect. Centrifugo tự kiểm tra chữ ký, issuer, thời hạn và audience `saigonos` của access token. ID token và access token không mang mã người dùng (`sub`) đều bị từ chối. Centrifugo chỉ nhận kết nối từ trang có địa chỉ trùng với địa chỉ truy cập của hệ thống.
 
 Ví dụ, với thư viện [centrifuge-js](https://github.com/centrifugal/centrifuge-js) và [keycloak-js](https://www.npmjs.com/package/keycloak-js):
 

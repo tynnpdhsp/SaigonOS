@@ -41,3 +41,18 @@ SaigonOS chia một hệ thống chuyển đổi số thành ba tầng. Tầng 1
 
 - [Lệnh saigonos](reference/cli.md)
 - [Tài liệu API](reference/api.md)
+
+## Phát triển lõi
+
+- [Kiểm thử](development/testing.md)
+- [Thư viện và image](development/dependencies.md)
+- [Cơ sở dữ liệu](development/database.md)
+- [Realm của Keycloak](development/keycloak.md)
+- [Service core](development/core.md)
+- [Operaton](development/operaton.md)
+- [Centrifugo](development/centrifugo.md)
+- [Thông báo, Telegram và email](development/notifications.md)
+- [OPA](development/opa.md)
+- [Tường lửa ứng dụng web](development/waf.md)
+- [Ứng dụng](development/apps.md)
+- [Phát hành phiên bản mới](development/release.md)

@@ -67,6 +67,7 @@ PAGES = {
     for path in [ROOT / "README.md", *sorted(DOCS.rglob("*.md"))]
 }
 TEXT = "\n".join(PAGES.values())
+GUIDES = "\n".join(text for name, text in PAGES.items() if not name.startswith("docs/development/"))
 
 
 def bash_lines(text):
@@ -81,8 +82,8 @@ def prose_of(text):
     return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
 
 
-BLOCK_LINES = bash_lines(TEXT)
-INLINE = re.findall(r"`([^`\n]+)`", TEXT)
+BLOCK_LINES = bash_lines(GUIDES)
+INLINE = re.findall(r"`([^`\n]+)`", GUIDES)
 COMMANDS = sorted({text for text in [*BLOCK_LINES, *INLINE] if text.startswith("saigonos ")})
 SAMPLES = re.findall(r"```text\n(.*?)```", TEXT, re.DOTALL)
 DOCTOR_SAMPLE = next(sample for sample in SAMPLES if sample.startswith("BÌNH THƯỜNG    apisix"))
