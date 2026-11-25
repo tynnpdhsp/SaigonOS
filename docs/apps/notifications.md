@@ -84,35 +84,7 @@ PERFORM core.notify(
 );
 ```
 
-Để bật Telegram:
-
-1. Tạo bot bằng [BotFather](https://t.me/BotFather) với lệnh `/newbot`. BotFather trả về token của bot, có dạng `123456789:AA...`.
-2. Thêm bot vào nhóm nhận thông báo. Sau đó, gửi lệnh `/start@<tên bot>` trong nhóm. Khi nhóm có chủ đề (topic), gửi lệnh này trong chủ đề cần nhận tin.
-3. Mở địa chỉ `https://api.telegram.org/bot<token>/getUpdates` bằng trình duyệt. Mã nhóm là giá trị `chat.id`, ví dụ `-1001234567890`. Mã chủ đề là giá trị `message_thread_id`. Telegram chỉ giữ các giá trị này trong 24 giờ.
-4. Thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`.
-
-```
-TELEGRAM_BOT_TOKEN=123456789:AA...
-TELEGRAM_CHAT_ID=-1001234567890
-TELEGRAM_TOPIC_ID=2
-```
-
-Khi bật chủ đề cho nhóm, Telegram chuyển nhóm thành supergroup và mã nhóm thay đổi. Do đó, lấy mã nhóm sau khi bật chủ đề. Các giá trị Telegram trong file `.env` như sau:
-
-| Giá trị | Ý nghĩa |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Token của bot |
-| `TELEGRAM_CHAT_ID` | Mã nhóm, hoặc tên công khai của nhóm dạng `@ten_nhom` |
-| `TELEGRAM_TOPIC_ID` | Mã chủ đề. Khi bỏ trống, tin được gửi vào nhóm, hoặc vào chủ đề General khi nhóm có chủ đề |
-| `TELEGRAM_API_URL` | Địa chỉ của Bot API, mặc định là `https://api.telegram.org`. Chỉ đổi giá trị này khi dùng Bot API server riêng |
-
-Để thử cấu hình, chạy lệnh sau trong thư mục làm việc. Nhóm nhận tin sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-telegram-2`.
-
-```bash
-docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.notify('kiem-tra', 'kiem-tra-telegram-1', 'Tin thử của SaigonOS', telegram => true)"
-```
-
-Trạng thái của tin, cách xử lý lỗi và cách gửi lại được trình bày ở mục [Hàng đợi gửi tin](../admin/notifications.md#hàng-đợi-gửi-tin).
+Cách bật Telegram, trạng thái của tin và cách gửi lại được trình bày ở trang [Telegram và email](../admin/notifications.md).
 
 ## Gửi email
 
@@ -150,34 +122,7 @@ Email được ghi trong cùng transaction với dữ liệu. Khi transaction b�
 
 Email chỉ có phần văn bản thuần. Phần này gồm nội dung, hoặc tiêu đề khi không có nội dung, rồi tới địa chỉ đầy đủ của đường dẫn. Email có header `Auto-Submitted: auto-generated`, nên chức năng trả lời tự động của hộp thư người nhận không trả lời email này.
 
-Để bật email, thêm các dòng sau vào file `.env` trong thư mục làm việc, rồi chạy `saigonos up`. Ví dụ với Gmail:
-
-```
-SMTP_HOST=smtp.gmail.com
-SMTP_USERNAME=thong-bao@gmail.com
-SMTP_PASSWORD=abcdefghijklmnop
-SMTP_FROM=thong-bao@gmail.com
-SMTP_FROM_NAME=Phòng Kỹ thuật
-```
-
-Gmail không nhận mật khẩu đăng nhập thường của tài khoản. Tài khoản cần bật xác minh 2 bước, rồi tạo mật khẩu ứng dụng tại trang [Mật khẩu ứng dụng](https://myaccount.google.com/apppasswords). Mật khẩu ứng dụng gồm 16 chữ cái, được viết liền, không có khoảng trắng. Các giá trị SMTP trong file `.env` như sau:
-
-| Giá trị | Ý nghĩa |
-|---|---|
-| `SMTP_HOST` | Tên hoặc địa chỉ IP của máy chủ SMTP |
-| `SMTP_PORT` | Cổng của máy chủ SMTP. Mặc định là 587, hoặc 465 khi `SMTP_SECURITY` là `tls`, hoặc 25 khi `SMTP_SECURITY` là `none` |
-| `SMTP_SECURITY` | Cách mã hóa kết nối. Giá trị `starttls` mã hóa kết nối bằng lệnh STARTTLS. Giá trị `tls` mã hóa ngay từ đầu kết nối. Giá trị `none` không mã hóa và không cho dùng mật khẩu, chỉ dùng với máy chủ SMTP trong mạng nội bộ. Mặc định là `tls` khi `SMTP_PORT` là 465, và `starttls` với các cổng khác |
-| `SMTP_USERNAME`, `SMTP_PASSWORD` | Tài khoản đăng nhập máy chủ SMTP. Bỏ trống hai giá trị này khi máy chủ không yêu cầu đăng nhập |
-| `SMTP_FROM` | Địa chỉ gửi. Với Gmail, đây là địa chỉ của tài khoản |
-| `SMTP_FROM_NAME` | Tên người gửi hiện trong hộp thư của người nhận. Giá trị này có thể bỏ trống |
-
-Service `core` luôn kiểm tra chứng chỉ của máy chủ SMTP. Khi `SMTP_SECURITY` là `starttls` mà máy chủ không hỗ trợ STARTTLS, email không được gửi. Do đó, mật khẩu không được gửi qua kết nối chưa mã hóa. Khi một giá trị trong file `.env` có dấu `$`, giá trị đó được đặt trong cặp dấu nháy đơn, ví dụ `SMTP_PASSWORD='ab$cd'`.
-
-Để thử cấu hình, chạy lệnh sau trong thư mục làm việc, với `<địa chỉ>` là một địa chỉ email của bạn. Email tới sau vài giây. Mỗi lần thử cần một khóa chống trùng mới, ví dụ `kiem-tra-email-2`.
-
-```bash
-docker compose exec postgres psql -U postgres -d saigonos -c "SET ROLE workflow; SELECT core.send_email('<địa chỉ>', 'kiem-tra-email-1', 'Email thử của SaigonOS')"
-```
+Cách bật email được trình bày ở trang [Telegram và email](../admin/notifications.md#email).
 
 ## Thông báo và kênh của ứng dụng
 

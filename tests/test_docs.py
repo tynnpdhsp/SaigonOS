@@ -382,15 +382,13 @@ def test_docs_lists_every_delivery_status():
 
 
 def test_docs_lists_every_telegram_setting():
-    rows = re.findall(
-        r"^\| `(TELEGRAM_[A-Z_]+)` \|", section("Gửi thông báo qua Telegram"), re.MULTILINE
-    )
+    rows = re.findall(r"^\| `(TELEGRAM_[A-Z_]+)` \|", section("Telegram"), re.MULTILINE)
 
     assert sorted(rows) == sorted(re.findall(r"\$\{(TELEGRAM_[A-Z_]+):-", COMPOSE))
 
 
 def test_docs_lists_every_smtp_setting():
-    cells = re.findall(r"^\| (`SMTP_[^|]*) \|", section("Gửi email"), re.MULTILINE)
+    cells = re.findall(r"^\| (`SMTP_[^|]*) \|", section("Email"), re.MULTILINE)
     names = re.findall(r"`(SMTP_[A-Z_]+)`", " ".join(cells))
 
     assert sorted(names) == sorted(re.findall(r"\$\{(SMTP_[A-Z_]+):-", COMPOSE))
