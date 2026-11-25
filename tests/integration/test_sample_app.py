@@ -160,7 +160,9 @@ def sql_error(stack, query):
 
 @pytest.fixture(scope="module")
 def sample(stack):
+    begin = time.monotonic()
     result = stack.saigonos("apply", str(EXAMPLE))
+    seconds = time.monotonic() - begin
     assert result.returncode == 0, result.stdout + result.stderr
     people = SimpleNamespace(
         teacher=stack.new_user(role=TEACHER),
@@ -170,12 +172,17 @@ def sample(stack):
         student=stack.new_user(role=STUDENT),
         nobody=stack.new_user(),
         output=result.stdout,
+        seconds=seconds,
     )
     wait_for(lambda: api(stack, people.student, "GET", "phong").status == 200, "Chưa có API")
     for user in (people.teacher, people.other_teacher, people.manager, people.staff):
         reply = api(stack, user, "POST", "rpc/cap_nhat_nguoi_dung", {})
         assert reply.status == 204, reply.body
     return people
+
+
+def test_sample_app_is_installed_into_running_system_within_30_seconds(sample):
+    assert sample.seconds < 30
 
 
 def test_install_creates_every_part_of_sample_app(stack, sample):
@@ -404,3 +411,19 @@ def test_page_and_calls_of_page_pass_the_firewall(stack, sample):
         assert reply.status == 200, (target, reply.body)
     status, notifications = core(stack, sample.teacher, "GET", "notifications?limit=50")
     assert status == 200, notifications
+
+
+def test_removed_sample_app_leaves_rest_running_and_keeps_its_bookings(stack, sample):
+    bookings = stack.sql("SELECT count(*) FROM phong_may.don")
+
+    removed = stack.saigonos("remove", APP)
+    page = stack.call("GET", f"{stack.url}/apps/{APP}/")
+    doctor = stack.saigonos("doctor")
+    again = stack.saigonos("apply", str(EXAMPLE))
+
+    assert removed.returncode == 0, removed.stdout + removed.stderr
+    assert page.status == 404, page.body
+    assert doctor.returncode == 0, doctor.stdout + doctor.stderr
+    assert again.returncode == 0, again.stdout + again.stderr
+    wait_for(lambda: api(stack, sample.student, "GET", "phong").status == 200, "Chưa có API")
+    assert stack.sql("SELECT count(*) FROM phong_may.don") == bookings
