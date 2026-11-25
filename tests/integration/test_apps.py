@@ -16,7 +16,7 @@ pytestmark = pytest.mark.integration
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_FILE = ROOT / "schemas" / "saigonos-app.schema.json"
-README = (ROOT / "README.md").read_text(encoding="utf-8")
+DOCS = "\n".join(page.read_text(encoding="utf-8") for page in sorted((ROOT / "docs").rglob("*.md")))
 MANIFEST = {
     "name": "nghi-phep",
     "title": "Nghỉ phép",
@@ -1605,12 +1605,12 @@ def test_ui_of_app_not_installed_is_not_found(stack):
 
 
 def readme_block(language, marker):
-    blocks = re.findall(rf"```{language}\n(.*?)```", README, re.DOTALL)
+    blocks = re.findall(rf"```{language}\n(.*?)```", DOCS, re.DOTALL)
     return next(block for block in blocks if marker in block)
 
 
 def test_readme_example_app_is_plugged_and_runs_its_process(stack, tmp_path):
-    manifest = json.loads(readme_block("json", '"roles"')) | {"ui": None}
+    manifest = json.loads(readme_block("json", '"$schema"')) | {"ui": None}
     app = tmp_path / manifest["name"]
     files = {
         "database/0001_don.sql": readme_block("sql", "CREATE TABLE don"),
