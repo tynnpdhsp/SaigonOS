@@ -7,6 +7,10 @@ Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi 
 
 ## Thành phần
 
+![Sơ đồ kiến trúc của SaigonOS](docs/assets/architecture.svg)
+
+Caddy chỉ chạy khi triển khai lên [máy chủ chưa có reverse proxy](docs/admin/deploy.md#máy-chủ-chưa-có-reverse-proxy). Các service trong vùng MONITORING chỉ chạy khi [bật giám sát](docs/admin/monitoring.md#bật-giám-sát).
+
 | Chức năng | Phần mềm |
 |---|---|
 | Đăng nhập một lần (Identity/SSO), mã OTP | Keycloak |
