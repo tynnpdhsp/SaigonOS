@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tynnpdhsp/SaigonOS/main/schemas/saigonos-app.schema.json",
+  "name": "phong-may",
+  "title": "Đặt phòng máy",
+  "version": "0.1.0",
+  "roles": [
+    {
+      "name": "phong-may.giao-vien",
+      "description": "Giáo viên, giảng viên. Gửi đơn đặt phòng và xem đơn của mình"
+    },
+    {
+      "name": "phong-may.phu-trach",
+      "description": "Phụ trách phòng. Duyệt đơn, xem mọi đơn và sửa số máy của phòng"
+    },
+    {
+      "name": "phong-may.chuyen-vien",
+      "description": "Chuyên viên. Chuẩn bị phòng cho đơn đã duyệt"
+    },
+    {
+      "name": "phong-may.hoc-sinh",
+      "description": "Học sinh, sinh viên. Xem lịch phòng đã duyệt"
+    }
+  ],
+  "database": "database",
+  "processes": "processes",
+  "ui": "ui",
+  "access": [
+    {
+      "roles": [
+        "phong-may.giao-vien",
+        "phong-may.phu-trach",
+        "phong-may.chuyen-vien",
+        "phong-may.hoc-sinh"
+      ]
+    },
+    {
+      "methods": ["POST", "PATCH", "PUT", "DELETE"],
+      "roles": ["phong-may.giao-vien", "phong-may.phu-trach", "phong-may.chuyen-vien"]
+    },
+    {
+      "methods": ["PATCH"],
+      "paths": ["/phong"],
+      "roles": ["phong-may.phu-trach"]
+    }
+  ]
+}

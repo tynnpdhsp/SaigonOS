@@ -129,6 +129,28 @@ def test_waf_removes_only_rule_against_address_as_host_after_loading_crs():
     assert DIRECTIVES.index(removed[0]) > DIRECTIVES.index("Include @owasp_crs/*.conf")
 
 
+def test_waf_skips_crs_rules_only_for_issuer_of_system_before_loading_crs():
+    [exclusion] = [line for line in DIRECTIVES if "ARGS_GET:iss" in line]
+
+    assert exclusion == (
+        'SecRule ARGS_GET:iss "@streq ${SAIGONOS_WAF_ISSUER}" '
+        '"id:1001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS_GET:iss"'
+    )
+    assert DIRECTIVES.index(exclusion) < DIRECTIVES.index("Include @owasp_crs/*.conf")
+
+
+def test_routes_service_fills_issuer_of_system_into_waf_rule():
+    loader = (APISIX / "load-routes.lua").read_text(encoding="utf-8")
+    routes = COMPOSE.split("\n  routes:\n", 1)[1].split("\n\n", 1)[0]
+
+    assert "SAIGONOS_URL: ${SAIGONOS_URL:?}" in routes
+    assert (
+        'SAIGONOS_WAF_ISSUER = (os.getenv("SAIGONOS_URL") or "") .. "/auth/realms/saigonos"'
+        in loader
+    )
+    assert '"%${(SAIGONOS_WAF_[A-Z]+)}", values' in loader
+
+
 def test_coraza_and_plugin_share_one_body_limit():
     limit = int(re.search(r"local LIMIT = (\d+)", PLUGIN)[1])
 

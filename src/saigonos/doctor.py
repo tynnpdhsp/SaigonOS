@@ -30,6 +30,7 @@ REALTIME_PATH = "/realtime/connection/websocket"
 REALTIME_API_PATH = "/realtime/api"
 WAF_PROBE_PATH = "/api/?kiem_tra=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
 WAF_CODE = "SGN04"
+APP_RULES_CODE = "SGN03"
 WAF_NAME = "Tường lửa"
 WAF_MODES = ("block", "detect")
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -355,14 +356,26 @@ def monitoring_check(home: Path, url: str, certificate: str | None) -> Check:
     )
 
 
-def app_state(name: str, api: int, page: int | None) -> tuple[bool, str]:
+def error_code(body: bytes) -> str | None:
+    try:
+        code = json.loads(body).get("code")
+    except (ValueError, AttributeError):
+        return None
+    return code if isinstance(code, str) else None
+
+
+def app_state(name: str, api: int, page: int | None, code: str | None = None) -> tuple[bool, str]:
     api_path, page_path = f"/apps/{name}/api/", f"/apps/{name}/"
-    if api != 200:
+    guarded = api in (401, 403) and code == APP_RULES_CODE
+    if api != 200 and not guarded:
         return False, f"lời gọi {api_path} nhận mã {api}, đúng ra là 200"
+    if page is not None and page != 200:
+        return False, f"lời gọi {page_path} nhận mã {page}, đúng ra là 200"
+    if guarded:
+        where = page_path if page is not None else api_path
+        return True, f"ứng dụng trả lời tại {where}, API đòi đăng nhập theo luật truy cập"
     if page is None:
         return True, f"API của ứng dụng trả lời tại {api_path}"
-    if page != 200:
-        return False, f"lời gọi {page_path} nhận mã {page}, đúng ra là 200"
     return True, f"API và giao diện của ứng dụng trả lời tại {page_path}"
 
 
@@ -376,14 +389,15 @@ def app_checks(home: Path, url: str, certificate: str | None = None) -> list[Che
             checks.append(Check(name, False, "không đọc được bản khai trong thư mục apps"))
             continue
         try:
-            api = fetch(f"{url}/apps/{folder.name}/api/", certificate).status
+            reply = fetch(f"{url}/apps/{folder.name}/api/", certificate)
             page = None
             if manifest.get("ui"):
                 page = fetch(f"{url}/apps/{folder.name}/", certificate).status
         except (OSError, HTTPException) as error:
             checks.append(Check(name, False, f"không kết nối được tới {url}: {error}"))
             continue
-        checks.append(Check(name, *app_state(folder.name, api, page)))
+        code = error_code(reply.body)
+        checks.append(Check(name, *app_state(folder.name, reply.status, page, code)))
     return checks
 
 

@@ -19,7 +19,11 @@ local mode = os.getenv("SAIGONOS_WAF_MODE") or ""
 if not engines[mode] then
     fail("Giá trị SAIGONOS_WAF_MODE không hợp lệ: '" .. mode .. "'. Chỉ dùng block hoặc detect.")
 end
-local values = {SAIGONOS_WAF_MODE = mode, SAIGONOS_WAF_ENGINE = engines[mode]}
+local values = {
+    SAIGONOS_WAF_MODE = mode,
+    SAIGONOS_WAF_ENGINE = engines[mode],
+    SAIGONOS_WAF_ISSUER = (os.getenv("SAIGONOS_URL") or "") .. "/auth/realms/saigonos",
+}
 
 local profiles = {}
 for profile in (os.getenv("SAIGONOS_PROFILES") or ""):gmatch("[^,%s]+") do

@@ -508,6 +508,9 @@ def test_doctor_reports_api_of_centrifugo_open_through_gateway(home, cli, docker
     )
 
 
+GUARDED = "ứng dụng trả lời tại {path}, API đòi đăng nhập theo luật truy cập"
+
+
 def installed(home, name, ui=False):
     folder = home / "apps" / name
     folder.mkdir(parents=True)
@@ -551,17 +554,44 @@ def test_doctor_reports_app_that_does_not_answer(home, cli, docker, gateway):
 
 
 @pytest.mark.parametrize(
-    ("api", "page", "ok", "detail"),
+    ("api", "code", "page", "ok", "detail"),
     [
-        (404, None, False, "lời gọi /apps/x/api/ nhận mã 404, đúng ra là 200"),
-        (406, 200, False, "lời gọi /apps/x/api/ nhận mã 406, đúng ra là 200"),
-        (200, None, True, "API của ứng dụng trả lời tại /apps/x/api/"),
-        (200, 500, False, "lời gọi /apps/x/ nhận mã 500, đúng ra là 200"),
+        (404, None, None, False, "lời gọi /apps/x/api/ nhận mã 404, đúng ra là 200"),
+        (406, None, 200, False, "lời gọi /apps/x/api/ nhận mã 406, đúng ra là 200"),
+        (200, None, None, True, "API của ứng dụng trả lời tại /apps/x/api/"),
+        (200, None, 500, False, "lời gọi /apps/x/ nhận mã 500, đúng ra là 200"),
+        (401, "SGN03", None, True, GUARDED.format(path="/apps/x/api/")),
+        (403, "SGN03", 200, True, GUARDED.format(path="/apps/x/")),
+        (401, "SGN03", 404, False, "lời gọi /apps/x/ nhận mã 404, đúng ra là 200"),
+        (401, None, None, False, "lời gọi /apps/x/api/ nhận mã 401, đúng ra là 200"),
+        (503, "SGN03", None, False, "lời gọi /apps/x/api/ nhận mã 503, đúng ra là 200"),
     ],
-    ids=["khong-co-route", "schema-chua-mo", "khong-giao-dien", "giao-dien-loi"],
+    ids=[
+        "khong-co-route",
+        "schema-chua-mo",
+        "khong-giao-dien",
+        "giao-dien-loi",
+        "luat-doi-dang-nhap",
+        "luat-chan-dai-mang",
+        "luat-doi-dang-nhap-giao-dien-loi",
+        "401-khong-phai-cua-luat",
+        "opa-dung",
+    ],
 )
-def test_app_state_names_failing_call(api, page, ok, detail):
-    assert app_state("x", api, page) == (ok, detail)
+def test_app_state_names_failing_call(api, code, page, ok, detail):
+    assert app_state("x", api, page, code) == (ok, detail)
+
+
+def test_doctor_accepts_app_whose_access_rules_require_login(home, cli, docker, gateway):
+    docker.services(SERVICES, HEALTHY)
+    installed(home, "phong-may", ui=True)
+    gateway.routes["/apps/phong-may/api/", False] = (401, b'{"code": "SGN03"}')
+    gateway.routes["/apps/phong-may/", False] = (200, b"<html>")
+
+    result = cli("doctor", "--home", home)
+
+    assert result.exit_code == 0, result.output
+    assert f"Ứng dụng phong-may    {GUARDED.format(path='/apps/phong-may/')}" in result.output
 
 
 def test_doctor_reports_unreachable_gateway_for_apps(tmp_path, cli, docker, closed_url):

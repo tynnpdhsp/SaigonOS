@@ -179,6 +179,7 @@ services:
     environment:
       APISIX_ADMIN_URL: http://apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
+      SAIGONOS_URL: ${SAIGONOS_URL:?}
       SAIGONOS_WAF_MODE: ${SAIGONOS_WAF_MODE:-block}
       SAIGONOS_PROFILES: ${COMPOSE_PROFILES:-}
     volumes:
