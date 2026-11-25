@@ -27,8 +27,8 @@ Mã của ứng dụng dùng được các hàm sau của lõi:
 | `core.claims()` | Toàn bộ claims của access token, kiểu `jsonb` |
 | `core.audit()` | Hàm trigger ghi [audit log](../admin/audit-log.md) cho bảng |
 | `core.append_only()` | Hàm trigger chặn sửa và xóa dòng của bảng |
-| `core.notify`, `core.send_email` | Gửi thông báo và email, như trang [Thông báo](notifications.md) |
-| `core.publish` | Gửi tin tới một kênh, như trang [Cập nhật tức thời](realtime.md#gửi-tin-từ-cơ-sở-dữ-liệu) |
+| `core.notify`, `core.send_email` | Gửi thông báo và email, như ở trang [Thông báo](notifications.md) |
+| `core.publish` | Gửi tin tới một kênh, như ở trang [Cập nhật tức thời](realtime.md#gửi-tin-từ-cơ-sở-dữ-liệu) |
 
 Bốn hàm đầu chỉ đọc claims do PostgREST hoặc service `core` đặt cho lời gọi. Khi mã của ứng dụng đổi `request.jwt.claims`, các hàm này trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác.
 

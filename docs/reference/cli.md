@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Lệnh saigonos
 
-Lệnh `saigonos` có trong môi trường đã cài package `saigonos`, như trang [Cài đặt](../install.md). Bảng sau liệt kê các lệnh con của lệnh `saigonos`. Mọi lệnh con làm việc với thư mục làm việc `~/saigonos`. Tùy chọn `--home` hoặc biến môi trường `SAIGONOS_HOME` chọn thư mục khác. Tùy chọn `--help` của mỗi lệnh in đủ các tùy chọn của lệnh đó.
+Lệnh `saigonos` có trong môi trường đã cài package `saigonos`, như ở trang [Cài đặt](../install.md). Bảng sau liệt kê các lệnh con của lệnh `saigonos`. Mọi lệnh con làm việc với thư mục làm việc `~/saigonos`. Tùy chọn `--home` hoặc biến môi trường `SAIGONOS_HOME` chọn thư mục khác. Tùy chọn `--help` của mỗi lệnh in đủ các tùy chọn của lệnh đó.
 
 | Lệnh | Việc | Tài liệu |
 |---|---|---|

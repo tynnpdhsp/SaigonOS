@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Luật truy cập
 
-API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục [`config/opa`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/opa) của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai, như trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
+API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục [`config/opa`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/opa) của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai, như ở trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
 
 ## Trang quản trị
 
@@ -20,7 +20,7 @@ SAIGONOS_ADMIN_NETWORKS=192.168.1.0/24,203.0.113.7/32
 
 Mỗi dải mạng viết theo dạng CIDR, cho cả IPv4 và IPv6. Các dải cách nhau bằng dấu phẩy. Một địa chỉ IP riêng lẻ có thêm `/32`, hoặc `/128` với IPv6. Khi có dải không hợp lệ, lệnh `saigonos up` báo lỗi ở service `policies`, và các route quản trị bị từ chối cho tới khi sửa xong.
 
-Giới hạn theo dải mạng có hiệu lực chắc chắn với người gọi từ Internet và người gọi qua reverse proxy. Một máy trong mạng nội bộ gọi thẳng vào cổng của API Gateway có thể khai báo địa chỉ IP khác, như trang [Cấu hình](configuration.md).
+Giới hạn theo dải mạng có hiệu lực chắc chắn với người gọi từ Internet và người gọi qua reverse proxy. Một máy trong mạng nội bộ gọi thẳng vào cổng của API Gateway có thể khai báo địa chỉ IP khác, như ở trang [Cấu hình](configuration.md).
 
 ## Thêm luật
 

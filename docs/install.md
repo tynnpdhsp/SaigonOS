@@ -34,6 +34,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## Các bước cài đặt
 
+Việc cài đặt chỉ cần pip và Docker Compose. Mọi cấu hình đều có giá trị mặc định. Do đó, không cần sửa file cấu hình nào.
+
 ### 1. Cài đặt package `saigonos`
 
 Package nên được cài trong một môi trường conda riêng. Máy chưa có conda thì cài Miniforge trước:

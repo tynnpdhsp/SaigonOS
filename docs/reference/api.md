@@ -6,7 +6,7 @@ Các API của lõi đều nằm sau API Gateway. Lời gọi cần đăng nhậ
 | Địa chỉ | API | Tài liệu |
 |---|---|---|
 | `/api/` | REST API của PostgREST cho schema `api` của lõi | OpenAPI 2.0 ở chính địa chỉ này |
-| `/apps/<tên ứng dụng>/api/` | REST API của PostgREST cho schema của từng ứng dụng | OpenAPI 2.0 ở chính địa chỉ này, như trang [Dữ liệu và API](../apps/database.md) |
+| `/apps/<tên ứng dụng>/api/` | REST API của PostgREST cho schema của từng ứng dụng | OpenAPI 2.0 ở chính địa chỉ này, như ở trang [Dữ liệu và API](../apps/database.md) |
 | `/core/` | API của service `core` cho [file](../apps/files.md), [quy trình](../apps/workflow.md), [thông báo](../apps/notifications.md) và token kênh của [cập nhật tức thời](../apps/realtime.md) | OpenAPI 3.1 ở địa chỉ `/core/openapi.json` |
 | `/realtime/connection/websocket` | WebSocket của Centrifugo | Trang [Cập nhật tức thời](../apps/realtime.md) |
 
@@ -27,6 +27,6 @@ Lỗi riêng của lõi có dạng lỗi của PostgREST, với mã bắt đầu
 | Mã | Mã HTTP | Ý nghĩa |
 |---|---|---|
 | `SGN01` | 401 | Token không phải access token, ví dụ ID token |
-| `SGN02` | 403 | Access token không do client của ứng dụng cấp, như trang [Dữ liệu và API](../apps/database.md#gọi-api-của-ứng-dụng) |
+| `SGN02` | 403 | Access token không do client của ứng dụng cấp, như ở trang [Dữ liệu và API](../apps/database.md#gọi-api-của-ứng-dụng) |
 | `SGN03` | 401, 403 | Lời gọi không đạt [luật truy cập của ứng dụng](../apps/access-rules.md) |
 | `SGN04` | 403, 413 | [Tường lửa ứng dụng web](../admin/waf.md) chặn lời gọi |

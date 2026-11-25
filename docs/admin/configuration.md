@@ -14,7 +14,7 @@ Cấu hình được đặt bằng các tùy chọn của lệnh `saigonos init`
 | `--centrifugo-port` | `9480` | Cổng API của server và Admin web của Centrifugo |
 | `--url` | `http://localhost:9080` | Địa chỉ mà người dùng truy cập hệ thống |
 | `--max-file-size` | `10` | Dung lượng tối đa của một file tải lên, tính bằng MB, từ 1 đến 100. API Gateway từ chối lời gọi có nội dung lớn hơn |
-| `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy, như trang [Triển khai lên máy chủ](deploy.md) |
+| `--caddy`, `--no-caddy` | Tắt | Bật hoặc tắt Caddy, như ở trang [Triển khai lên máy chủ](deploy.md) |
 | `--monitoring`, `--no-monitoring` | Tắt | Bật hoặc tắt [giám sát](monitoring.md) |
 
 Bốn cổng quản trị của APISIX, Keycloak, SeaweedFS và Centrifugo chỉ mở trên địa chỉ `127.0.0.1`. Cổng HTTP không được trùng các cổng 7085, 9090, 9091, 9180 và 9443. APISIX dùng các cổng này bên trong container.

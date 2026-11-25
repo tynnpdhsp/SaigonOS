@@ -30,13 +30,13 @@ Ví dụ bản khai của một ứng dụng đặt phòng máy có hai role:
 | `title` | Có | Tên hiển thị của ứng dụng |
 | `version` | Có | Phiên bản của ứng dụng theo [Semantic Versioning](https://semver.org/lang/vi/), ví dụ `1.2.0` |
 | `roles` | Có | Danh sách realm role của ứng dụng, có ít nhất một role. Mỗi role gồm tên `name` và mô tả `description` |
-| `database` | Không | Thư mục chứa file SQL, có ít nhất một file `.sql`, như trang [Dữ liệu và API](database.md) |
-| `processes` | Không | Thư mục chứa file BPMN, có ít nhất một file `.bpmn`, như trang [Quy trình](workflow.md) |
-| `ui` | Không | Thư mục chứa giao diện, có file `index.html`, như trang [Giao diện](ui.md) |
-| `access` | Không | Danh sách luật truy cập API của ứng dụng, tối đa 20 luật, như trang [Luật truy cập của ứng dụng](access-rules.md) |
-| `search` | Không | Danh sách bảng cần tìm kiếm toàn văn, tối đa 20 bảng, như trang [Tìm kiếm](search.md) |
-| `archive` | Không | Danh sách bảng có dòng cũ được chuyển xuống hồ dữ liệu, tối đa 20 bảng, như trang [Lưu trữ và chốt số liệu](archive.md) |
-| `snapshots` | Không | Danh sách view hoặc bảng được chốt số liệu theo tháng, tối đa 20 mục, như trang [Lưu trữ và chốt số liệu](archive.md) |
+| `database` | Không | Thư mục chứa file SQL, có ít nhất một file `.sql`, như ở trang [Dữ liệu và API](database.md) |
+| `processes` | Không | Thư mục chứa file BPMN, có ít nhất một file `.bpmn`, như ở trang [Quy trình](workflow.md) |
+| `ui` | Không | Thư mục chứa giao diện, có file `index.html`, như ở trang [Giao diện](ui.md) |
+| `access` | Không | Danh sách luật truy cập API của ứng dụng, tối đa 20 luật, như ở trang [Luật truy cập của ứng dụng](access-rules.md) |
+| `search` | Không | Danh sách bảng cần tìm kiếm toàn văn, tối đa 20 bảng, như ở trang [Tìm kiếm](search.md) |
+| `archive` | Không | Danh sách bảng có dòng cũ được chuyển xuống hồ dữ liệu, tối đa 20 bảng, như ở trang [Lưu trữ và chốt số liệu](archive.md) |
+| `snapshots` | Không | Danh sách view hoặc bảng được chốt số liệu theo tháng, tối đa 20 mục, như ở trang [Lưu trữ và chốt số liệu](archive.md) |
 
 Bản khai tuân theo các quy tắc sau:
 

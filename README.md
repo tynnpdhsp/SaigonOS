@@ -3,7 +3,7 @@
 
 SaigonOS là phần lõi nguồn mở của một hệ điều hành chuyển đổi số (DX-OS). Lõi cung cấp sẵn đăng nhập một lần, API Gateway, dữ liệu, kho file và quy trình. Lõi không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ viết phần nghiệp vụ và giao diện, rồi được cài đặt vào lõi bằng một lệnh.
 
-Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi phiên bản có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases), các thay đổi được ghi trong [CHANGELOG.md](CHANGELOG.md).
+Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi phiên bản có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Các thay đổi được ghi trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Thành phần
 
@@ -20,7 +20,7 @@ Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi 
 
 ## Cài đặt
 
-Cần Linux, Python 3.11 trở lên, Docker Engine 25.0 trở lên có Docker Compose, Git và 4 GB RAM. Máy chưa có conda thì cài Miniforge như trang [Cài đặt](docs/install.md).
+Cần Linux, Python 3.11 trở lên, Docker Engine 25.0 trở lên có Docker Compose, Git và 4 GB RAM. Máy chưa có conda thì cài Miniforge như ở trang [Cài đặt](docs/install.md).
 
 ```bash
 conda create -n saigonos python=3.12
@@ -43,7 +43,7 @@ Lần chạy đầu tiên mất vài phút để tải các image. Hệ thống 
 saigonos apply examples/phong-may
 ```
 
-Sau khi cài đặt, ứng dụng chạy tại http://localhost:9080/apps/phong-may/. Trang [Viết ứng dụng đầu tiên](docs/first-app.md) đi qua từng file của ứng dụng này và cách gán role cho người dùng.
+Sau khi cài đặt, ứng dụng chạy tại http://localhost:9080/apps/phong-may/. Trang [Viết ứng dụng đầu tiên](docs/first-app.md) giải thích từng file của ứng dụng này và cách gán role cho người dùng.
 
 ## Tham gia phát triển
 

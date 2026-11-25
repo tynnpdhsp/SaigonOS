@@ -52,7 +52,7 @@ Lời gọi `POST /core/notifications/{id}/read` đánh dấu một thông báo 
 
 ## Nhận thông báo mới
 
-Thông báo do mã của ứng dụng gửi được đưa tới kênh `user:<tên ứng dụng>.<sub>` của người nhận, ví dụ `user:phong-may.<sub>`. Tin của kênh có dạng `{"notification": {...}}`, với các trường như mục [Đọc thông báo](#đọc-thông-báo). Kênh này cần token kênh như trang [Cập nhật tức thời](realtime.md#nghe-kênh), và chỉ giao diện của chính ứng dụng lấy được token này. Ví dụ, với `showNotification` là hàm của ứng dụng:
+Thông báo do mã của ứng dụng gửi được đưa tới kênh `user:<tên ứng dụng>.<sub>` của người nhận, ví dụ `user:phong-may.<sub>`. Tin của kênh có dạng `{"notification": {...}}`, với các trường như mục [Đọc thông báo](#đọc-thông-báo). Kênh này cần token kênh như ở trang [Cập nhật tức thời](realtime.md#nghe-kênh), và chỉ giao diện của chính ứng dụng lấy được token này. Ví dụ, với `showNotification` là hàm của ứng dụng:
 
 ```js
 const channel = `user:phong-may.${keycloak.subject}`;

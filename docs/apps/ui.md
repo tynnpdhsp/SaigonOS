@@ -11,4 +11,4 @@ Các quy tắc sau áp dụng cho giao diện:
 - File và thư mục có tên bắt đầu bằng dấu chấm, symlink và địa chỉ có `..` không được phục vụ.
 - Ứng dụng chưa cài đặt nhận mã 404, kể cả khi thư mục đã được chép vào thư mục `apps`.
 
-Giao diện không cần đăng nhập để tải về. Dữ liệu được lấy qua API của ứng dụng bằng access token, như trang [Đăng nhập](login.md) và [Dữ liệu và API](database.md).
+Giao diện không cần đăng nhập để tải về. Dữ liệu được lấy qua API của ứng dụng bằng access token, như ở trang [Đăng nhập](login.md) và [Dữ liệu và API](database.md).
