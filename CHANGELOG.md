@@ -17,6 +17,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Giao diện của ứng dụng mẫu dùng hai màu của logo. Trạng thái "Đã duyệt" có màu xanh lá, trạng thái "Sẵn sàng" có màu xanh đậm.
 
+### Sửa
+
+- Bảng Thành phần trong README ghi đủ các service có trên sơ đồ kiến trúc, thêm Caddy, etcd, Core API, Alloy, Exporter và Socket Proxy. Dòng Centrifugo không còn ghi việc gửi thông báo qua Telegram và email, vì Core API mới là service gửi các thông báo này.
+
 ## [1.0.0] - 2026-11-25
 
 ### Thêm

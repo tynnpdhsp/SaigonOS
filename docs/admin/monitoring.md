@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Giám sát
 
-Giám sát gồm Prometheus, Loki, Grafana và Grafana Alloy. Prometheus thu metrics của các service. Alloy đọc log của mọi container rồi gửi tới Loki. Grafana hiển thị metrics và log. Giám sát mặc định tắt.
+Giám sát gồm Prometheus, Loki, Grafana, Grafana Alloy, service `exporter` và service `socket-proxy`. Prometheus thu metrics của các service. Service `exporter` cung cấp metrics về trạng thái, RAM và CPU của các container. Alloy đọc log của mọi container rồi gửi tới Loki. Grafana hiển thị metrics và log. Giám sát mặc định tắt.
 
 ## Bật giám sát
 

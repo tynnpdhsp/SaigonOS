@@ -13,14 +13,16 @@ Caddy chỉ chạy khi triển khai lên [máy chủ chưa có reverse proxy](do
 
 | Chức năng | Phần mềm |
 |---|---|
+| HTTPS và chứng chỉ tự động | Caddy |
+| API Gateway, cấu hình route, luật truy cập, tường lửa ứng dụng web | APISIX, etcd, Open Policy Agent, Coraza |
 | Đăng nhập một lần (Identity/SSO), mã OTP | Keycloak |
-| API Gateway, luật truy cập, tường lửa ứng dụng web | APISIX, Open Policy Agent, Coraza |
 | Dữ liệu có cấu trúc, REST API, Row-Level Security, audit log | PostgreSQL, PostgREST |
 | Dữ liệu phi cấu trúc, quét mã độc | SeaweedFS, ClamAV |
 | Luồng công việc (Workflow) | Operaton |
-| Cập nhật tức thời, thông báo qua Telegram và email | Centrifugo |
+| Cập nhật tức thời | Centrifugo |
+| File, việc, thông báo qua Telegram và email | Core API (FastAPI) |
 | Hồ dữ liệu lịch sử | DuckDB, Parquet |
-| Giám sát | Prometheus, Loki, Grafana |
+| Giám sát | Prometheus, Loki, Grafana, Alloy, Exporter, Socket Proxy |
 
 ## Cài đặt
 
