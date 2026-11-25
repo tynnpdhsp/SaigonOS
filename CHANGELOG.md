@@ -7,6 +7,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Sửa
+
+- Tường lửa ứng dụng web không còn chặn trang của ứng dụng ngay sau khi đăng nhập khi địa chỉ truy cập là địa chỉ IP. Keycloak gửi tham số `iss` chứa địa chỉ truy cập khi chuyển người dùng về trang, và luật 931100 của CRS coi URL có địa chỉ IP là tấn công nạp file từ xa. Luật này giờ bỏ qua `iss` khi giá trị đúng bằng issuer của realm `saigonos`. Giá trị khác vẫn bị chặn.
+
 ## [0.12.0] - 2026-11-25
 
 ### Thêm
