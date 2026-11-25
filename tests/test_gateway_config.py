@@ -129,12 +129,12 @@ def test_waf_removes_only_rule_against_address_as_host_after_loading_crs():
     assert DIRECTIVES.index(removed[0]) > DIRECTIVES.index("Include @owasp_crs/*.conf")
 
 
-def test_waf_skips_rfi_rule_only_for_issuer_of_system_before_loading_crs():
-    [exclusion] = [line for line in DIRECTIVES if "931100" in line]
+def test_waf_skips_crs_rules_only_for_issuer_of_system_before_loading_crs():
+    [exclusion] = [line for line in DIRECTIVES if "ARGS_GET:iss" in line]
 
     assert exclusion == (
         'SecRule ARGS_GET:iss "@streq ${SAIGONOS_WAF_ISSUER}" '
-        '"id:1001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=931100;ARGS_GET:iss"'
+        '"id:1001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS_GET:iss"'
     )
     assert DIRECTIVES.index(exclusion) < DIRECTIVES.index("Include @owasp_crs/*.conf")
 
