@@ -6,17 +6,23 @@
   --line-soft: #f0f0f1;
   --text: #1d2327;
   --text-soft: #50575e;
-  --accent: #0a6b5f;
-  --accent-dark: #075248;
-  --accent-soft: #e6f2f0;
-  --menu: #1d2327;
-  --menu-hover: #2c3338;
-  --menu-text: #c3c4c7;
-  --menu-group: #8c8f94;
-  --menu-active: #3cb4a1;
+  --accent: #0f294a;
+  --accent-dark: #0a1c33;
+  --accent-soft: #e7eaed;
+  --accent-line: #abb4c1;
+  --green: #059669;
+  --green-dark: #047857;
+  --green-soft: #e6f4f0;
+  --green-line: #a8dacb;
+  --green-tint: #f0f9f6;
+  --menu: #0f294a;
+  --menu-hover: #143761;
+  --menu-text: #c3cad2;
+  --menu-group: #8794a5;
+  --menu-active: var(--green);
   --danger: #b32d2e;
   --warning: #dba617;
-  --success: #00a32a;
+  --success: var(--green);
 }
 
 * {
@@ -71,6 +77,15 @@ svg {
   color: #ffffff;
   font-size: 16px;
   font-weight: 600;
+}
+
+.sidebar-logo {
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  padding: 3px;
+  border-radius: 4px;
+  background: #ffffff;
 }
 
 .menu {
@@ -433,17 +448,17 @@ svg {
 }
 
 .chart .booked-da_duyet {
-  fill: #b8dfc0;
+  fill: var(--green-line);
   stroke: none;
 }
 
 .chart .booked-san_sang {
-  fill: #a9d3cc;
+  fill: var(--accent-line);
   stroke: none;
 }
 
 .chart .picked {
-  fill: rgba(10, 107, 95, 0.08);
+  fill: rgba(15, 41, 74, 0.08);
   stroke: var(--accent);
   stroke-width: 2;
   stroke-dasharray: 5 3;
@@ -482,7 +497,7 @@ svg {
 
 .week-grid .today,
 .week-grid tbody tr:hover .today {
-  background: #f2f8f7;
+  background: var(--green-tint);
 }
 
 .th-note {
@@ -508,13 +523,13 @@ svg {
 }
 
 .slot-da_duyet {
-  background: #edf7ee;
-  border-color: #b8dfc0;
+  background: var(--green-soft);
+  border-color: var(--green-line);
 }
 
 .slot-san_sang {
   background: var(--accent-soft);
-  border-color: #a9d3cc;
+  border-color: var(--accent-line);
 }
 
 .slot-time {
@@ -632,15 +647,15 @@ tr.detail-row:hover > td {
 }
 
 .status-approved {
-  background: #edf7ee;
-  border-color: #b8dfc0;
-  color: #1d6b31;
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green-dark);
 }
 
 .status-ready {
   background: var(--accent-soft);
-  border-color: #a9d3cc;
-  color: var(--accent-dark);
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 .status-rejected {

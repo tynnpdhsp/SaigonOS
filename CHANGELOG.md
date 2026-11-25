@@ -7,6 +7,23 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.0.1] - 2026-11-26
+
+### Thêm
+
+- Logo của SaigonOS trong thư mục `docs/assets/logo`, gồm logo và logo kèm chữ ở dạng SVG và PNG nhiều kích thước, cùng favicon, icon cho iPhone và ảnh xem trước khi chia sẻ link.
+- Ứng dụng mẫu hiện logo của SaigonOS ở đầu menu và dùng logo làm favicon.
+- Đầu README có logo kèm chữ đặt trên thẻ trắng, file `docs/assets/logo/saigonos-logo-text-card.svg`. Thẻ trắng giúp logo đọc rõ ở cả giao diện sáng và giao diện tối của GitHub.
+- Sơ đồ kiến trúc trong README, file `docs/assets/architecture.svg`. Sơ đồ có mọi service chạy liên tục của lõi và chiều gửi yêu cầu giữa các service.
+
+### Thay đổi
+
+- Giao diện của ứng dụng mẫu dùng hai màu của logo. Trạng thái "Đã duyệt" có màu xanh lá, trạng thái "Sẵn sàng" có màu xanh đậm.
+
+### Sửa
+
+- Bảng Thành phần trong README ghi đủ các service có trên sơ đồ kiến trúc, thêm Caddy, etcd, Core API, Alloy, Exporter và Socket Proxy. Dòng Centrifugo không còn ghi việc gửi thông báo qua Telegram và email, vì Core API mới là service gửi các thông báo này.
+
 ## [1.0.0] - 2026-11-25
 
 ### Thêm
@@ -352,7 +369,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
 [0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0

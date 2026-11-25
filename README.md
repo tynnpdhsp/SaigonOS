@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# SaigonOS
+<p align="center"><img src="docs/assets/logo/saigonos-logo-text-card.svg" alt="SaigonOS" width="480"></p>
 
 SaigonOS là phần lõi nguồn mở của một hệ điều hành chuyển đổi số (DX-OS). Lõi cung cấp sẵn đăng nhập một lần, API Gateway, dữ liệu, kho file và quy trình. Lõi không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ viết phần nghiệp vụ và giao diện, rồi được cài đặt vào lõi bằng một lệnh.
 
@@ -7,16 +7,22 @@ Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi 
 
 ## Thành phần
 
+![Sơ đồ kiến trúc của SaigonOS](docs/assets/architecture.svg)
+
+Caddy chỉ chạy khi triển khai lên [máy chủ chưa có reverse proxy](docs/admin/deploy.md#máy-chủ-chưa-có-reverse-proxy). Các service trong vùng MONITORING chỉ chạy khi [bật giám sát](docs/admin/monitoring.md#bật-giám-sát).
+
 | Chức năng | Phần mềm |
 |---|---|
+| HTTPS và chứng chỉ tự động | Caddy |
+| API Gateway, cấu hình route, luật truy cập, tường lửa ứng dụng web | APISIX, etcd, Open Policy Agent, Coraza |
 | Đăng nhập một lần (Identity/SSO), mã OTP | Keycloak |
-| API Gateway, luật truy cập, tường lửa ứng dụng web | APISIX, Open Policy Agent, Coraza |
 | Dữ liệu có cấu trúc, REST API, Row-Level Security, audit log | PostgreSQL, PostgREST |
 | Dữ liệu phi cấu trúc, quét mã độc | SeaweedFS, ClamAV |
 | Luồng công việc (Workflow) | Operaton |
-| Cập nhật tức thời, thông báo qua Telegram và email | Centrifugo |
+| Cập nhật tức thời | Centrifugo |
+| File, việc, thông báo qua Telegram và email | Core API (FastAPI) |
 | Hồ dữ liệu lịch sử | DuckDB, Parquet |
-| Giám sát | Prometheus, Loki, Grafana |
+| Giám sát | Prometheus, Loki, Grafana, Alloy, Exporter, Socket Proxy |
 
 ## Cài đặt
 

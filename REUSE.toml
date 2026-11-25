@@ -9,3 +9,26 @@ SPDX-FileCopyrightText = "2026 SaigonOS contributors"
 path = "**/*.json"
 SPDX-FileCopyrightText = "2026 SaigonOS contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["docs/assets/**/*.png", "docs/assets/**/*.ico"]
+SPDX-FileCopyrightText = "2026 SaigonOS contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Logo của APISIX, Centrifugo, Coraza, SeaweedFS, Operaton, OPA, Alloy, PostgREST và các biểu tượng của Simple Icons
+[[annotations]]
+path = "docs/assets/architecture.svg"
+SPDX-FileCopyrightText = [
+    "2026 SaigonOS contributors",
+    "The Apache Software Foundation",
+    "2021 Centrifugal",
+    "2021 Juan Pablo Tosso",
+    "2025 Chris Lu",
+    "Andreas Klein, Andreas Zill, Tim Zöller",
+    "2013-2024 Camunda Services GmbH",
+    "2016 The OPA Authors",
+    "Grafana Labs",
+    "2014 Joe Nelson",
+    "2019 Steve Chavez",
+]
+SPDX-License-Identifier = "Apache-2.0 AND MIT AND CC0-1.0"
