@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Viết ứng dụng đầu tiên
 
-Trang này đi qua từng file của ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may). Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Theo cách chia ba tầng ở trang [Tài liệu SaigonOS](README.md), đây là một ứng dụng chuyên ngành ở tầng 3. Ứng dụng chỉ gồm bản khai, file SQL, file BPMN và một trang HTML. Đăng nhập, API, quy trình, thông báo và tường lửa đều do lõi đảm nhận.
+Trang này đi qua từng file của ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may). Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Ứng dụng chỉ gồm bản khai, file SQL, file BPMN và một trang HTML. Đăng nhập, API, quy trình, thông báo và tường lửa đều do lõi đảm nhận.
 
 ## Ứng dụng mẫu
 

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Tài liệu SaigonOS
 
-SaigonOS chia một hệ thống chuyển đổi số thành ba tầng. Tầng 1 là lõi, cung cấp đăng nhập một lần, API Gateway, dữ liệu, kho file và quy trình. Tầng 2 là các ứng dụng dùng chung cho mọi tổ chức, ví dụ văn phòng điện tử hay quản lý nhân sự. Tầng 3 là các ứng dụng chuyên ngành, ví dụ quản lý phòng máy của một trường học. Repo này chứa lõi và một ứng dụng mẫu ở tầng 3.
+Repo SaigonOS gồm lõi và một ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Các trang dưới đây hướng dẫn cài đặt và quản trị lõi, rồi viết ứng dụng chạy trên lõi.
 
 ## Bắt đầu
 
