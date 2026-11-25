@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# SaigonOS
+<p align="center"><img src="docs/assets/logo/saigonos-logo-text-card.svg" alt="SaigonOS" width="480"></p>
 
 SaigonOS là phần lõi nguồn mở của một hệ điều hành chuyển đổi số (DX-OS). Lõi cung cấp sẵn đăng nhập một lần, API Gateway, dữ liệu, kho file và quy trình. Lõi không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ viết phần nghiệp vụ và giao diện, rồi được cài đặt vào lõi bằng một lệnh.
 

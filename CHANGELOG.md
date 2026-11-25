@@ -11,6 +11,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Logo của SaigonOS trong thư mục `docs/assets/logo`, gồm logo và logo kèm chữ ở dạng SVG và PNG nhiều kích thước, cùng favicon, icon cho iPhone và ảnh xem trước khi chia sẻ link.
 - Ứng dụng mẫu hiện logo của SaigonOS ở đầu menu và dùng logo làm favicon.
+- Đầu README có logo kèm chữ đặt trên thẻ trắng, file `docs/assets/logo/saigonos-logo-text-card.svg`. Thẻ trắng giúp logo đọc rõ ở cả giao diện sáng và giao diện tối của GitHub.
 - Sơ đồ kiến trúc trong README, file `docs/assets/architecture.svg`. Sơ đồ có mọi service chạy liên tục của lõi và chiều gửi yêu cầu giữa các service.
 
 ### Thay đổi
