@@ -107,14 +107,10 @@ EXAMPLE_MANIFEST = json.loads((EXAMPLE / "saigonos-app.json").read_text(encoding
 EXAMPLE_PROCESS = (EXAMPLE / "processes" / "dat-phong.bpmn").read_text(encoding="utf-8")
 
 
-def section(title):
-    found = [
-        part.split("\n#", 1)[0]
-        for text in PAGES.values()
-        for part in re.split(rf"^#+ {re.escape(title)}\n", text, flags=re.MULTILINE)[1:]
-    ]
+def section(page, title):
+    found = re.split(rf"^#+ {re.escape(title)}\n", PAGES[page], flags=re.MULTILINE)[1:]
     assert len(found) == 1, title
-    return found[0]
+    return found[0].split("\n#", 1)[0]
 
 
 def anchor(heading):
@@ -223,7 +219,9 @@ def test_docs_states_file_size_limits():
 
 
 def test_docs_lists_every_allowed_file_type():
-    rows = re.findall(r"^\| `([a-z]+/[^`]+)` \| ([^|]+) \|", TEXT, re.MULTILINE)
+    rows = re.findall(
+        r"^\| `([a-z]+/[^`]+)` \| ([^|]+) \|", PAGES["docs/apps/files.md"], re.MULTILINE
+    )
 
     assert {kind: re.findall(r"`(\.[a-z]+)`", extensions) for kind, extensions in rows} == {
         kind: list(rule.extensions) for kind, rule in KINDS.items()
@@ -231,19 +229,25 @@ def test_docs_lists_every_allowed_file_type():
 
 
 def test_docs_lists_every_file_status():
-    rows = re.findall(r"^\| `([a-z_]+)` \|", section("Tải file lên"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| `([a-z_]+)` \|", section("docs/apps/files.md", "Tải file lên"), re.MULTILINE
+    )
 
     assert rows == list(get_args(FileInfo.model_fields["status"].annotation))
 
 
 def test_docs_lists_every_task_field():
-    rows = re.findall(r"^\| (`[^|]+) \|", section("Danh sách việc"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| (`[^|]+) \|", section("docs/apps/workflow.md", "Danh sách việc"), re.MULTILINE
+    )
 
     assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(Task.model_fields)
 
 
 def test_docs_lists_every_notification_field():
-    rows = re.findall(r"^\| (`[^|]+) \|", section("Đọc thông báo"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| (`[^|]+) \|", section("docs/apps/notifications.md", "Đọc thông báo"), re.MULTILINE
+    )
 
     assert [name for row in rows for name in re.findall(r"`(\w+)`", row)] == list(
         Notification.model_fields
@@ -251,7 +255,7 @@ def test_docs_lists_every_notification_field():
 
 
 def test_docs_lists_every_form_field_type():
-    kinds = section("Form").split("| Ràng buộc |")[0]
+    kinds = section("docs/apps/workflow.md", "Form").split("| Ràng buộc |")[0]
 
     assert set(re.findall(r"^\| `([a-z]+)` \|", kinds, re.MULTILINE)) == set(CHECKS)
 
@@ -304,6 +308,18 @@ def excerpts():
 
 
 EXCERPTS = list(excerpts())
+
+
+def test_first_app_walks_through_every_file_of_sample_app():
+    page = PAGES["docs/first-app.md"]
+    files = {path.relative_to(EXAMPLE).as_posix() for path in EXAMPLE.rglob("*") if path.is_file()}
+    mentioned = set(re.findall(r"`((?:database|processes|ui)/[\w.-]+|saigonos-app\.json)`", page))
+    tree = next(block for block in SAMPLES if block.startswith("examples/phong-may/"))
+
+    assert mentioned == files
+    assert sorted(re.findall(r"── ([\w-]+\.\w+)$", tree, re.MULTILINE)) == sorted(
+        path.rsplit("/", 1)[-1] for path in files
+    )
 
 
 def test_docs_have_excerpts_of_sample_app():
@@ -412,20 +428,30 @@ def duration(seconds):
 
 
 def test_docs_lists_every_delivery_status():
-    rows = re.findall(r"^\| `([a-z]+)` \|", section("Hàng đợi gửi tin"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| `([a-z]+)` \|",
+        section("docs/admin/notifications.md", "Hàng đợi gửi tin"),
+        re.MULTILINE,
+    )
     statuses = re.search(r"status IN \(([^)]+)\)", DELIVERIES)[1]
 
     assert rows == re.findall(r"'([a-z]+)'", statuses)
 
 
 def test_docs_lists_every_telegram_setting():
-    rows = re.findall(r"^\| `(TELEGRAM_[A-Z_]+)` \|", section("Telegram"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| `(TELEGRAM_[A-Z_]+)` \|",
+        section("docs/admin/notifications.md", "Telegram"),
+        re.MULTILINE,
+    )
 
     assert sorted(rows) == sorted(re.findall(r"\$\{(TELEGRAM_[A-Z_]+):-", COMPOSE))
 
 
 def test_docs_lists_every_smtp_setting():
-    cells = re.findall(r"^\| (`SMTP_[^|]*) \|", section("Email"), re.MULTILINE)
+    cells = re.findall(
+        r"^\| (`SMTP_[^|]*) \|", section("docs/admin/notifications.md", "Email"), re.MULTILINE
+    )
     names = re.findall(r"`(SMTP_[A-Z_]+)`", " ".join(cells))
 
     assert sorted(names) == sorted(re.findall(r"\$\{(SMTP_[A-Z_]+):-", COMPOSE))
@@ -457,7 +483,11 @@ def test_docs_example_of_manifest_is_valid():
 
 
 def test_docs_lists_every_manifest_field():
-    rows = re.findall(r"^\| `([^`]+)` \| (Có|Không) \|", section("Bản khai"), re.MULTILINE)
+    rows = re.findall(
+        r"^\| `([^`]+)` \| (Có|Không) \|",
+        section("docs/apps/manifest.md", "Bản khai"),
+        re.MULTILINE,
+    )
 
     assert rows == [
         (field.alias or name, "Có" if field.is_required() else "Không")

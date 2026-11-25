@@ -41,7 +41,7 @@ Lần chạy đầu tiên mất vài phút để tải các image. Hệ thống 
 saigonos apply examples/phong-may
 ```
 
-Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học, tại http://localhost:9080/apps/phong-may/.
+Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học, tại http://localhost:9080/apps/phong-may/. Trang [Viết ứng dụng đầu tiên](docs/first-app.md) đi qua từng file của ứng dụng này và cách gán role cho người dùng.
 
 ## Tham gia phát triển
 

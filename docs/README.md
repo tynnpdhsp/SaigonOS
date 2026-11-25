@@ -6,6 +6,7 @@ SaigonOS chia một hệ thống chuyển đổi số thành ba tầng. Tầng 1
 ## Bắt đầu
 
 - [Cài đặt](install.md)
+- [Viết ứng dụng đầu tiên](first-app.md)
 
 ## Quản trị
 
