@@ -716,6 +716,34 @@ def test_waf_lets_address_as_host_through_and_still_blocks_attack(stack):
     assert waf_reply(attack) == (403, "application/json; charset=utf-8", "SGN04", WAF_BLOCKED)
 
 
+def load_global_rules(stack, *options):
+    return stack.compose_result("run", "--rm", "--no-deps", *options, "routes", timeout=180)
+
+
+def test_waf_lets_issuer_of_system_reach_page_of_app_and_blocks_other_addresses(stack):
+    address = f"http://127.0.0.1:{stack.env['SAIGONOS_HTTP_PORT']}"
+    issuer = f"{address}/auth/realms/saigonos"
+    page = f"{stack.url}/apps/khong-co/"
+    callback = {"state": "a1", "session_state": "b2", "iss": issuer, "code": "c3"}
+    stranger = callback | {"iss": "http://10.1.2.3/auth/realms/saigonos"}
+    before = stack.call("GET", f"{page}?{urlencode(callback)}")
+    try:
+        loaded = load_global_rules(stack, "-e", f"SAIGONOS_URL={address}")
+        wait_for(lambda: stack.call("GET", f"{page}?{urlencode(callback)}").status == 404)
+        allowed = stack.call("GET", f"{page}?{urlencode(callback)}")
+        foreign = stack.call("GET", f"{page}?{urlencode(stranger)}")
+        elsewhere = stack.call("GET", f"{page}?{urlencode({'next': issuer})}")
+    finally:
+        restored = load_global_rules(stack)
+
+    assert waf_reply(before) == (403, "application/json; charset=utf-8", "SGN04", WAF_BLOCKED)
+    assert loaded.returncode == 0, loaded.stderr
+    assert allowed.status == 404, allowed.body
+    for reply in (foreign, elsewhere):
+        assert waf_reply(reply) == (403, "application/json; charset=utf-8", "SGN04", WAF_BLOCKED)
+    assert restored.returncode == 0, restored.stderr
+
+
 def test_waf_refuses_body_larger_than_it_checks(stack):
     reply = stack.call("POST", f"{stack.url}/api/notes", body={"body": "a" * 1_100_000})
 
