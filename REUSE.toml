@@ -9,3 +9,8 @@ SPDX-FileCopyrightText = "2026 SaigonOS contributors"
 path = "**/*.json"
 SPDX-FileCopyrightText = "2026 SaigonOS contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["docs/assets/**/*.png", "docs/assets/**/*.ico"]
+SPDX-FileCopyrightText = "2026 SaigonOS contributors"
+SPDX-License-Identifier = "Apache-2.0"
