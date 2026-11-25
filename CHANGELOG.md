@@ -7,9 +7,22 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.0.0] - 2026-11-25
+
+### Thêm
+
+- Ứng dụng mẫu `examples/phong-may` quản lý việc đặt phòng máy của một trường học. Ứng dụng có bốn role, luật truy cập riêng, bảng có Row-Level Security và audit log, quy trình đặt phòng có hẹn giờ nhắc duyệt và một trang giao diện đăng nhập bằng PKCE.
+- Trang `docs/first-app.md` giải thích từng file của ứng dụng mẫu, cách cài đặt và cách gán role cho người dùng.
+- Trang `docs/reference/cli.md` liệt kê các lệnh của `saigonos`.
+
+### Thay đổi
+
+- Tài liệu được chia thành các trang trong thư mục `docs`, mỗi trang một chủ đề, theo các nhóm cài đặt, quản trị, viết ứng dụng, tham khảo và phát triển lõi. README chỉ còn giới thiệu, lệnh cài đặt và link tới tài liệu. CONTRIBUTING chỉ còn cách đóng góp.
+- Ví dụ trong tài liệu dùng ứng dụng mẫu đặt phòng máy.
+
 ### Sửa
 
-- Tường lửa ứng dụng web không còn chặn trang của ứng dụng ngay sau khi đăng nhập khi địa chỉ truy cập là địa chỉ IP. Keycloak gửi tham số `iss` chứa địa chỉ truy cập khi chuyển người dùng về trang. Luật 931100 của CRS coi URL có địa chỉ IP là tấn công nạp file từ xa, luật 934110 coi URL có địa chỉ `127.0.0.1` là tấn công SSRF. Các luật của CRS giờ bỏ qua `iss` khi giá trị đúng bằng issuer của realm `saigonos`. Giá trị khác vẫn bị chặn.
+- Tường lửa ứng dụng web không còn chặn trang của ứng dụng ngay sau khi đăng nhập khi địa chỉ truy cập là địa chỉ IP. Các luật của CRS bỏ qua tham số `iss` mà Keycloak gửi về trang khi giá trị đúng bằng issuer của realm `saigonos`. Giá trị khác vẫn được kiểm tra.
 
 ## [0.12.0] - 2026-11-25
 
@@ -338,7 +351,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v0.12.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
 [0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.11.0
 [0.10.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.10.0
