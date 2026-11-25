@@ -57,4 +57,4 @@ Lệnh cài đặt kiểm tra các mục này sau khi chạy các file SQL và d
 - Bảng, view và các cột đã khai phải có trong schema của ứng dụng. Cột của luật `range` phải có kiểu số.
 - Bảng trong mục `archive` không được bảng khác tham chiếu bằng khóa ngoại `ON DELETE CASCADE`, `SET NULL` hay `SET DEFAULT`, vì dòng của bảng kia sẽ bị đổi theo mà không được lưu vào hồ.
 
-Lõi đọc và xóa dòng bằng role `lake` của cơ sở dữ liệu. Role này bỏ qua chính sách phân quyền từng dòng để đọc đủ mọi dòng. Lệnh cài đặt chỉ cấp cho role `lake` quyền đọc các bảng, view đã khai và quyền xóa trên các bảng trong mục `archive`. File của hai việc này nằm trong bucket `lake` của SeaweedFS và được đọc bằng các lệnh ở trang [Hồ dữ liệu](../admin/data-lake.md).
+Lõi đọc và xóa dòng bằng role `lake` của cơ sở dữ liệu. Role này bỏ qua chính sách Row-Level Security (RLS) để đọc đủ mọi dòng. Lệnh cài đặt chỉ cấp cho role `lake` quyền đọc các bảng, view đã khai và quyền xóa trên các bảng trong mục `archive`. File của hai việc này nằm trong bucket `lake` của SeaweedFS và được đọc bằng các lệnh ở trang [Hồ dữ liệu](../admin/data-lake.md).

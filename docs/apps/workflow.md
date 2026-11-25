@@ -190,7 +190,7 @@ RETURN jsonb_build_object(
 );
 ```
 
-Hàm phải được cấp cho role `workflow` bằng lệnh `GRANT EXECUTE`. Quyền cấp cho `PUBLIC` không được tính. Hàm chỉ cấp cho role `workflow` thì người dùng không gọi được qua API của ứng dụng. Bước máy làm không có người gọi, nên `core.uid()` trả về `NULL` và biến `initiator` cho biết người đã bắt đầu quy trình. Do đó, hàm cập nhật bảng có chính sách RLS thường khai `SECURITY DEFINER`, như các hàm của ứng dụng mẫu.
+Hàm phải được cấp cho role `workflow` bằng lệnh `GRANT EXECUTE`. Quyền cấp cho `PUBLIC` không được tính. Hàm chỉ cấp cho role `workflow` thì người dùng không gọi được qua API của ứng dụng. Bước máy làm không có người gọi, nên `core.uid()` trả về `NULL` và biến `initiator` cho biết người đã bắt đầu quy trình. Do đó, hàm cập nhật bảng có chính sách Row-Level Security (RLS) thường khai `SECURITY DEFINER`, như các hàm của ứng dụng mẫu.
 
 Service `core` chạy bước máy làm theo các quy tắc sau:
 

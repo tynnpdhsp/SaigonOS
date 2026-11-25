@@ -19,7 +19,7 @@ const found = await reply.json();
 
 Hàm trả về các dòng của bảng như lời gọi `GET /apps/phong-may/api/don`, nên dùng được các tham số `select`, `limit` và bộ lọc của PostgREST. Chữ cần tìm gõ có dấu hay không dấu đều được, chữ hoa và chữ thường được coi như nhau. Khi có nhiều từ, dòng phải có đủ các từ. Cụm từ đặt trong dấu nháy kép phải xuất hiện liền nhau và đúng thứ tự. Từ có dấu trừ ở trước thì dòng chứa từ đó bị loại. Kết quả xếp theo độ khớp.
 
-Hàm chạy bằng role `<schema>_user` của ứng dụng. Do đó, chính sách phân quyền từng dòng của bảng vẫn áp dụng, và người dùng chỉ tìm thấy các dòng mình được đọc. Role `anon` không gọi được hàm này. Với bảng có phân quyền từng dòng, PostgreSQL đọc lần lượt các dòng mà người gọi được xem thay cho việc dùng index. Trên bảng 10.000 dòng, việc này mất khoảng 35 ms.
+Hàm chạy bằng role `<schema>_user` của ứng dụng. Do đó, chính sách Row-Level Security (RLS) của bảng vẫn áp dụng, và người dùng chỉ tìm thấy các dòng mình được đọc. Role `anon` không gọi được hàm này. Với bảng có RLS, PostgreSQL đọc lần lượt các dòng mà người gọi được xem thay cho việc dùng index. Trên bảng 10.000 dòng, việc này mất khoảng 35 ms.
 
 Mục `search` tuân theo các quy tắc sau:
 

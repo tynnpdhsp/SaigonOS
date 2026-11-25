@@ -18,7 +18,7 @@ PostgREST tự sinh tài liệu OpenAPI 2.0 cho REST API. Tài liệu mở đư�
 
 Service `core` cung cấp các API mà PostgREST không đảm nhận, ví dụ tải file lên và bắt đầu quy trình. Tài liệu OpenAPI 3.1 ở địa chỉ `/core/openapi.json` không cần đăng nhập. Các API trong tài liệu cần access token, trừ `/core/health` và đường dẫn [tải file về](../apps/files.md#tải-file-về). Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.
 
-Service `core` tự kiểm tra lại chữ ký, issuer, thời hạn, loại token và realm role `authenticated` của access token. Service chỉ nhận access token, không nhận ID token. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Do đó, chính sách phân quyền từng dòng áp dụng như nhau ở cả hai nơi.
+Service `core` tự kiểm tra lại chữ ký, issuer, thời hạn, loại token và realm role `authenticated` của access token. Service chỉ nhận access token, không nhận ID token. Mỗi truy vấn chạy với role và nội dung access token của người gọi, giống PostgREST. Do đó, chính sách Row-Level Security (RLS) của các bảng áp dụng như nhau ở cả hai nơi.
 
 ## Mã lỗi
 

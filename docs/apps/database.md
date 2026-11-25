@@ -14,6 +14,7 @@ Lệnh cài đặt chạy các file `.sql` trong thư mục `database` của ứ
 - Hàm không khai `SECURITY DEFINER` được đổi thành hàm `SECURITY DEFINER` của role `phong_may_user`. Do đó, hàm luôn chạy bằng role này, kể cả khi lời gọi không có access token. Hàm khai `SECURITY DEFINER` chạy bằng role sở hữu schema.
 - Mã của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, và không đổi được sang role khác.
 - Các lệnh DDL như `CREATE`, `ALTER`, `DROP` và `GRANT` chỉ chạy được trong file SQL lúc cài đặt.
+- Để mỗi người chỉ thấy và sửa được một số dòng của bảng, bật Row-Level Security (RLS) cho bảng rồi khai các chính sách (policy), như ví dụ ở cuối mục này.
 - Trong chính sách RLS, viết `(SELECT core.uid())` thay cho `core.uid()`. Khi đó, PostgreSQL chỉ tính giá trị một lần cho mỗi câu truy vấn thay vì một lần cho mỗi dòng.
 
 Mã của ứng dụng dùng được các hàm sau của lõi:

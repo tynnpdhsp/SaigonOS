@@ -23,7 +23,7 @@ const { upload_url } = await declared.json();
 await fetch(upload_url, { method: "PUT", headers, body: file });
 ```
 
-Ngay sau khi nhận nội dung, service `core` [quét mã độc](../admin/malware-scan.md) trong nền. Ứng dụng gọi `GET /core/files/{id}` để biết trạng thái của file. Mỗi file chỉ nhận nội dung một lần. Khi lời gọi gửi nội dung bị từ chối, nội dung có thể được gửi lại. Bảng `core.files` có chính sách phân quyền từng dòng, nên mỗi người dùng chỉ thấy file của chính mình.
+Ngay sau khi nhận nội dung, service `core` [quét mã độc](../admin/malware-scan.md) trong nền. Ứng dụng gọi `GET /core/files/{id}` để biết trạng thái của file. Mỗi file chỉ nhận nội dung một lần. Khi lời gọi gửi nội dung bị từ chối, nội dung có thể được gửi lại. Bảng `core.files` có chính sách Row-Level Security (RLS), nên mỗi người dùng chỉ thấy file của chính mình.
 
 Các trạng thái của file:
 

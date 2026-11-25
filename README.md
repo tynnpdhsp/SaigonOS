@@ -11,7 +11,7 @@ Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi 
 |---|---|
 | Đăng nhập một lần (Identity/SSO), mã OTP | Keycloak |
 | API Gateway, luật truy cập, tường lửa ứng dụng web | APISIX, Open Policy Agent, Coraza |
-| Dữ liệu có cấu trúc, REST API, phân quyền từng dòng, audit log | PostgreSQL, PostgREST |
+| Dữ liệu có cấu trúc, REST API, Row-Level Security, audit log | PostgreSQL, PostgREST |
 | Dữ liệu phi cấu trúc, quét mã độc | SeaweedFS, ClamAV |
 | Luồng công việc (Workflow) | Operaton |
 | Cập nhật tức thời, thông báo qua Telegram và email | Centrifugo |
