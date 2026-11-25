@@ -21,7 +21,7 @@ Gói có tên dạng `saigonos-20261124-153000.tar.gz` và gồm các phần sau
 | `manifest.json` | Phiên bản SaigonOS và thời điểm tạo gói |
 | `SHA256SUMS` | Mã băm SHA-256 của từng phần |
 
-Trong lúc chép các file của SeaweedFS, service `seaweedfs` tạm dừng, thường dưới 30 giây. Lời gọi tải file lên hoặc tải file về trong lúc này phải chờ. Etcd, JWKS và cơ sở dữ liệu mã độc không nằm trong gói, vì lệnh `saigonos up` tự tạo lại. Metrics, log và dữ liệu của Grafana cũng không nằm trong gói.
+Trong lúc chép các file của SeaweedFS, service `seaweedfs` tạm dừng. Lời gọi tải file lên hoặc tải file về trong lúc này phải chờ. Sau khi chép xong, lệnh chờ service đạt healthcheck trở lại, thường dưới 30 giây. Etcd, JWKS và cơ sở dữ liệu mã độc không nằm trong gói, vì lệnh `saigonos up` tự tạo lại. Metrics, log và dữ liệu của Grafana cũng không nằm trong gói.
 
 Gói chứa các mật khẩu của file `.env`, nên chỉ tài khoản tạo gói đọc được. Tùy chọn `--output` chọn thư mục khác để lưu gói. Gói nên được chép sang một máy khác, để dữ liệu không mất cùng máy chủ.
 

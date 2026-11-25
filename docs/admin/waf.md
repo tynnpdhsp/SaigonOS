@@ -24,7 +24,7 @@ Lời gọi bị chặn nhận mã 403, hoặc mã 413 khi body quá lớn. Nộ
 {"code":"SGN04","details":null,"hint":null,"message":"Tường lửa ứng dụng web đã chặn lời gọi này vì có dấu hiệu tấn công."}
 ```
 
-Mỗi luật khớp được ghi vào log của APISIX, kèm mã luật, phần dữ liệu khớp và địa chỉ IP của người gọi. Các dòng này được xem bằng lệnh sau trong thư mục làm việc:
+Mỗi luật khớp được ghi vào log của APISIX, kèm mã luật và phần dữ liệu khớp. Mỗi lời gọi bị chặn có thêm một dòng log ghi địa chỉ IP của người gọi. Các dòng này được xem bằng lệnh sau trong thư mục làm việc:
 
 ```bash
 docker compose logs apisix | grep -E "Coraza|Tường lửa"

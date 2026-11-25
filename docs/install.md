@@ -113,7 +113,7 @@ BÌNH THƯỜNG    Tường lửa     API Gateway chặn lời gọi có dấu h
 Hệ thống hoạt động bình thường.
 ```
 
-Mỗi ứng dụng đã cài đặt có thêm một dòng kiểm tra API và giao diện của ứng dụng.
+Mỗi ứng dụng đã cài đặt có thêm một dòng. Dòng này kiểm tra API của ứng dụng, và giao diện khi ứng dụng có giao diện.
 
 ## Truy cập hệ thống
 
@@ -124,7 +124,7 @@ Với cấu hình mặc định, hệ thống chỉ truy cập được từ ch�
 | http://localhost:9080/auth/admin/saigonos/console/ | Admin Console của realm `saigonos`, dùng để quản lý người dùng và role | Tài khoản quản trị của realm `saigonos`, có mã OTP |
 | http://localhost:9080/operaton/ | Cockpit, Tasklist và Admin của [Operaton](admin/operaton.md) | Tài khoản quản trị của realm `saigonos`, có mã OTP |
 | http://localhost:9080/grafana/ | Grafana, khi bật [giám sát](admin/monitoring.md) | Tài khoản quản trị của realm `saigonos`, có mã OTP |
-| http://localhost:9080/api/ | REST API và [tài liệu API](reference/api.md) | Access token do Keycloak cấp |
+| http://localhost:9080/api/ | REST API và [tài liệu API](reference/api.md) | Access token do Keycloak cấp. Lời gọi không có access token chỉ dùng được bảng và hàm đã cấp cho role `anon` |
 | `http://localhost:9080/apps/<tên ứng dụng>/` | Giao diện và API của từng ứng dụng | Giao diện không cần đăng nhập. API cần access token do client của ứng dụng cấp |
 | http://localhost:9280/auth/admin/master/console/ | Admin Console của realm master | Tài khoản `admin`, mật khẩu là giá trị `KEYCLOAK_ADMIN_PASSWORD` |
 | http://127.0.0.1:9180/ui/ | Dashboard của APISIX | Khóa quản trị là giá trị `APISIX_ADMIN_KEY` |

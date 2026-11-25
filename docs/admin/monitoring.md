@@ -22,7 +22,7 @@ Ngay sau khi khởi động, Prometheus cần khoảng 20 giây để đọc met
 
 ## Grafana
 
-Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Chỉ tài khoản có realm role `admin` đăng nhập được qua Keycloak và luôn phải nhập mã OTP. Giới hạn dải mạng ở trang [Luật truy cập](access-rules.md#trang-quản-trị) cũng áp dụng cho Grafana. Nguồn dữ liệu và bảng theo dõi được nạp từ thư mục `config/grafana` và không sửa được trong Grafana.
+Grafana có địa chỉ `/grafana/`, ví dụ http://localhost:9080/grafana/. Grafana không có tài khoản riêng. Chỉ tài khoản có realm role `admin` đăng nhập được qua Keycloak và luôn phải nhập mã OTP. Giới hạn dải mạng ở trang [Luật truy cập](access-rules.md#trang-quản-trị) cũng áp dụng cho Grafana. Nguồn dữ liệu và bảng theo dõi được nạp từ thư mục [`config/grafana`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/grafana) và không sửa được trong Grafana.
 
 ## Bảng theo dõi
 

@@ -1,14 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Luật truy cập
 
-API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục `config/opa` của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai, như trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
+API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục [`config/opa`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/opa) của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai, như trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
 
 ## Trang quản trị
 
-Luật trong file `config/opa/admin.rego` áp dụng cho Admin Console của realm `saigonos` tại `/auth/admin/`, Operaton tại `/operaton/` và Grafana tại `/grafana/`. Lời gọi chỉ được cho qua khi đạt cả hai điều kiện sau:
+Luật trong file [`config/opa/admin.rego`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/config/opa/admin.rego) áp dụng cho Admin Console của realm `saigonos` tại `/auth/admin/`, Operaton tại `/operaton/` và Grafana tại `/grafana/`. Lời gọi chỉ được cho qua khi đạt cả hai điều kiện sau:
 
 - Địa chỉ IP của người gọi thuộc một dải mạng trong `SAIGONOS_ADMIN_NETWORKS` của file `.env`. Khi giá trị này trống hoặc không có, mọi địa chỉ IP đều đạt.
-- Lời gọi tới Admin REST API mang access token của một lần đăng nhập có mã OTP. Lần đăng nhập này có hiệu lực tối đa 10 giờ, bằng SSO Session Max của realm.
+- Lời gọi tới Admin REST API mang access token của một lần đăng nhập có mã OTP. Lần đăng nhập này dùng được tới hết SSO Session Max của realm, mặc định là 10 giờ.
 
 Lời gọi không đạt nhận mã 403 kèm lý do. Khi OPA dừng, các route quản trị bị từ chối, còn trang đăng nhập và các route khác vẫn hoạt động.
 

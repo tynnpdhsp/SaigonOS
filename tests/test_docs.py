@@ -58,6 +58,7 @@ from saigonos_core.tasks import Task
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 REPO = "https://github.com/tynnpdhsp/SaigonOS/blob/main/"
+TREE = "https://github.com/tynnpdhsp/SaigonOS/tree/main/"
 TAG = "SPDX-License-Identifier"
 SPDX = f"<!-- {TAG}: Apache-2.0 -->"
 PAGES = {
@@ -295,6 +296,9 @@ def anchors_of(text):
 @pytest.mark.parametrize("name", PAGES)
 def test_docs_links_point_to_existing_pages_and_sections(name):
     for target in targets_of(PAGES[name]):
+        if target.startswith(TREE):
+            assert (ROOT / target.removeprefix(TREE)).is_dir(), target
+            continue
         if target.startswith(("http://", "https://")) and not target.startswith(REPO):
             continue
         path, _, fragment = target.removeprefix(REPO).partition("#")

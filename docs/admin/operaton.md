@@ -15,7 +15,7 @@ Khi một tài khoản bị khóa trong Keycloak, phiên đăng nhập của tà
 
 REST API của Operaton không mở qua API Gateway. Chỉ ba service `core`, `processes` và `apps` gọi REST API này, bằng tài khoản `core` của Operaton. Mật khẩu của tài khoản là giá trị `CORE_OPERATON_PASSWORD` trong file `.env`. Operaton tạo tài khoản ở lần khởi động đầu tiên. Do đó, đổi giá trị này về sau không đổi mật khẩu của tài khoản.
 
-Operaton tạm khóa tài khoản sau mỗi lần đăng nhập sai và khóa hẳn sau 10 lần sai liên tiếp. Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần bị từ chối, và ngừng hẳn sau 5 lần liên tiếp. Trong thời gian này, các lời gọi cần Operaton nhận mã 503. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD`, chạy lại `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core`:
+Operaton tạm khóa tài khoản sau mỗi lần đăng nhập sai và khóa hẳn sau 10 lần sai liên tiếp. Để tài khoản không bị khóa hẳn, service `core` ngừng gọi Operaton trong 60 giây sau mỗi lần bị từ chối. Sau 5 lần liên tiếp, service ngừng gọi Operaton cho tới khi được khởi động lại. Trong thời gian này, các lời gọi cần Operaton nhận mã 503. Sau khi khôi phục giá trị đúng của `CORE_OPERATON_PASSWORD`, chạy lại `saigonos up`. Nếu giá trị này vốn đúng, khởi động lại service `core`:
 
 ```bash
 cd ~/saigonos

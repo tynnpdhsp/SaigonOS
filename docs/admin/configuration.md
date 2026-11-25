@@ -42,7 +42,7 @@ saigonos up
 
 Cách này chỉ nên dùng trong mạng nội bộ đáng tin cậy, vì kết nối HTTP không được mã hóa. API Gateway cũng tin header `X-Forwarded-For` do máy trong mạng nội bộ gửi tới. Do đó, một máy trong mạng nội bộ có thể khai báo địa chỉ IP khác với địa chỉ thật. Keycloak chỉ nhận kết nối HTTP từ địa chỉ IP trong mạng nội bộ. Để phục vụ người dùng qua Internet, làm theo trang [Triển khai lên máy chủ](deploy.md).
 
-Khi đổi địa chỉ truy cập, chạy lại lệnh `saigonos init` với tùy chọn `--url` rồi chạy `saigonos up`. Không sửa tay dòng `SAIGONOS_URL` của file `.env`, vì lệnh `saigonos init` còn ghi địa chỉ này vào cấu hình của Centrifugo.
+Khi đổi địa chỉ truy cập, chạy lại lệnh `saigonos init` với tùy chọn `--url` rồi chạy `saigonos up`. Lệnh `saigonos init` cập nhật cả cấu hình của Centrifugo theo địa chỉ mới. Do đó, sau khi sửa tay dòng `SAIGONOS_URL` của file `.env`, cũng cần chạy lại lệnh `saigonos init`.
 
 ## Khởi động và dừng
 
