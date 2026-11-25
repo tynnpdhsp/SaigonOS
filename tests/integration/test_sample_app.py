@@ -413,6 +413,13 @@ def test_page_and_calls_of_page_pass_the_firewall(stack, sample):
     assert status == 200, notifications
 
 
+def test_doctor_reports_installed_sample_app_as_running(stack, sample):
+    result = stack.saigonos("doctor")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Ứng dụng phong-may" in result.stdout
+
+
 def test_removed_sample_app_leaves_rest_running_and_keeps_its_bookings(stack, sample):
     bookings = stack.sql("SELECT count(*) FROM phong_may.don")
 

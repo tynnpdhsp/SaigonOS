@@ -23,6 +23,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Sửa
 
 - Tường lửa ứng dụng web không còn chặn trang của ứng dụng ngay sau khi đăng nhập khi địa chỉ truy cập là địa chỉ IP. Các luật của CRS bỏ qua tham số `iss` mà Keycloak gửi về trang khi giá trị đúng bằng issuer của realm `saigonos`. Giá trị khác vẫn được kiểm tra.
+- Lệnh `saigonos doctor` không còn báo lỗi ứng dụng có luật truy cập đòi đăng nhập ở mọi lời gọi, ví dụ ứng dụng mẫu. Lời gọi không có access token tới API của ứng dụng đó nhận mã 401 hoặc 403 với mã `SGN03`, và lệnh coi đây là trạng thái bình thường.
 
 ## [0.12.0] - 2026-11-25
 
