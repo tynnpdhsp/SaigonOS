@@ -37,7 +37,8 @@ examples/phong-may/
 └── ui/
     ├── index.html
     ├── style.css
-    └── app.js
+    ├── app.js
+    └── logo.svg
 ```
 
 ## Bản khai
@@ -137,11 +138,12 @@ File có đủ phần hình vẽ, nên Cockpit vẽ được quy trình kèm s�
 
 ## Giao diện
 
-Thư mục `ui` gồm ba file, không dùng thư viện ngoài và không cần build:
+Thư mục `ui` gồm bốn file, không dùng thư viện ngoài và không cần build:
 
 - `ui/index.html` là khung trang, gồm menu bên trái, thanh trên và vùng nội dung.
 - `ui/style.css` chứa kiểu trình bày của trang.
 - `ui/app.js` đăng nhập, gọi API và hiện đúng phần việc của từng role.
+- `ui/logo.svg` là logo của SaigonOS, dùng làm favicon và hiện ở đầu menu.
 
 Trang đăng nhập bằng client `phong-may` theo luồng Authorization Code với PKCE, như ở trang [Đăng nhập](apps/login.md). Sau khi đăng nhập, trang gọi API của ứng dụng để đọc phòng, đơn và lịch, gọi `POST /core/processes/phong_may.dat_phong/start` để gửi đơn và gọi `GET /core/tasks` để lấy việc cần duyệt hoặc cần chuẩn bị. Dữ liệu trên trang được tải lại 30 giây một lần.
 

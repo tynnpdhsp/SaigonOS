@@ -377,7 +377,7 @@ def test_page_and_calls_of_page_pass_the_firewall(stack, sample):
     assert page.status == 200, page.body
     assert b'<script type="module" src="app.js"></script>' in page.body
     assert "script-src 'self'" in page.headers["Content-Security-Policy"]
-    for name in ("app.js", "style.css"):
+    for name in ("app.js", "style.css", "logo.svg"):
         assert stack.call("GET", f"{stack.url}/apps/{APP}/{name}").status == 200
     week = later(24).date()
     schedule = urlencode(

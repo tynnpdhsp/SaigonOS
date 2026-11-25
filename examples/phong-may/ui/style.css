@@ -79,6 +79,15 @@ svg {
   font-weight: 600;
 }
 
+.sidebar-logo {
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  padding: 3px;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
 .menu {
   padding: 8px 0 24px;
 }
