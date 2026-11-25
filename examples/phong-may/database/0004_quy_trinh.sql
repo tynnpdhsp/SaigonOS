@@ -40,7 +40,7 @@ BEGIN
         so_may_can,
         nullif(btrim(bien ->> 'phan_mem'), ''),
         nullif(btrim(bien ->> 'ghi_chu'), ''),
-        least(now() + interval '24 hours', gio_bat_dau - interval '2 hours')
+        date_trunc('second', least(now() + interval '24 hours', gio_bat_dau - interval '2 hours'))
     FROM phong_may.phong
     WHERE phong.ma = bien ->> 'ma_phong'
     RETURNING * INTO ban_ghi;
