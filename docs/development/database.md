@@ -7,7 +7,7 @@ Mỗi thay đổi của cơ sở dữ liệu được viết thành một file m
 
 - Tên file gồm số thứ tự tiếp theo với 4 chữ số, dấu gạch dưới và một mô tả ngắn viết bằng chữ thường không dấu. Ví dụ: [`0004_audit_log.sql`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/config/postgres/migrations/0004_audit_log.sql).
 - Mỗi file chạy trong một transaction. Khi một câu lệnh bị lỗi, mọi thay đổi của file bị hủy. Do đó, file không được chứa `BEGIN`, `COMMIT` hoặc câu lệnh không chạy được trong transaction, ví dụ `CREATE INDEX CONCURRENTLY`.
-- Không sửa hoặc xóa file đã được merge vào `main`. Service `migrate` dừng và báo lỗi khi nội dung của một file đã chạy bị thay đổi. Để sửa một thay đổi cũ, hãy thêm một file mới.
+- Không sửa hoặc xóa file đã được merge vào `main`. Service `migrate` dừng và báo lỗi khi nội dung của một file đã chạy bị thay đổi. Để sửa một thay đổi cũ, thêm một file mới.
 - File [`init.sql`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/config/postgres/init.sql) chỉ chạy một lần khi cơ sở dữ liệu được tạo. Do đó, không thêm thay đổi mới vào file này.
 
 Kiểm thử [`tests/test_migrations.py`](https://github.com/tynnpdhsp/SaigonOS/blob/main/tests/test_migrations.py) kiểm tra tên và số thứ tự của các file.
@@ -32,9 +32,9 @@ Hàm `core.seal_claims()` được cấp cho các role mà mã của ứng dụn
 
 Khi cần sửa hàm `core.pre_request()`, viết lại toàn bộ hàm trong một file SQL mới và giữ cả bốn việc trên.
 
-Tài liệu OpenAPI ở địa chỉ `/api/` cũng theo các quyền này. Bảng và view được liệt kê khi role có ít nhất một quyền trên bảng hoặc view đó. Hàm được liệt kê khi role có quyền `EXECUTE`. Với mỗi bảng hoặc view được liệt kê, tài liệu ghi mọi cột và mọi thao tác mà bảng hoặc view hỗ trợ, kể cả cột và thao tác chưa được cấp quyền. Do đó, để giấu một cột, hãy tạo một view không có cột đó thay vì chỉ cấp quyền theo cột. Kiểm thử `test_api_document_lists_only_tables_and_functions_granted_to_caller` trong `tests/integration/test_database.py` so sánh tài liệu với quyền của từng role trong cơ sở dữ liệu.
+Tài liệu OpenAPI ở địa chỉ `/api/` cũng theo các quyền này. Bảng và view được liệt kê khi role có ít nhất một quyền trên bảng hoặc view đó. Hàm được liệt kê khi role có quyền `EXECUTE`. Với mỗi bảng hoặc view được liệt kê, tài liệu ghi mọi cột và mọi thao tác mà bảng hoặc view hỗ trợ, kể cả cột và thao tác chưa được cấp quyền. Do đó, để giấu một cột, tạo một view không có cột đó thay vì chỉ cấp quyền theo cột. Kiểm thử `test_api_document_lists_only_tables_and_functions_granted_to_caller` trong `tests/integration/test_database.py` so sánh tài liệu với quyền của từng role trong cơ sở dữ liệu.
 
-View đọc bảng bằng quyền của role sở hữu view. Các file SQL được chạy bằng role `postgres`. Role này là superuser nên không bị RLS giới hạn. Do đó, view đọc một bảng có RLS cần thiết lập `security_invoker = true`. Với thiết lập này, view đọc bảng bằng quyền của người gọi và RLS của bảng được áp dụng. Role của người gọi khi đó cần quyền trên cả view và bảng. Để người gọi không đọc thẳng bảng qua API, hãy đặt bảng ngoài schema `api`, vì PostgREST chỉ phục vụ schema `api`. Kiểm thử `test_view_with_security_invoker_masks_contacts_and_keeps_row_security` trong `tests/integration/test_database.py` kiểm tra cách làm này.
+View đọc bảng bằng quyền của role sở hữu view. Các file SQL được chạy bằng role `postgres`. Role này là superuser nên không bị RLS giới hạn. Do đó, view đọc một bảng có RLS cần thiết lập `security_invoker = true`. Với thiết lập này, view đọc bảng bằng quyền của người gọi và RLS của bảng được áp dụng. Role của người gọi khi đó cần quyền trên cả view và bảng. Để người gọi không đọc thẳng bảng qua API, đặt bảng ngoài schema `api`, vì PostgREST chỉ phục vụ schema `api`. Kiểm thử `test_view_with_security_invoker_masks_contacts_and_keeps_row_security` trong `tests/integration/test_database.py` kiểm tra cách làm này.
 
 ## Che dữ liệu cá nhân
 
@@ -45,7 +45,7 @@ Hàm `core.mask_phone()` và `core.mask_email()` che một phần số điện t
 | `core.mask_phone(phone)` | Giữ 3 ký tự đầu và 3 ký tự cuối. Phần giữa được thay bằng `****`. Khi giá trị có ít hơn 10 ký tự, mọi ký tự được thay bằng dấu `*` | `0912345678` thành `091****678` |
 | `core.mask_email(email)` | Giữ nguyên phần từ dấu `@` cuối cùng. Phần trước dấu `@` giữ 3 ký tự đầu, mỗi ký tự còn lại được thay bằng một dấu `*`. Khi phần này có ít hơn 6 ký tự, mọi ký tự của phần này được thay bằng dấu `*` | `nguyenvana@gmail.com` thành `ngu*******@gmail.com` |
 
-Hai hàm trả về `NULL` khi giá trị là `NULL`. Role `anon` và `authenticated` gọi được hai hàm này. Để chỉ hiện đủ dữ liệu cho người có quyền, hãy dùng hai hàm trong view. Ví dụ, view sau chỉ hiện đủ số điện thoại và email cho người có realm role `quan-ly`:
+Hai hàm trả về `NULL` khi giá trị là `NULL`. Role `anon` và `authenticated` gọi được hai hàm này. Để chỉ hiện đủ dữ liệu cho người có quyền, dùng hai hàm trong view. Ví dụ, view sau chỉ hiện đủ số điện thoại và email cho người có realm role `quan-ly`:
 
 ```sql
 GRANT USAGE ON SCHEMA app TO authenticated;

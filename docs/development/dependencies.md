@@ -11,7 +11,7 @@ Chỉ sử dụng thư viện có giấy phép nguồn mở được OSI công n
 4. Chạy `pip install -r requirements-dev.txt` để cài đặt đúng các phiên bản trong lock file.
 5. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](https://github.com/tynnpdhsp/SaigonOS/blob/main/DEPENDENCIES.md).
 
-Ở bước 5, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, hãy mở một issue để thảo luận trước khi thêm thư viện.
+Ở bước 5, lệnh sẽ báo lỗi "Giấy phép ngoài danh sách cho phép" nếu giấy phép của thư viện chưa có trong danh sách cho phép ở `scripts/dependencies.py`. Khi đó, cần mở một issue để thảo luận trước khi thêm thư viện.
 
 ## Thêm hoặc đổi phiên bản image
 
@@ -22,7 +22,7 @@ Chỉ sử dụng phần mềm có giấy phép nguồn mở được OSI công 
 3. Khai báo image trong `IMAGES` ở `scripts/dependencies.py`. Mỗi image cần giấy phép, mô tả và địa chỉ mã nguồn của phiên bản đó.
 4. Chạy `make dependencies` để tạo lại [DEPENDENCIES.md](https://github.com/tynnpdhsp/SaigonOS/blob/main/DEPENDENCIES.md).
 
-Lệnh `make lint` báo lỗi khi một image trong [`compose.yaml`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/compose.yaml) chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, hãy mở một issue để thảo luận trước khi thêm image.
+Lệnh `make lint` báo lỗi khi một image trong [`compose.yaml`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/compose.yaml) chưa được khai báo. Giấy phép chưa có trong danh sách cho phép cũng bị báo lỗi. Khi đó, cần mở một issue để thảo luận trước khi thêm image.
 
 Khi đổi phiên bản Operaton, kiểm tra lại file [`src/saigonos/stack/config/operaton/sso-logout.js`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/config/operaton/sso-logout.js). File này thay plugin đăng xuất của Operaton, vì plugin gốc của bản 2.2.1 không tìm thấy nút đăng xuất trong menu tài khoản. Kiểm thử `test_logout_button_ends_session_of_operaton` báo lỗi khi menu tài khoản không còn thẻ `a` có class `logout`.
 
