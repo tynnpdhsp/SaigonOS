@@ -2,6 +2,7 @@
 import json
 import re
 import shlex
+import shutil
 from importlib.resources import files
 from pathlib import Path
 from typing import get_args
@@ -101,11 +102,9 @@ DELIVERIES = (STACK / "config" / "postgres" / "migrations" / "0016_deliveries.sq
 JSON_BLOCKS = re.findall(r"```json\n(.*?)```", TEXT, re.DOTALL)
 MANIFEST_EXAMPLE = next(json.loads(block) for block in JSON_BLOCKS if '"$schema"' in block)
 CHECK_SAMPLES = [sample for sample in SAMPLES if sample.startswith("Ứng dụng")]
-PROCESS = next(
-    block
-    for block in re.findall(r"```xml\n(.*?)```", TEXT, re.DOTALL)
-    if '"nghi_phep.duyet"' in block
-)
+EXAMPLE = ROOT / "examples" / "phong-may"
+EXAMPLE_MANIFEST = json.loads((EXAMPLE / "saigonos-app.json").read_text(encoding="utf-8"))
+EXAMPLE_PROCESS = (EXAMPLE / "processes" / "dat-phong.bpmn").read_text(encoding="utf-8")
 
 
 def section(title):
@@ -150,7 +149,7 @@ def test_docs_command_is_accepted_by_cli(line):
 
 def test_docs_options_exist_in_cli():
     documented = {text for text in INLINE if text.startswith("--")}
-    known = {
+    known = {"--help"} | {
         option
         for command in leaf_commands(main)
         for parameter in command.params
@@ -258,28 +257,62 @@ def test_docs_lists_every_form_field_type():
 
 
 def test_docs_sample_process_accepts_values_of_examples():
-    [xml] = [
-        block for block in re.findall(r"```xml\n(.*?)```", TEXT, re.DOTALL) if "yeu_cau" in block
-    ]
-    rules = rules_of(xml, "yeu_cau")
+    page = PAGES["docs/apps/workflow.md"]
+    blocks = re.findall(r"```json\n(.*?)```", page, re.DOTALL)
     started, completed = (
-        dict(re.findall(r'(\w+): "([^"]*)"', values))
-        for values in re.findall(r"variables: \{ ([^}]*) \}", TEXT)
+        json.loads(block)["variables"] for block in blocks if '"variables"' in block
     )
+    rules = rules_of(EXAMPLE_PROCESS, "phong_may.dat_phong")
 
     with pytest.raises(HTTPException) as refused:
-        submitted(rules.task_forms["xu_ly"], {}, TASK_FORM)
+        submitted(rules.task_forms["duyet"], {}, TASK_FORM)
 
+    assert submitted(rules.start_form, started, START_FORM)["ma_phong"]["value"] == "PM1"
     assert (
-        submitted(rules.start_form, started, START_FORM)["noi_dung"]["value"] == started["noi_dung"]
-    )
-    assert (
-        submitted(rules.task_forms["xu_ly"], completed, TASK_FORM)["ket_qua"]["value"]
+        submitted(rules.task_forms["duyet"], completed, TASK_FORM)["ket_qua"]["value"]
         == (completed["ket_qua"])
     )
-    assert [json.loads(block) for block in JSON_BLOCKS if '"detail"' in block] == [
+    assert [json.loads(block) for block in blocks if '"detail"' in block] == [
         {"detail": refused.value.detail}
     ]
+
+
+def stripped(text):
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def contains(lines, part):
+    return any(lines[index : index + len(part)] == part for index in range(len(lines)))
+
+
+def excerpts():
+    for name in ["docs/first-app.md", *(name for name in PAGES if name.startswith("docs/apps/"))]:
+        if name not in PAGES:
+            continue
+        before = ""
+        for part in re.split(r"(```[^\n]*\n.*?```)", PAGES[name], flags=re.DOTALL):
+            if not part.startswith("```"):
+                before = part.strip().split("\n\n")[-1]
+                continue
+            files = {
+                EXAMPLE / token
+                for token in re.findall(r"`([\w./-]+)`", before)
+                if (EXAMPLE / token).is_file()
+            }
+            if len(files) == 1:
+                yield name, files.pop(), part.split("\n", 1)[1].rsplit("```", 1)[0]
+
+
+EXCERPTS = list(excerpts())
+
+
+def test_docs_have_excerpts_of_sample_app():
+    assert len(EXCERPTS) >= 6
+
+
+@pytest.mark.parametrize(("name", "file", "block"), EXCERPTS)
+def test_docs_excerpt_of_sample_app_matches_its_file(name, file, block):
+    assert contains(stripped(file.read_text(encoding="utf-8")), stripped(block))
 
 
 def targets_of(text):
@@ -414,14 +447,6 @@ def test_docs_states_retry_rules_of_telegram():
     assert f"Tin được gửi lại trong vòng {POLL} giây." in PROSE
 
 
-def write_app(folder, manifest):
-    files = {"database/0001_don.sql": "", "processes/duyet.bpmn": PROCESS, "ui/index.html": ""}
-    for name, text in files.items():
-        (folder / name).parent.mkdir(parents=True, exist_ok=True)
-        (folder / name).write_text(text, encoding="utf-8")
-    (folder / MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
-
-
 def test_docs_example_of_manifest_is_valid():
     manifest = Manifest.model_validate(MANIFEST_EXAMPLE)
     schema = MANIFEST_EXAMPLE["$schema"].split("/SaigonOS/main/", 1)[1]
@@ -476,7 +501,7 @@ def test_docs_example_and_limits_of_lake_entries_match_manifest():
     assert [entry.model_dump(exclude_defaults=True) for entry in manifest.archive] == (
         example["archive"]
     )
-    assert [entry.view for entry in manifest.snapshots] == ["chot_don"]
+    assert [entry.view for entry in manifest.snapshots] == ["lich"]
     assert f"tối đa {QUALITY_RULES} luật. Mỗi luật có tối đa {RULE_COLUMNS} cột" in PROSE
     assert f"bucket `{BUCKET}` của SeaweedFS" in PROSE
     assert f"S3_BUCKET: quarantine,clean,{BUCKET}" in COMPOSE
@@ -484,9 +509,11 @@ def test_docs_example_and_limits_of_lake_entries_match_manifest():
 
 def test_docs_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(apps, "APPS", tmp_path)
-    write_app(tmp_path / "dung", MANIFEST_EXAMPLE)
-    roles = [MANIFEST_EXAMPLE["roles"][0], {"name": "don-tu.quan-ly", "description": "Duyệt đơn"}]
-    write_app(tmp_path / "sai", MANIFEST_EXAMPLE | {"version": "1.0", "roles": roles})
+    shutil.copytree(EXAMPLE, tmp_path / "dung")
+    shutil.copytree(EXAMPLE, tmp_path / "sai")
+    roles = [*EXAMPLE_MANIFEST["roles"], {"name": "don-tu.quan-ly", "description": "Duyệt đơn"}]
+    wrong = EXAMPLE_MANIFEST | {"version": "1.0", "roles": roles}
+    (tmp_path / "sai" / MANIFEST).write_text(json.dumps(wrong), encoding="utf-8")
     (tmp_path / "sai" / "ui" / "index.html").unlink()
     outputs = []
 
@@ -499,8 +526,10 @@ def test_docs_shows_real_output_of_check(tmp_path, monkeypatch, capsys):
 
 def test_docs_shows_real_output_of_apply():
     [sample] = [sample for sample in SAMPLES if sample.startswith("Đã tạo schema")]
-    data, sql_files = MANIFEST_EXAMPLE, ["0001_don.sql", "0002_duyet.sql"]
-    key = re.search(r'<bpmn:process id="([^"]+)"', PROCESS)[1]
+    data = EXAMPLE_MANIFEST
+    sql_files = sorted(path.name for path in (EXAMPLE / "database").glob("*.sql"))
+    processes = sorted((EXAMPLE / "processes").glob("*.bpmn"))
+    keys = [re.search(r'<bpmn:process id="([^"]+)"', path.read_text())[1] for path in processes]
 
     assert sample.splitlines() == [
         CREATED.format(schema=data["name"].replace("-", "_")),
@@ -508,12 +537,12 @@ def test_docs_shows_real_output_of_apply():
         *(ROLE_CREATED.format(role=role["name"]) for role in data["roles"]),
         CLIENT_CREATED.format(client=data["name"]),
         ROUTE_CREATED.format(route=route_of(data["name"])),
-        DEPLOYED.format(file="duyet.bpmn", key=key, version=1),
+        *(
+            DEPLOYED.format(file=path.name, key=key, version=1)
+            for path, key in zip(processes, keys, strict=True)
+        ),
         apps.INSTALLED.format(name=data["name"], version=data["version"]),
     ]
-    assert f"Ví dụ file `database/{sql_files[0]}`" in PROSE
-    assert f"File `database/{sql_files[1]}`" in PROSE
-    assert "Ví dụ, file `processes/duyet.bpmn`" in PROSE
 
 
 def test_docs_states_client_scopes_and_owner_attribute_of_app_clients():

@@ -38,4 +38,5 @@ SaigonOS chia một hệ thống chuyển đổi số thành ba tầng. Tầng 1
 
 ## Tham khảo
 
+- [Lệnh saigonos](reference/cli.md)
 - [Tài liệu API](reference/api.md)
