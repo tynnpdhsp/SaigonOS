@@ -3,7 +3,7 @@
 
 SaigonOS là phần lõi nguồn mở của một hệ điều hành chuyển đổi số (DX-OS). Lõi cung cấp sẵn đăng nhập một lần, API Gateway, dữ liệu, kho file và quy trình. Lõi không có giao diện cho người dùng cuối. Mỗi ứng dụng chỉ viết phần nghiệp vụ và giao diện, rồi được cài đặt vào lõi bằng một lệnh.
 
-Tài liệu của SaigonOS nằm trong thư mục [docs](docs/README.md). Mỗi phiên bản có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Các thay đổi được ghi trong [CHANGELOG.md](CHANGELOG.md).
+Tài liệu của SaigonOS có ở trang web [www.saigonos.org](https://www.saigonos.org) và trong thư mục [docs](docs/README.md). Mỗi phiên bản có ở trang [Releases](https://github.com/tynnpdhsp/SaigonOS/releases). Các thay đổi được ghi trong [CHANGELOG.md](CHANGELOG.md).
 
 ## Thành phần
 

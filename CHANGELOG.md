@@ -7,6 +7,10 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thêm
+
+- README có link tới trang web https://www.saigonos.org. Trang có tài liệu và tin tức về các bản phát hành.
+
 ## [1.0.1] - 2026-11-26
 
 ### Thêm
