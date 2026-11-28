@@ -149,7 +149,7 @@ Trang đăng nhập bằng client `phong-may` theo luồng Authorization Code v�
 
 ## Cài đặt ứng dụng mẫu
 
-Trên hệ thống đã cài đặt theo trang [Cài đặt](install.md), chạy các lệnh sau trong thư mục `SaigonOS` đã tạo bằng `git clone`. Lệnh đầu soát ứng dụng, lệnh sau cài đặt ứng dụng vào hệ thống đang chạy:
+Trên hệ thống đã cài đặt theo trang [Cài đặt](install.md), chạy các lệnh sau trong thư mục `SaigonOS` đã tạo bằng `git clone`. Lệnh đầu kiểm tra ứng dụng có lỗi hay không. Lệnh sau cài đặt ứng dụng vào hệ thống đang chạy:
 
 ```bash
 saigonos apply --check examples/phong-may
@@ -197,4 +197,4 @@ Lệnh gỡ client, route, giao diện và tạm dừng quy trình của ứng d
 
 ## Viết ứng dụng mới từ mẫu
 
-Để viết ứng dụng mới, chép thư mục `examples/phong-may` rồi đổi mọi chữ `phong-may` và `phong_may` thành tên của ứng dụng mới. Tên này có mặt trong bản khai báo, tên role, tên schema trong các hàm SQL, mã quy trình và các hằng số ở đầu file `ui/app.js`. Sau đó, chạy lệnh soát để tìm chỗ còn sai.
+Để viết ứng dụng mới, chép thư mục `examples/phong-may` rồi đổi mọi chữ `phong-may` và `phong_may` thành tên của ứng dụng mới. Tên này có mặt trong bản khai báo, tên role, tên schema trong các hàm SQL, mã quy trình và các hằng số ở đầu file `ui/app.js`. Sau đó, chạy lệnh kiểm tra để tìm chỗ còn sai.

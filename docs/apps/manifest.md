@@ -50,9 +50,9 @@ Bản khai báo tuân theo các quy tắc sau:
 
 JSON Schema của bản khai báo nằm trong file [schemas/saigonos-app.schema.json](https://github.com/tynnpdhsp/SaigonOS/blob/main/schemas/saigonos-app.schema.json).
 
-## Soát ứng dụng
+## Kiểm tra ứng dụng
 
-Lệnh sau soát bản khai báo và các thư mục của ứng dụng mẫu. Lệnh được chạy trong thư mục `SaigonOS` đã tạo bằng `git clone`:
+Lệnh sau kiểm tra bản khai báo và các thư mục của ứng dụng mẫu. Lệnh được chạy trong thư mục `SaigonOS` đã tạo bằng `git clone`:
 
 ```bash
 saigonos apply --check examples/phong-may
@@ -73,9 +73,9 @@ Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã tho
 - ui: Thư mục "ui" không có file index.html.
 ```
 
-Lệnh soát cả các file BPMN theo các quy tắc ở trang [Quy trình](workflow.md#file-bpmn-của-ứng-dụng). Lỗi trong file BPMN có tên file và số dòng. Cảnh báo được in trước dòng kết quả và không làm lệnh kết thúc với mã thoát 1.
+Lệnh kiểm tra cả các file BPMN theo các quy tắc ở trang [Quy trình](workflow.md#file-bpmn-của-ứng-dụng). Lỗi trong file BPMN có tên file và số dòng. Cảnh báo được in trước dòng kết quả và không làm lệnh kết thúc với mã thoát 1.
 
-Cũng có thể soát bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Khi đó, mọi file của ứng dụng cần quyền đọc cho mọi tài khoản, ví dụ quyền `644`, và mọi thư mục cần quyền `755`.
+Cũng có thể kiểm tra bằng Docker Compose sau khi chép thư mục ứng dụng vào thư mục `apps` của thư mục làm việc. Khi đó, mọi file của ứng dụng cần quyền đọc cho mọi tài khoản, ví dụ quyền `644`, và mọi thư mục cần quyền `755`.
 
 ```bash
 cp -r examples/phong-may ~/saigonos/apps/
@@ -93,7 +93,7 @@ saigonos apply examples/phong-may
 
 Lệnh thực hiện các bước sau:
 
-1. Soát ứng dụng như mục trên. Khi có lỗi, lệnh dừng và không thay đổi gì.
+1. Kiểm tra ứng dụng như mục trên. Khi có lỗi, lệnh dừng và không thay đổi gì.
 2. Chép bản khai báo và các thư mục đã khai vào thư mục `apps/phong-may` của thư mục làm việc. Các file khác, ví dụ thư mục `.git`, không được chép.
 3. Tạo schema, chạy các file SQL, tạo realm role và client trên Keycloak, tạo route trên APISIX, rồi triển khai các file BPMN vào Operaton.
 

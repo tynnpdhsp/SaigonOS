@@ -25,7 +25,7 @@ Các nhóm kiểm thử nằm trong thư mục [`tests/integration`](https://git
 | `test_realtime.py` | Centrifugo, quyền nghe kênh, history, thông báo và Telegram |
 | `test_caddy.py` | Caddy với chứng chỉ do Caddy tự cấp |
 | `test_monitoring.py` | Prometheus, Loki, Grafana và việc tắt giám sát |
-| `test_apps.py` | Soát và cài đặt ứng dụng, lưu trữ, chốt số liệu và hồ dữ liệu |
+| `test_apps.py` | Kiểm tra và cài đặt ứng dụng, lưu trữ, chốt số liệu và hồ dữ liệu |
 | `test_sample_app.py` | Ứng dụng mẫu `examples/phong-may` qua API, với từng role |
 | `test_recovery.py` | Sao lưu rồi khôi phục tại chỗ và vào một thư mục làm việc mới |
 

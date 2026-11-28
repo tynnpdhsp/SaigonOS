@@ -22,7 +22,7 @@ File chỉ dùng được các thẻ sau:
 - Các gateway, luồng (`sequenceFlow`) và multi-instance.
 - Lane, pool, chú thích và phần hình vẽ.
 
-Message và signal chưa được hỗ trợ. File thiếu phần hình vẽ (BPMNDI) vẫn được cài đặt, nhưng lệnh soát in cảnh báo vì Cockpit không vẽ được quy trình.
+Message và signal chưa được hỗ trợ. File thiếu phần hình vẽ (BPMNDI) vẫn được cài đặt, nhưng lệnh kiểm tra in cảnh báo vì Cockpit không vẽ được quy trình.
 
 Mỗi file là một bản triển khai riêng trong tenant của Operaton trùng tên ứng dụng. File không thay đổi thì không tạo phiên bản mới. File đã sửa tạo một phiên bản mới, còn các quy trình đang chạy vẫn dùng phiên bản cũ. Service `core` lọc quy trình và việc theo client của access token, tức claim `azp`. Access token của một ứng dụng chỉ thấy, bắt đầu, nhận và hoàn thành quy trình của ứng dụng đó. Quy trình và việc của ứng dụng khác nhận mã 404.
 

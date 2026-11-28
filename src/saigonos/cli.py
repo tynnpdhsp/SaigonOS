@@ -337,7 +337,7 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
 @main.command(
     short_help="Cài đặt một ứng dụng vào hệ thống.",
     help=(
-        "Soát bản khai báo saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
+        "Kiểm tra bản khai báo saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
         "chép ứng dụng vào thư mục apps của thư mục làm việc rồi cài đặt ứng dụng "
         "vào hệ thống đang chạy.\n\n"
         "Khi cài đặt lỗi, thư mục apps giữ bản đã cài đặt thành công gần nhất."
@@ -347,7 +347,7 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
 @click.option(
     "--check",
     is_flag=True,
-    help="Chỉ soát ứng dụng, không cài đặt vào hệ thống. Hệ thống không cần đang chạy.",
+    help="Chỉ kiểm tra ứng dụng, không cài đặt vào hệ thống. Hệ thống không cần đang chạy.",
 )
 @click.argument("folder", metavar="THƯ_MỤC", type=click.Path(resolve_path=True, path_type=Path))
 @click.pass_context

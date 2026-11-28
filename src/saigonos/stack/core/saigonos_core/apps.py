@@ -69,15 +69,17 @@ def parser() -> argparse.ArgumentParser:
     actions = commands.add_subparsers(dest="command", required=True, metavar="LỆNH")
     check = actions.add_parser(
         "check",
-        help="Soát bản khai báo và các thư mục của một ứng dụng.",
-        description="Soát bản khai báo và các thư mục của một ứng dụng rồi in mọi lỗi tìm thấy.",
+        help="Kiểm tra bản khai báo và các thư mục của một ứng dụng.",
+        description=(
+            "Kiểm tra bản khai báo và các thư mục của một ứng dụng rồi in mọi lỗi tìm thấy."
+        ),
     )
     check.add_argument("folder", metavar="THƯ_MỤC", help="Thư mục của ứng dụng trong thư mục apps.")
     apply = actions.add_parser(
         "apply",
         help="Cài đặt một ứng dụng vào hệ thống.",
         description=(
-            "Soát rồi cài đặt ứng dụng trong thư mục apps/TÊN vào hệ thống đang chạy. "
+            "Kiểm tra rồi cài đặt ứng dụng trong thư mục apps/TÊN vào hệ thống đang chạy. "
             "Với --all, cài đặt lại mọi ứng dụng đã cài đặt."
         ),
     )
