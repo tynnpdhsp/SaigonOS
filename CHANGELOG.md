@@ -13,6 +13,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Mỗi lời gọi tới REST API của dữ liệu, tức `/api/` và `/apps/<tên ứng dụng>/api/`, chạy tối đa 15 giây. Khi quá thời gian này, PostgreSQL dừng truy vấn và lời gọi nhận mã 500 với mã lỗi `57014`.
 
+- Sơ đồ kiến trúc ghi việc của từng mũi tên thay cho tên giao thức SQL, S3 và REST. Ví dụ, mũi tên từ Centrifugo tới PostgreSQL ghi "lấy thông báo chờ gửi", vì Centrifugo chỉ lấy thông báo ra rồi xóa.
+
 ### Sửa
 
 - Keycloak mở được tới 100 kết nối, bằng số kết nối tối đa của PostgreSQL. Do đó, lúc nhiều người đăng nhập cùng lúc, các service khác có thể không kết nối được PostgreSQL. Keycloak nay mở tối đa 20 kết nối. Mỗi role đăng nhập của các service có giới hạn số kết nối riêng, nên service mở quá phần của mình không làm service khác mất kết nối.
