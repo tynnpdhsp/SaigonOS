@@ -1404,7 +1404,7 @@ def test_docker_compose_path_needs_folder_named_after_app(stack):
     assert result.returncode == 1, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        f"Thư mục sai-ten chứa bản khai của ứng dụng {name}. "
+        f"Thư mục sai-ten chứa bản khai báo của ứng dụng {name}. "
         "Tên thư mục phải trùng tên ứng dụng.\n",
     )
 

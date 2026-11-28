@@ -329,7 +329,7 @@ def test_role_check_waits_for_valid_name_of_app(app):
 
 
 def test_manifest_must_be_json_object(app):
-    assert problems(app, [VALID]) == ["Nội dung của bản khai phải là một đối tượng JSON."]
+    assert problems(app, [VALID]) == ["Nội dung của bản khai báo phải là một đối tượng JSON."]
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Lưu trữ và chốt số liệu
 
-Mục `archive` của bản khai khai các bảng có dòng cũ được chuyển xuống [hồ dữ liệu](../admin/data-lake.md). Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. Ví dụ, để ứng dụng mẫu chuyển các đơn cũ hơn một năm xuống hồ và chốt lịch dùng phòng mỗi tháng, thêm vào bản khai:
+Mục `archive` của bản khai báo liệt kê các bảng có dòng cũ được chuyển xuống [hồ dữ liệu](../admin/data-lake.md). Mục `snapshots` liệt kê các view hoặc bảng được chốt số liệu theo tháng. Ví dụ, để ứng dụng mẫu chuyển các đơn cũ hơn một năm xuống hồ và chốt lịch dùng phòng mỗi tháng, thêm vào bản khai báo:
 
 ```json
 "archive": [

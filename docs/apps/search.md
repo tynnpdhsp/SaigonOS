@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Tìm kiếm
 
-Mục `search` của bản khai khai các bảng cần tìm kiếm toàn văn. Mỗi phần tử gồm tên bảng `table` trong schema của ứng dụng và danh sách cột `columns` cần tìm. Ví dụ, để ứng dụng mẫu tìm đơn đặt phòng theo lớp, phần mềm và ghi chú, thêm vào bản khai:
+Mục `search` của bản khai báo liệt kê các bảng cần tìm kiếm toàn văn. Mỗi phần tử gồm tên bảng `table` trong schema của ứng dụng và danh sách cột `columns` cần tìm. Ví dụ, để ứng dụng mẫu tìm đơn đặt phòng theo lớp, phần mềm và ghi chú, thêm vào bản khai báo:
 
 ```json
 "search": [

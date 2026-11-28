@@ -9,8 +9,8 @@ Lệnh `saigonos` có trong môi trường đã cài package `saigonos`, như �
 | `up` | Khởi động các service và cài đặt lại các ứng dụng đã cài đặt | [Cấu hình](../admin/configuration.md#khởi-động-và-dừng) |
 | `down` | Dừng các service | [Cấu hình](../admin/configuration.md#khởi-động-và-dừng) |
 | `doctor` | Kiểm tra các service, API Gateway và các ứng dụng | [Cài đặt](../install.md#4-kiểm-tra-hệ-thống) |
-| `apply` | Soát và cài đặt một ứng dụng | [Bản khai và cài đặt ứng dụng](../apps/manifest.md) |
-| `remove` | Gỡ một ứng dụng | [Bản khai và cài đặt ứng dụng](../apps/manifest.md#gỡ-ứng-dụng) |
+| `apply` | Soát và cài đặt một ứng dụng | [Bản khai báo và cài đặt ứng dụng](../apps/manifest.md) |
+| `remove` | Gỡ một ứng dụng | [Bản khai báo và cài đặt ứng dụng](../apps/manifest.md#gỡ-ứng-dụng) |
 | `audit verify` | Kiểm tra chuỗi mã băm của audit log | [Kiểm tra audit log](../admin/audit-log.md) |
 | `backup` | Tạo gói sao lưu | [Sao lưu và khôi phục](../admin/backup.md) |
 | `restore` | Khôi phục hệ thống từ một gói sao lưu | [Sao lưu và khôi phục](../admin/backup.md#khôi-phục) |

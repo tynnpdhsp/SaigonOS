@@ -25,7 +25,7 @@ Repo SaigonOS gồm lõi và một ứng dụng mẫu quản lý việc đặt p
 
 ## Viết ứng dụng
 
-- [Bản khai và cài đặt ứng dụng](apps/manifest.md)
+- [Bản khai báo và cài đặt ứng dụng](apps/manifest.md)
 - [Dữ liệu và API](apps/database.md)
 - [Đăng nhập](apps/login.md)
 - [File](apps/files.md)

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Luật truy cập của ứng dụng
 
-Trường `access` của bản khai gồm tối đa 20 luật. OPA áp dụng các luật này cho API của ứng dụng tại `/apps/<tên ứng dụng>/api/`. Một lời gọi khớp với luật khi phương thức thuộc `methods` và đường dẫn khớp một mẫu trong `paths`. Lời gọi khớp với luật phải đạt mọi điều kiện của luật đó. Lời gọi không khớp luật nào vẫn được cho qua. Quyền trên từng bảng và từng dòng vẫn do file SQL của ứng dụng quyết định.
+Trường `access` của bản khai báo gồm tối đa 20 luật. OPA áp dụng các luật này cho API của ứng dụng tại `/apps/<tên ứng dụng>/api/`. Một lời gọi khớp với luật khi phương thức thuộc `methods` và đường dẫn khớp một mẫu trong `paths`. Lời gọi khớp với luật phải đạt mọi điều kiện của luật đó. Lời gọi không khớp luật nào vẫn được cho qua. Quyền trên từng bảng và từng dòng vẫn do file SQL của ứng dụng quyết định.
 
 Ví dụ, file [`saigonos-app.json`](https://github.com/tynnpdhsp/SaigonOS/blob/main/examples/phong-may/saigonos-app.json) của ứng dụng mẫu có ba luật:
 
@@ -33,7 +33,7 @@ Luật thứ nhất chỉ cho người có một trong bốn role của ứng d�
 |---|---|
 | `methods` | Các phương thức `GET`, `POST`, `PATCH`, `PUT`, `DELETE`. `GET` áp dụng cả cho `HEAD`. Khi không khai, luật áp dụng cho mọi phương thức |
 | `paths` | Các mẫu đường dẫn tính từ `/apps/<tên ứng dụng>/api`, theo cú pháp glob. Dấu `*` khớp với một cấp, dấu `**` khớp với nhiều cấp, `/` là gốc của API. Khi không khai, luật áp dụng cho mọi đường dẫn |
-| `roles` | Người gọi phải có ít nhất một role trong danh sách. Các role phải được khai trong trường `roles` của bản khai |
+| `roles` | Người gọi phải có ít nhất một role trong danh sách. Các role phải được khai trong trường `roles` của bản khai báo |
 | `networks` | Địa chỉ IP của người gọi phải thuộc một dải mạng trong danh sách, viết theo dạng CIDR |
 | `otp` | Khi có giá trị `true`, người gọi phải đăng nhập bằng mật khẩu và mã OTP. Người dùng tự cài OTP ở trang tài khoản `/auth/realms/saigonos/account/` |
 

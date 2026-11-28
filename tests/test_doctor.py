@@ -548,7 +548,7 @@ def test_doctor_reports_app_that_does_not_answer(home, cli, docker, gateway):
 
     assert result.exit_code == 1
     assert re.search(
-        r"LỖI +Ứng dụng hong +không đọc được bản khai trong thư mục apps", result.output
+        r"LỖI +Ứng dụng hong +không đọc được bản khai báo trong thư mục apps", result.output
     )
     assert "lời gọi /apps/nghi-phep/ nhận mã 404, đúng ra là 200" in result.output
 

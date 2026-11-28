@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Hồ dữ liệu
 
-Hồ dữ liệu giữ dữ liệu lịch sử của các ứng dụng dưới dạng file Parquet trong bucket `lake` của SeaweedFS. Dữ liệu vào hồ bằng hai việc lưu trữ và chốt số liệu, do ứng dụng khai trong bản khai như ở trang [Lưu trữ và chốt số liệu](../apps/archive.md). Chỉ service `core` đọc được bucket `lake`. Người quản trị đọc hồ bằng các lệnh ở trang này.
+Hồ dữ liệu giữ dữ liệu lịch sử của các ứng dụng dưới dạng file Parquet trong bucket `lake` của SeaweedFS. Dữ liệu vào hồ bằng hai việc lưu trữ và chốt số liệu, do ứng dụng khai trong bản khai báo như ở trang [Lưu trữ và chốt số liệu](../apps/archive.md). Chỉ service `core` đọc được bucket `lake`. Người quản trị đọc hồ bằng các lệnh ở trang này.
 
 Tháng của dữ liệu được tính theo múi giờ `Asia/Ho_Chi_Minh`. Để dùng múi giờ khác, thêm dòng sau vào file `.env` rồi chạy `saigonos up`:
 

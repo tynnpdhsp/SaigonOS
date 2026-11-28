@@ -314,7 +314,7 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
     try:
         name = app_name(folder)
     except (OSError, ValueError, AppFolderError) as error:
-        raise click.ClickException(f"Không đọc được bản khai của ứng dụng: {error}") from error
+        raise click.ClickException(f"Không đọc được bản khai báo của ứng dụng: {error}") from error
     apps = home / APPS_FOLDER
     with locked(home, waiting):
         try:
@@ -337,7 +337,7 @@ def install(ctx: click.Context, home: Path, folder: Path) -> None:
 @main.command(
     short_help="Cài đặt một ứng dụng vào hệ thống.",
     help=(
-        "Soát bản khai saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
+        "Soát bản khai báo saigonos-app.json và các thư mục của ứng dụng trong THƯ_MỤC, "
         "chép ứng dụng vào thư mục apps của thư mục làm việc rồi cài đặt ứng dụng "
         "vào hệ thống đang chạy.\n\n"
         "Khi cài đặt lỗi, thư mục apps giữ bản đã cài đặt thành công gần nhất."

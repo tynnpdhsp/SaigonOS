@@ -386,7 +386,7 @@ def app_checks(home: Path, url: str, certificate: str | None = None) -> list[Che
         try:
             manifest = read_manifest(folder)
         except (OSError, ValueError, AppFolderError):
-            checks.append(Check(name, False, "không đọc được bản khai trong thư mục apps"))
+            checks.append(Check(name, False, "không đọc được bản khai báo trong thư mục apps"))
             continue
         try:
             reply = fetch(f"{url}/apps/{folder.name}/api/", certificate)

@@ -54,4 +54,4 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 | Dừng và giữ dữ liệu | `saigonos down` | `docker compose down` |
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
 
-Sau khi các service sẵn sàng, lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai.
+Sau khi các service sẵn sàng, lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai báo.

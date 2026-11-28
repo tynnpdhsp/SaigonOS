@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Bản khai và cài đặt ứng dụng
+# Bản khai báo và cài đặt ứng dụng
 
-Mỗi ứng dụng là một thư mục có file bản khai `saigonos-app.json`. Bản khai cho biết tên, phiên bản, các role của ứng dụng và các thư mục chứa file SQL, file BPMN và giao diện. Ứng dụng được cài đặt vào hệ thống đang chạy bằng một lệnh, không cần sửa mã của lõi. Ví dụ trên trang này dùng ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may).
+Mỗi ứng dụng là một thư mục có file bản khai báo `saigonos-app.json`. Bản khai báo cho biết tên, phiên bản, các role của ứng dụng và các thư mục chứa file SQL, file BPMN và giao diện. Ứng dụng được cài đặt vào hệ thống đang chạy bằng một lệnh, không cần sửa mã của lõi. Ví dụ trên trang này dùng ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may).
 
-## Bản khai
+## Bản khai báo
 
-Ví dụ bản khai của một ứng dụng đặt phòng máy có hai role:
+Ví dụ bản khai báo của một ứng dụng đặt phòng máy có hai role:
 
 ```json
 {
@@ -25,7 +25,7 @@ Ví dụ bản khai của một ứng dụng đặt phòng máy có hai role:
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `$schema` | Không | Địa chỉ JSON Schema của bản khai. Trình soạn thảo như VS Code dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai |
+| `$schema` | Không | Địa chỉ JSON Schema của bản khai báo. Trình soạn thảo như VS Code dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai báo |
 | `name` | Có | Tên ứng dụng |
 | `title` | Có | Tên hiển thị của ứng dụng |
 | `version` | Có | Phiên bản của ứng dụng theo [Semantic Versioning](https://semver.org/lang/vi/), ví dụ `1.2.0` |
@@ -38,21 +38,21 @@ Ví dụ bản khai của một ứng dụng đặt phòng máy có hai role:
 | `archive` | Không | Danh sách bảng có dòng cũ được chuyển xuống hồ dữ liệu, tối đa 20 bảng, như ở trang [Lưu trữ và chốt số liệu](archive.md) |
 | `snapshots` | Không | Danh sách view hoặc bảng được chốt số liệu theo tháng, tối đa 20 mục, như ở trang [Lưu trữ và chốt số liệu](archive.md) |
 
-Bản khai tuân theo các quy tắc sau:
+Bản khai báo tuân theo các quy tắc sau:
 
 - Tên ứng dụng gồm các cụm chữ thường không dấu và chữ số, nối với nhau bằng một dấu gạch ngang. Tên bắt đầu bằng chữ cái và dài tối đa 32 ký tự. Ví dụ: `phong-may`, `don-tu-2`.
 - Tên ứng dụng không bắt đầu bằng `pg-` và không trùng các tên mà lõi đã dùng cho schema, role của cơ sở dữ liệu, client của Keycloak, đường dẫn của API Gateway và catalog, schema của DuckDB khi đọc hồ dữ liệu. Các tên đó gồm `account`, `account-console`, `admin-cli`, `anon`, `api`, `apps`, `auth`, `auth-admin`, `authenticated`, `authenticator`, `broker`, `centrifugo`, `core`, `core-service`, `grafana`, `information-schema`, `keycloak`, `lake`, `main`, `memory`, `operaton`, `postgres`, `public`, `realm-management`, `realtime`, `saigonos`, `security-admin-console`, `snapshots`, `system`, `temp` và `workflow`.
 - Tên role có dạng `<tên ứng dụng>.<vai trò>`, ví dụ `phong-may.phu-trach`. Vai trò viết theo quy tắc của tên ứng dụng. Tên role dài tối đa 64 ký tự và không được khai báo hai lần.
 - Tên hiển thị dài tối đa 100 ký tự, mô tả của role dài tối đa 255 ký tự. Hai giá trị này không được để trống, không có khoảng trắng ở đầu hoặc cuối và không chứa ký tự điều khiển.
 - Đường dẫn của thư mục tính từ thư mục ứng dụng, ví dụ `ui` hoặc `web/dist`, và không trỏ ra ngoài thư mục ứng dụng. Ba thư mục không trùng nhau và không nằm trong nhau.
-- Bản khai và các thư mục đã khai không chứa symlink, pipe, socket hay file thiết bị. Mọi file và thư mục con đều phải đọc được.
-- Bản khai chỉ có các trường trong bảng trên. Trường viết sai chính tả bị báo lỗi.
+- Bản khai báo và các thư mục đã khai không chứa symlink, pipe, socket hay file thiết bị. Mọi file và thư mục con đều phải đọc được.
+- Bản khai báo chỉ có các trường trong bảng trên. Trường viết sai chính tả bị báo lỗi.
 
-JSON Schema của bản khai nằm trong file [schemas/saigonos-app.schema.json](https://github.com/tynnpdhsp/SaigonOS/blob/main/schemas/saigonos-app.schema.json).
+JSON Schema của bản khai báo nằm trong file [schemas/saigonos-app.schema.json](https://github.com/tynnpdhsp/SaigonOS/blob/main/schemas/saigonos-app.schema.json).
 
 ## Soát ứng dụng
 
-Lệnh sau soát bản khai và các thư mục của ứng dụng mẫu. Lệnh được chạy trong thư mục `SaigonOS` đã tạo bằng `git clone`:
+Lệnh sau soát bản khai báo và các thư mục của ứng dụng mẫu. Lệnh được chạy trong thư mục `SaigonOS` đã tạo bằng `git clone`:
 
 ```bash
 saigonos apply --check examples/phong-may
@@ -64,7 +64,7 @@ Hệ thống không cần đang chạy, chỉ cần thư mục làm việc đã 
 Ứng dụng phong-may 0.1.0 không có lỗi.
 ```
 
-Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã thoát 1. Mỗi dòng bắt đầu bằng vị trí của lỗi trong bản khai. Ví dụ, bản khai có phiên bản `1.0`, có thêm role `don-tu.quan-ly` và thư mục `ui` thiếu file `index.html`:
+Khi có lỗi, lệnh in mọi lỗi tìm thấy rồi kết thúc với mã thoát 1. Mỗi dòng bắt đầu bằng vị trí của lỗi trong bản khai báo. Ví dụ, bản khai báo có phiên bản `1.0`, có thêm role `don-tu.quan-ly` và thư mục `ui` thiếu file `index.html`:
 
 ```text
 Ứng dụng có 3 lỗi:
@@ -94,7 +94,7 @@ saigonos apply examples/phong-may
 Lệnh thực hiện các bước sau:
 
 1. Soát ứng dụng như mục trên. Khi có lỗi, lệnh dừng và không thay đổi gì.
-2. Chép bản khai và các thư mục đã khai vào thư mục `apps/phong-may` của thư mục làm việc. Các file khác, ví dụ thư mục `.git`, không được chép.
+2. Chép bản khai báo và các thư mục đã khai vào thư mục `apps/phong-may` của thư mục làm việc. Các file khác, ví dụ thư mục `.git`, không được chép.
 3. Tạo schema, chạy các file SQL, tạo realm role và client trên Keycloak, tạo route trên APISIX, rồi triển khai các file BPMN vào Operaton.
 
 Ở lần cài đặt đầu tiên, lệnh in các dòng sau:

@@ -14,7 +14,7 @@ SIGNED_IN = "authenticated"
 DEFAULT_SCOPES = ("acr", "basic", "email", "profile", "roles", "web-origins")
 TIMEOUT = 30
 DESCRIPTION = (
-    "Do lệnh apply của SaigonOS tạo theo bản khai của ứng dụng. "
+    "Do lệnh apply của SaigonOS tạo theo bản khai báo của ứng dụng. "
     "Mọi thay đổi trên client này bị đặt lại khi cài đặt lại ứng dụng."
 )
 ROLE_CREATED = "Đã tạo realm role {role}."

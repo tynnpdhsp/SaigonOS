@@ -716,7 +716,9 @@ async def run(job: Job) -> bool:
         try:
             manifest = Manifest.model_validate(json.loads(row["manifest"] or "{}"))
         except (ValueError, ValidationError):
-            job.fail(f"Bản khai đã lưu của ứng dụng {row['name']} không hợp lệ nên được bỏ qua.")
+            job.fail(
+                f"Bản khai báo đã lưu của ứng dụng {row['name']} không hợp lệ nên được bỏ qua."
+            )
             continue
         await run_app(job, row["name"], row["schema_name"], manifest)
     if job.ok and not job.done:

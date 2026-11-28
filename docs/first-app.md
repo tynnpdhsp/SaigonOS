@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Viết ứng dụng đầu tiên
 
-Trang này đi qua từng file của ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may). Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Ứng dụng chỉ gồm bản khai, file SQL, file BPMN và một trang HTML. Đăng nhập, API, quy trình, thông báo và tường lửa đều do lõi đảm nhận.
+Trang này đi qua từng file của ứng dụng mẫu trong thư mục [`examples/phong-may`](https://github.com/tynnpdhsp/SaigonOS/tree/main/examples/phong-may). Ứng dụng mẫu quản lý việc đặt phòng máy của một trường học. Ứng dụng chỉ gồm bản khai báo, file SQL, file BPMN và một trang HTML. Đăng nhập, API, quy trình, thông báo và tường lửa đều do lõi đảm nhận.
 
 ## Ứng dụng mẫu
 
@@ -41,7 +41,7 @@ examples/phong-may/
     └── logo.svg
 ```
 
-## Bản khai
+## Bản khai báo
 
 File `saigonos-app.json` khai tên, phiên bản, bốn role, ba thư mục của ứng dụng và ba luật truy cập:
 
@@ -94,7 +94,7 @@ File `saigonos-app.json` khai tên, phiên bản, bốn role, ba thư mục củ
 }
 ```
 
-Luật thứ nhất chỉ cho người có role của ứng dụng gọi API. Luật thứ hai không cho học sinh ghi dữ liệu. Luật thứ ba chỉ cho phụ trách phòng sửa bảng `phong`. Ý nghĩa của từng trường được trình bày ở trang [Bản khai và cài đặt ứng dụng](apps/manifest.md) và trang [Luật truy cập của ứng dụng](apps/access-rules.md).
+Luật thứ nhất chỉ cho người có role của ứng dụng gọi API. Luật thứ hai không cho học sinh ghi dữ liệu. Luật thứ ba chỉ cho phụ trách phòng sửa bảng `phong`. Ý nghĩa của từng trường được trình bày ở trang [Bản khai báo và cài đặt ứng dụng](apps/manifest.md) và trang [Luật truy cập của ứng dụng](apps/access-rules.md).
 
 ## File SQL
 
@@ -156,7 +156,7 @@ saigonos apply --check examples/phong-may
 saigonos apply examples/phong-may
 ```
 
-Kết quả của hai lệnh được trình bày ở trang [Bản khai và cài đặt ứng dụng](apps/manifest.md#cài-đặt-ứng-dụng). Cũng có thể cài đặt bằng Docker Compose:
+Kết quả của hai lệnh được trình bày ở trang [Bản khai báo và cài đặt ứng dụng](apps/manifest.md#cài-đặt-ứng-dụng). Cũng có thể cài đặt bằng Docker Compose:
 
 ```bash
 cp -r examples/phong-may ~/saigonos/apps/
@@ -197,4 +197,4 @@ Lệnh gỡ client, route, giao diện và tạm dừng quy trình của ứng d
 
 ## Viết ứng dụng mới từ mẫu
 
-Để viết ứng dụng mới, chép thư mục `examples/phong-may` rồi đổi mọi chữ `phong-may` và `phong_may` thành tên của ứng dụng mới. Tên này có mặt trong bản khai, tên role, tên schema trong các hàm SQL, mã quy trình và các hằng số ở đầu file `ui/app.js`. Sau đó, chạy lệnh soát để tìm chỗ còn sai.
+Để viết ứng dụng mới, chép thư mục `examples/phong-may` rồi đổi mọi chữ `phong-may` và `phong_may` thành tên của ứng dụng mới. Tên này có mặt trong bản khai báo, tên role, tên schema trong các hàm SQL, mã quy trình và các hằng số ở đầu file `ui/app.js`. Sau đó, chạy lệnh soát để tìm chỗ còn sai.

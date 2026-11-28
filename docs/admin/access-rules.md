@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Luật truy cập
 
-API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục [`config/opa`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/opa) của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai, như ở trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
+API Gateway hỏi Open Policy Agent (OPA) trước khi cho lời gọi tới các route cần bảo vệ đi qua. OPA trả lời theo các luật viết bằng Rego trong thư mục [`config/opa`](https://github.com/tynnpdhsp/SaigonOS/tree/main/src/saigonos/stack/config/opa) của thư mục làm việc. Quyền trên từng dòng dữ liệu vẫn do PostgreSQL kiểm tra. Luật riêng của từng ứng dụng được khai trong bản khai báo, như ở trang [Luật truy cập của ứng dụng](../apps/access-rules.md).
 
 ## Trang quản trị
 
