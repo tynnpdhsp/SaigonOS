@@ -15,7 +15,7 @@ METRICS = (
         "saigonos_lake_failed_checks_total",
         "counter",
         "failed_checks",
-        "Số lần kiểm luật chất lượng không đạt",
+        "Số lần kiểm tra luật chất lượng không đạt",
     ),
     ("saigonos_lake_files", "gauge", "files", "Số file trong hồ dữ liệu"),
     ("saigonos_lake_rows", "gauge", "rows", "Số dòng trong các file của hồ dữ liệu"),

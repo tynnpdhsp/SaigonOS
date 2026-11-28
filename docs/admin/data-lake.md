@@ -20,11 +20,11 @@ Mỗi file chỉ được ghi một lần. Giá trị của cột giữ đúng k
 
 ## Phả hệ
 
-Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm luật chất lượng. Bảng chỉ cho thêm dòng. Mỗi dòng mới cũng được ghi vào audit log. Các cột của bảng như sau:
+Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm tra luật chất lượng. Bảng chỉ cho thêm dòng. Mỗi dòng mới cũng được ghi vào audit log. Các cột của bảng như sau:
 
 | Cột | Ý nghĩa |
 |---|---|
-| `kind` | `check` cho một lần kiểm luật chất lượng, `file` cho một file trong hồ |
+| `kind` | `check` cho một lần kiểm tra luật chất lượng, `file` cho một file trong hồ |
 | `job` | `archive` cho lưu trữ, `snapshot` cho chốt số liệu |
 | `started_by` | `timer` khi hẹn giờ của service `core` chạy, `command` khi chạy bằng lệnh |
 | `app`, `source` | Tên ứng dụng và bảng hoặc view nguồn, dạng `<schema>.<tên>` |

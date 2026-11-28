@@ -25,7 +25,7 @@ ROWS = [
     },
 ]
 EXPECTED = """\
-# HELP saigonos_lake_failed_checks_total Số lần kiểm luật chất lượng không đạt
+# HELP saigonos_lake_failed_checks_total Số lần kiểm tra luật chất lượng không đạt
 # TYPE saigonos_lake_failed_checks_total counter
 saigonos_lake_failed_checks_total{app="nghi-phep",type="archive"} 1
 saigonos_lake_failed_checks_total{app="nghi-phep",type="snapshot"} 0
