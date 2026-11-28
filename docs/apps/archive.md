@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Lưu trữ và chốt số liệu
 
-Mục `archive` của bản khai khai các bảng có dòng cũ được chuyển xuống [hồ dữ liệu](../admin/data-lake.md). Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. Ví dụ, để ứng dụng mẫu chuyển các đơn cũ hơn một năm xuống hồ và chốt lịch dùng phòng mỗi tháng, thêm vào bản khai:
+Mục `archive` của bản khai báo liệt kê các bảng có dòng cũ được chuyển xuống [hồ dữ liệu](../admin/data-lake.md). Mục `snapshots` liệt kê các view hoặc bảng được chốt số liệu theo tháng. Ví dụ, để ứng dụng mẫu chuyển các đơn cũ hơn một năm xuống hồ và chốt lịch dùng phòng mỗi tháng, thêm vào bản khai báo:
 
 ```json
 "archive": [
@@ -36,7 +36,7 @@ Mỗi giờ, service `core` làm hai việc theo thứ tự sau:
 
 Khi ứng dụng có mục `snapshots`, dòng của các tháng chưa chốt được giữ lại ở bảng, kể cả khi cũ hơn `keep_days` ngày. Dòng có cột thời gian rỗng luôn được giữ ở bảng.
 
-Luật chất lượng được kiểm trên các dòng sắp chuyển xuống hồ, hoặc trên các dòng của tháng sắp chốt:
+Luật chất lượng được kiểm tra trên các dòng sắp chuyển xuống hồ, hoặc trên các dòng của tháng sắp chốt:
 
 | Luật | Ý nghĩa |
 |---|---|
@@ -50,7 +50,7 @@ Khi một luật không đạt, tháng đó không được chốt hoặc dòng 
 Chưa chuyển dòng cũ của bảng don trong ứng dụng phong-may xuống hồ dữ liệu vì dữ liệu không đạt luật chất lượng. Luật range của cột so_may_san_sang (từ 1 đến 500) không đạt ở 1 dòng, ví dụ {"id": 42, "so_may_san_sang": 0}.
 ```
 
-Lõi kiểm lại ở mỗi lần chạy. Do đó, sau khi dữ liệu được sửa, tháng được chốt và dòng cũ được chuyển xuống hồ ở lần chạy kế tiếp. Kết quả của mỗi lần kiểm được ghi vào bảng `core.lineage`.
+Lõi kiểm tra lại ở mỗi lần chạy. Do đó, sau khi dữ liệu được sửa, tháng được chốt và dòng cũ được chuyển xuống hồ ở lần chạy kế tiếp. Kết quả của mỗi lần kiểm được ghi vào bảng `core.lineage`.
 
 Lệnh cài đặt kiểm tra các mục này sau khi chạy các file SQL và dừng khi có sai:
 

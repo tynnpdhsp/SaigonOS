@@ -43,6 +43,63 @@ def test_long_running_service_has_healthcheck_that_compose_2_can_wait_for(name):
     assert "disable: true" not in lines
 
 
+TIMEZONE = "TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}"
+ZONEINFO = "- zoneinfo:/usr/share/zoneinfo:ro"
+WITHOUT_ZONEINFO = (
+    "apache/apisix",
+    "postgrest/postgrest",
+    "chrislusf/seaweedfs",
+    "centrifugo/centrifugo",
+    "wollomatic/socket-proxy",
+)
+
+
+def repository_of(name):
+    images = image_of(name)
+    return images[0].split()[1].rsplit(":", 1)[0] if images else None
+
+
+@pytest.mark.parametrize("name", list(services()))
+def test_service_uses_time_zone_of_system(name):
+    assert services()[name].count(TIMEZONE) == 1
+
+
+def test_long_running_services_without_zoneinfo_in_image_read_it_from_volume():
+    wanted = sorted(name for name in LONG_RUNNING if repository_of(name) in WITHOUT_ZONEINFO)
+    holders = sorted(name for name, lines in services().items() if ZONEINFO in lines)
+
+    assert wanted == ["apisix", "centrifugo", "postgrest", "seaweedfs", "socket-proxy"]
+    assert holders == wanted
+    for name in wanted:
+        lines = services()[name]
+        assert lines[lines.index("zoneinfo:") + 1] == "condition: service_completed_successfully"
+
+
+def test_zoneinfo_copies_time_zone_data_of_postgres_image():
+    job = services()["zoneinfo"]
+    writers = [name for name, lines in services().items() if "- zoneinfo:/zoneinfo" in lines]
+
+    assert image_of("zoneinfo") == image_of("postgres")
+    assert 'restart: "no"' in job
+    assert "network_mode: none" in job
+    assert "- ./config/zoneinfo/copy.sh:/config/copy.sh:ro" in job
+    assert 'entrypoint: ["sh", "/config/copy.sh"]' in job
+    assert writers == ["zoneinfo"]
+
+
+def test_postgres_waits_for_time_zone_check_and_uses_time_zone_of_system():
+    postgres = services()["postgres"]
+
+    assert postgres[postgres.index("zoneinfo:") + 1] == "condition: service_completed_successfully"
+    assert block("postgres", "command") == [
+        "- postgres",
+        "- -c",
+        "- timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}",
+        "- -c",
+        "- log_timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}",
+    ]
+
+
 def test_apps_service_uses_build_of_core_and_runs_only_when_called():
     apps, core = services()["apps"], services()["core"]
 

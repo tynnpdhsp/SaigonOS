@@ -358,7 +358,7 @@
         }
       ],
       "default": null,
-      "description": "Địa chỉ JSON Schema của bản khai. Trình soạn thảo dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai."
+      "description": "Địa chỉ JSON Schema của bản khai báo. Trình soạn thảo dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai báo."
     },
     "name": {
       "description": "Tên ứng dụng, gồm các cụm chữ thường không dấu và chữ số nối với nhau bằng một dấu gạch ngang, bắt đầu bằng chữ cái. Ví dụ: nghi-phep.",
@@ -509,6 +509,6 @@
     "version",
     "roles"
   ],
-  "title": "Bản khai ứng dụng SaigonOS",
+  "title": "Bản khai báo ứng dụng SaigonOS",
   "type": "object"
 }

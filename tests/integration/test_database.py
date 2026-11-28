@@ -5,6 +5,7 @@ import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime
 from importlib.resources import files
 
 import pytest
@@ -948,8 +949,10 @@ def test_consent_is_written_to_audit_log(stack, agree):
     written = f"table_name = 'consents' AND new_row ->> 'id' = '{consent['id']}'"
     entries = audit_entries(stack, written)
     sources = [(entry["actor"], entry["db_role"], entry["operation"]) for entry in entries]
+    row = entries[0]["new_row"]
     assert sources == [(user.id, "authenticated", "INSERT")]
-    assert entries[0]["new_row"] == consent
+    assert row | {"given_at": None} == consent | {"given_at": None}
+    assert datetime.fromisoformat(row["given_at"]) == datetime.fromisoformat(consent["given_at"])
 
 
 def test_consent_needs_subject_policy_and_version(stack):

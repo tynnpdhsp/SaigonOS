@@ -10,7 +10,7 @@ saigonos init --monitoring
 saigonos up
 ```
 
-Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa. RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB, rồi tăng dần theo lượng metrics và log.
+Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB dung lượng ổ cứng. RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB, rồi tăng dần theo lượng metrics và log.
 
 Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng sau:
 
@@ -32,7 +32,7 @@ Trang chủ của Grafana là bảng SaigonOS. Bảng gồm các phần sau:
 - Phần trăm CPU, tổng RAM của các container và phần trăm đã dùng của ổ chứa dữ liệu Docker.
 - Trạng thái, CPU và RAM của từng service.
 - Biểu đồ số request mỗi giây theo mã trạng thái.
-- Số file và dung lượng của [hồ dữ liệu](data-lake.md), cùng số lần kiểm luật chất lượng không đạt. Ô cuối chuyển đỏ khi có ít nhất một lần không đạt.
+- Số file và dung lượng của [hồ dữ liệu](data-lake.md), cùng số lần kiểm tra luật chất lượng không đạt. Ô cuối chuyển đỏ khi có ít nhất một lần không đạt.
 - Khung Log, lọc được theo service và theo chữ cần tìm. Ví dụ, chọn `apisix` và tìm `Coraza` để xem các request bị tường lửa chặn.
 
 ## Metrics
@@ -54,7 +54,7 @@ Prometheus giữ metrics 7 ngày, tối đa 2 GB. Ngoài metrics có sẵn của
 | `saigonos_lake_files` | Số file trong hồ dữ liệu. Label `app` là tên ứng dụng, label `type` là `archive` hoặc `snapshot` |
 | `saigonos_lake_rows` | Số dòng trong các file của hồ dữ liệu |
 | `saigonos_lake_bytes` | Dung lượng các file của hồ dữ liệu, tính bằng byte |
-| `saigonos_lake_failed_checks_total` | Số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống |
+| `saigonos_lake_failed_checks_total` | Số lần kiểm tra luật chất lượng không đạt từ khi cài đặt hệ thống |
 
 Năm tổng đầu bắt đầu từ 0 mỗi khi APISIX khởi động. Để đếm trong một khoảng thời gian, dùng hàm `increase()`. Ví dụ, `increase(saigonos:waf_denied:total[1h])` là số request bị chặn trong một giờ qua.
 

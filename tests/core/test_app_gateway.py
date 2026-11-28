@@ -25,9 +25,10 @@ from saigonos_core.app_gateway import (
     remove_gateway,
     wanted_route,
 )
-from saigonos_core.manifest import Manifest
+from saigonos_core.manifest import NAME_LENGTH, Manifest
 
 ROUTES = files("saigonos") / "stack" / "config" / "apisix" / "routes"
+APISIX_DESC_LENGTH = 256
 MANIFEST = Manifest.model_validate(
     {
         "name": "nghi-phep",
@@ -124,6 +125,12 @@ def test_route_checks_token_and_limits_calls_like_api_route():
     assert set(plugins) == set(api["plugins"]) | {"response-rewrite"}
     for name in ("openid-connect", "limit-count"):
         assert plugins[name] == api["plugins"][name]
+
+
+def test_route_description_fits_apisix_limit_for_longest_name():
+    longest = MANIFEST.model_copy(update={"name": "a" * NAME_LENGTH})
+
+    assert len(wanted_route(longest)["desc"]) <= APISIX_DESC_LENGTH
 
 
 def test_api_document_of_app_points_to_address_of_app():

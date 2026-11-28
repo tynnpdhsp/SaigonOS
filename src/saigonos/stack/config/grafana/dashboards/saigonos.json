@@ -1014,8 +1014,8 @@
     {
       "id": 15,
       "type": "stat",
-      "title": "Kiểm chất lượng không đạt",
-      "description": "Số lần kiểm luật chất lượng không đạt từ khi cài đặt hệ thống. Khi không đạt, dòng cũ không được chuyển xuống hồ và tháng không được chốt",
+      "title": "Kiểm tra chất lượng không đạt",
+      "description": "Số lần kiểm tra luật chất lượng không đạt từ khi cài đặt hệ thống. Khi không đạt, dòng cũ không được chuyển xuống hồ và tháng không được chốt",
       "gridPos": {
         "x": 16,
         "y": 23,

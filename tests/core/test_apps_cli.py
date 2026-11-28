@@ -87,7 +87,7 @@ def test_module_runs_with_python_m(monkeypatch, capsys):
         runpy.run_module("saigonos_core.apps", run_name="__main__")
 
     assert exit_info.value.code == 0
-    assert json.loads(capsys.readouterr().out)["title"] == "Bản khai ứng dụng SaigonOS"
+    assert json.loads(capsys.readouterr().out)["title"] == "Bản khai báo ứng dụng SaigonOS"
 
 
 SETTINGS = {
@@ -267,7 +267,7 @@ def test_apply_needs_folder_named_after_app(folder, applied, capsys):
     assert apps.main(["apply", "don-tu-cu"]) == 1
     assert applied.calls == []
     assert capsys.readouterr().out == (
-        "Thư mục don-tu-cu chứa bản khai của ứng dụng don-tu. "
+        "Thư mục don-tu-cu chứa bản khai báo của ứng dụng don-tu. "
         "Tên thư mục phải trùng tên ứng dụng.\n"
     )
 

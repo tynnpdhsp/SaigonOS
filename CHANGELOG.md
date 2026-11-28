@@ -7,9 +7,18 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.1.0] - 2026-11-28
+
 ### Thêm
 
 - README có link tới trang web https://www.saigonos.org. Trang có tài liệu và tin tức về các bản phát hành.
+- Service chạy một lần `zoneinfo` chép dữ liệu múi giờ từ image của PostgreSQL vào volume `zoneinfo` cho APISIX, PostgREST, SeaweedFS, Centrifugo và Socket Proxy, vì image của các service này không có dữ liệu múi giờ. Khi tên múi giờ không hợp lệ, service báo lỗi và lệnh `saigonos up` dừng trước khi khởi động PostgreSQL.
+
+### Thay đổi
+
+- Mọi service chạy theo múi giờ trong biến `SAIGONOS_TIMEZONE` của file `.env`, mặc định là `Asia/Ho_Chi_Minh`. Trước đây, các service chạy theo giờ UTC và biến này chỉ dùng cho hồ dữ liệu. Giờ trong log, ngày giờ mà PostgreSQL trả về và hàm `current_date` đều theo múi giờ này. Biểu thức cron và ngày giờ không ghi múi giờ trong hẹn giờ của Operaton cũng được tính theo múi giờ này. Audit log vẫn ghi ngày giờ trong `old_row` và `new_row` theo giờ UTC.
+- Biến kiểu ngày giờ được truyền cho hàm của bước máy làm theo múi giờ của hệ thống, ví dụ `2026-12-01T07:00:00.000+0700`.
+- Khi nâng cấp từ phiên bản 1.0.1 trở về trước, hạn của việc, hẹn giờ và lịch sử mà Operaton đã lưu bị đọc sớm hơn 7 giờ, vì các phiên bản này chạy Operaton theo giờ UTC. Nên hoàn tất các quy trình đang chạy trước khi nâng cấp.
 
 ## [1.0.1] - 2026-11-26
 
@@ -50,14 +59,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thêm
 
-- Mục `archive` trong bản khai ứng dụng khai các bảng có dòng cũ được chuyển xuống hồ dữ liệu, kèm cột thời gian và số ngày giữ ở bảng. Mục `snapshots` khai các view hoặc bảng được chốt số liệu theo tháng. Mỗi mục có luật chất lượng `not_null`, `unique` và `range`.
+- Mục `archive` trong bản khai báo ứng dụng liệt kê các bảng có dòng cũ được chuyển xuống hồ dữ liệu, kèm cột thời gian và số ngày giữ ở bảng. Mục `snapshots` liệt kê các view hoặc bảng được chốt số liệu theo tháng. Mỗi mục có luật chất lượng `not_null`, `unique` và `range`.
 - Hồ dữ liệu gồm các file Parquet trong bucket `lake` của SeaweedFS. Service `core` ghi và đọc file bằng DuckDB 2.0.1. Mỗi giờ, service `core` chốt số liệu các tháng đã hết rồi chuyển dòng cũ hơn hạn xuống hồ, mỗi tháng một file. Dòng chỉ bị xóa khỏi bảng khi file đọc lại đúng mã băm và số dòng khớp. Lệnh `saigonos lake run` chạy ngay việc này.
-- Luật chất lượng được kiểm bằng SQL trước khi chốt số liệu và trước khi chuyển dòng cũ. Khi không đạt, tháng không được chốt và dòng cũ ở lại bảng. Admin nhận tin qua kênh `role:admin` và nhóm Telegram, chỉ ra luật và các dòng vi phạm.
-- Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm luật chất lượng. Bảng chỉ cho thêm dòng, mỗi dòng mới được ghi vào audit log.
-- Lệnh `saigonos lake query` chạy câu truy vấn SQL của DuckDB trên hồ sau khi kiểm mã băm của từng file. Câu truy vấn không đọc được file khác trên máy chủ và không tải được extension. Lệnh `saigonos lake verify` tính lại mã băm của mọi file và chỉ ra file đã bị sửa.
-- Role `lake` của cơ sở dữ liệu đọc và xóa dòng cho hồ dữ liệu. Lệnh cài đặt chỉ cấp quyền cho role này trên các bảng, view đã khai và thu lại quyền khi một mục bị bỏ khỏi bản khai.
+- Luật chất lượng được kiểm tra bằng SQL trước khi chốt số liệu và trước khi chuyển dòng cũ. Khi không đạt, tháng không được chốt và dòng cũ ở lại bảng. Admin nhận tin qua kênh `role:admin` và nhóm Telegram, chỉ ra luật và các dòng vi phạm.
+- Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm tra luật chất lượng. Bảng chỉ cho thêm dòng, mỗi dòng mới được ghi vào audit log.
+- Lệnh `saigonos lake query` chạy câu truy vấn SQL của DuckDB trên hồ sau khi kiểm tra mã băm của từng file. Câu truy vấn không đọc được file khác trên máy chủ và không tải được extension. Lệnh `saigonos lake verify` tính lại mã băm của mọi file và chỉ ra file đã bị sửa.
+- Role `lake` của cơ sở dữ liệu đọc và xóa dòng cho hồ dữ liệu. Lệnh cài đặt chỉ cấp quyền cho role này trên các bảng, view đã khai và thu lại quyền khi một mục bị bỏ khỏi bản khai báo.
 - Service `core` trả metrics `saigonos_lake_files`, `saigonos_lake_rows`, `saigonos_lake_bytes` và `saigonos_lake_failed_checks_total` ở cổng 9100 bên trong mạng Docker. Prometheus đọc thêm target `core`.
-- Bảng SaigonOS của Grafana có thêm ba ô số của hồ dữ liệu: số file, dung lượng và số lần kiểm luật chất lượng không đạt.
+- Bảng SaigonOS của Grafana có thêm ba ô số của hồ dữ liệu: số file, dung lượng và số lần kiểm tra luật chất lượng không đạt.
 - Giá trị `SAIGONOS_TIMEZONE` trong file `.env` đặt múi giờ để tính tháng của hồ dữ liệu, mặc định là `Asia/Ho_Chi_Minh`.
 
 ### Thay đổi
@@ -71,7 +80,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 - Cấu hình tìm kiếm toàn văn tiếng Việt `core.vietnamese` trong PostgreSQL. Cấu hình này bỏ dấu bằng extension `unaccent` và không phân biệt chữ hoa, chữ thường. Hai hàm `core.search_vector` và `core.search_query` dùng cấu hình này, mọi role đều gọi được.
 - Lời gọi `GET /core/files?q=` của service `core` tìm file theo tên, chỉ trong các file người gọi được đọc. Kết quả xếp theo độ khớp.
-- Mục `search` trong bản khai ứng dụng khai các bảng và cột cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm `search_<bảng>` chạy với role `<schema>_user`. Kết quả xếp theo độ khớp và vẫn theo phân quyền từng dòng. Bỏ bảng khỏi bản khai thì lõi gỡ index và hàm của bảng đó.
+- Mục `search` trong bản khai báo ứng dụng liệt kê các bảng và cột cần tìm kiếm toàn văn. Khi cài đặt, lõi tạo index GIN và hàm `search_<bảng>` chạy với role `<schema>_user`. Kết quả xếp theo độ khớp và vẫn theo phân quyền từng dòng. Bỏ bảng khỏi bản khai báo thì lõi gỡ index và hàm của bảng đó.
 
 ## [0.10.0] - 2026-11-24
 
@@ -98,14 +107,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Route có label `saigonos.profile` chỉ được service `routes` nạp khi profile đó được bật và được gỡ khi profile bị tắt. Service `realm` cũng tạo client `grafana` khi bật giám sát và xóa client này khi tắt.
 - Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus. Ngay sau khi khởi động, lệnh chờ tối đa 30 giây để Prometheus đọc metrics của mọi target lần đầu.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
-- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ đĩa, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
+- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ cứng, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
 - README có mục Giám sát.
 
 ### Thay đổi
 
 - Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
 - Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
-- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB đĩa cho image.
+- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB dung lượng ổ cứng cho image.
 
 ### Sửa
 
@@ -115,7 +124,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Sửa
 
-- Claim `amr` của access token giữ các bước đăng nhập suốt phiên đăng nhập, kể cả khi access token được làm mới. Trước đây Keycloak chỉ ghi một bước vào `amr` khi access token được cấp trong cùng giây với bước đó. Do đó, khi trình duyệt đổi code chậm hoặc làm mới access token, Admin Console của realm `saigonos` qua API Gateway nhận mã 403 và luật `otp` trong bản khai của ứng dụng từ chối người dùng đã nhập mã OTP. Service `realm` đặt `default.reference.maxAge` bằng SSO Session Max của realm cho các bước có giá trị `amr` và đặt lại khi thiết lập này bị sửa.
+- Claim `amr` của access token giữ các bước đăng nhập suốt phiên đăng nhập, kể cả khi access token được làm mới. Trước đây Keycloak chỉ ghi một bước vào `amr` khi access token được cấp trong cùng giây với bước đó. Do đó, khi trình duyệt đổi code chậm hoặc làm mới access token, Admin Console của realm `saigonos` qua API Gateway nhận mã 403 và luật `otp` trong bản khai báo của ứng dụng từ chối người dùng đã nhập mã OTP. Service `realm` đặt `default.reference.maxAge` bằng SSO Session Max của realm cho các bước có giá trị `amr` và đặt lại khi thiết lập này bị sửa.
 
 ## [0.8.0] - 2026-11-23
 
@@ -140,47 +149,47 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 ### Thêm
 
 - Service `opa` chạy Open Policy Agent 1.22.4 để API Gateway hỏi luật truy cập chung. Luật viết bằng Rego và nằm trong thư mục `config/opa`. OPA nạp lại luật ngay khi file thay đổi và giữ luật đang chạy khi file có lỗi. OPA chỉ nằm trong mạng nội bộ cùng APISIX, không nhận lời gọi sửa luật qua API và không gửi thông tin tới máy chủ của dự án OPA.
-- Service `policies` soát các file luật mỗi lần chạy `saigonos up`. Khi có file lỗi, lệnh `saigonos up` báo lỗi và OPA chưa khởi động lần đầu.
+- Service `policies` kiểm tra các file luật mỗi lần chạy `saigonos up`. Khi có file lỗi, lệnh `saigonos up` báo lỗi và OPA chưa khởi động lần đầu.
 - Lệnh `make opa-test` kiểm tra định dạng, lỗi và unit test của các luật trong `tests/opa`, với yêu cầu độ phủ 100%. CI chạy lệnh này trong job `lint`.
 - Route `auth-admin` đưa Admin Console và Admin REST API của realm `saigonos` qua OPA. Route `operaton` cũng qua OPA. Khi OPA dừng hoặc trả lời sai định dạng, API Gateway từ chối hai route này với mã 403 hoặc 503. Trang đăng nhập và các route khác vẫn hoạt động.
 - Giá trị `SAIGONOS_ADMIN_NETWORKS` trong file `.env` chỉ mở các route quản trị cho các dải mạng được khai báo. Khi có dải không hợp lệ, lệnh `saigonos up` báo lỗi ở service `policies`.
 - Admin REST API của Keycloak qua API Gateway chỉ nhận access token của lần đăng nhập có mã OTP. Lời gọi bị từ chối nhận mã 403 kèm lý do bằng tiếng Việt.
 - Access token có claim `amr` ghi các bước đăng nhập, gồm `pwd` cho mật khẩu và `otp` cho mã OTP. Service `realm` thêm thiết lập này vào realm do phiên bản cũ tạo và đặt lại thiết lập khi bị sửa.
-- Trường `access` của bản khai khai tối đa 20 luật truy cập API của ứng dụng. Mỗi luật chọn phương thức và mẫu đường dẫn, rồi đặt điều kiện về role, dải mạng hoặc việc đăng nhập bằng mã OTP. Lệnh cài đặt ghi mỗi luật thành một label của route `app-<tên>` và thêm plugin `opa`, nên luật có hiệu lực ngay sau khi cài đặt. Lời gọi không đạt luật nhận mã 403, hoặc 401 khi thiếu access token, với nội dung theo dạng lỗi của PostgREST và mã `SGN03`.
+- Trường `access` của bản khai báo chứa tối đa 20 luật truy cập API của ứng dụng. Mỗi luật chọn phương thức và mẫu đường dẫn, rồi đặt điều kiện về role, dải mạng hoặc việc đăng nhập bằng mã OTP. Lệnh cài đặt ghi mỗi luật thành một label của route `app-<tên>` và thêm plugin `opa`, nên luật có hiệu lực ngay sau khi cài đặt. Lời gọi không đạt luật nhận mã 403, hoặc 401 khi thiếu access token, với nội dung theo dạng lỗi của PostgREST và mã `SGN03`.
 
 ### Thay đổi
 
 - Luồng đăng nhập `saigonos operaton` được tạo lại một lần khi cập nhật, để bước mật khẩu và bước OTP được ghi vào claim `amr`.
 - Tên `auth-admin` được thêm vào danh sách tên mà ứng dụng không được dùng.
 - Địa chỉ `/api/` chỉ phục vụ schema `api`. API Gateway ghi đè header `Accept-Profile` và `Content-Profile` của lời gọi tới địa chỉ này. Schema của ứng dụng chỉ gọi được qua địa chỉ `/apps/<tên>/api/`, nên không đi vòng được luật truy cập của ứng dụng.
-- README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng đĩa bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
+- README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng ổ cứng bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
 
 ## [0.6.0] - 2026-11-22
 
 ### Thêm
 
-- Bản khai ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai.
-- Lệnh `saigonos apply --check <thư mục>` soát bản khai và các thư mục của một ứng dụng mà không cần hệ thống đang chạy. Lệnh in mọi lỗi tìm thấy bằng tiếng Việt kèm vị trí trong bản khai, rồi kết thúc với mã thoát 1. Tên trùng tên mà lõi đã dùng, đường dẫn ra ngoài thư mục ứng dụng, symlink và file không đọc được đều bị báo lỗi.
-- Service `apps` dùng image của service `core` và chỉ chạy khi được gọi bằng `docker compose run`. Lệnh `docker compose run --rm apps check <tên>` soát ứng dụng trong thư mục `apps` của thư mục làm việc. Lệnh `saigonos init` tạo thư mục này.
-- Lệnh `saigonos apply <thư mục>` cài đặt ứng dụng vào hệ thống đang chạy. Lệnh soát ứng dụng, chép bản khai và các thư mục đã khai vào thư mục `apps/<tên>` của thư mục làm việc, rồi chạy `docker compose run --rm apps apply <tên>`. Khi cài đặt lỗi, thư mục `apps/<tên>` được trả về bản đã cài đặt thành công gần nhất.
+- Bản khai báo ứng dụng `saigonos-app.json` gồm tên, tên hiển thị, phiên bản, các realm role và ba thư mục không bắt buộc chứa file SQL, file BPMN và giao diện. JSON Schema của bản khai báo nằm trong file `schemas/saigonos-app.schema.json`, để trình soạn thảo kiểm tra và gợi ý khi viết bản khai báo.
+- Lệnh `saigonos apply --check <thư mục>` kiểm tra bản khai báo và các thư mục của một ứng dụng mà không cần hệ thống đang chạy. Lệnh in mọi lỗi tìm thấy bằng tiếng Việt kèm vị trí trong bản khai báo, rồi kết thúc với mã thoát 1. Tên trùng tên mà lõi đã dùng, đường dẫn ra ngoài thư mục ứng dụng, symlink và file không đọc được đều bị báo lỗi.
+- Service `apps` dùng image của service `core` và chỉ chạy khi được gọi bằng `docker compose run`. Lệnh `docker compose run --rm apps check <tên>` kiểm tra ứng dụng trong thư mục `apps` của thư mục làm việc. Lệnh `saigonos init` tạo thư mục này.
+- Lệnh `saigonos apply <thư mục>` cài đặt ứng dụng vào hệ thống đang chạy. Lệnh này kiểm tra ứng dụng, chép bản khai báo và các thư mục đã khai vào thư mục `apps/<tên>` của thư mục làm việc, rồi chạy `docker compose run --rm apps apply <tên>`. Khi cài đặt lỗi, thư mục `apps/<tên>` được trả về bản đã cài đặt thành công gần nhất.
 - Mỗi ứng dụng có schema và role riêng trong cơ sở dữ liệu, cùng tên với ứng dụng nhưng dấu gạch ngang đổi thành dấu gạch dưới. Các file SQL của ứng dụng chạy theo thứ tự tên bằng role này, không bằng superuser. Role chỉ đăng nhập được trong lúc cài đặt, với mật khẩu sinh mới mỗi lần. Mỗi file chạy trong một transaction và được ghi vào `core.migrations` với `scope` là tên ứng dụng. File đã chạy mà bị sửa thì lệnh cài đặt dừng.
 - Role của ứng dụng không đọc được schema của ứng dụng khác và các bảng của lõi, không đổi được sang role khác. File SQL của ứng dụng không dùng được `COMMIT` hay `ROLLBACK`. Hàm do ứng dụng tạo chưa được cấp cho `PUBLIC`.
 - Bảng `core.apps` ghi các ứng dụng đã cài đặt và có audit log. PostgREST đọc bảng này qua hàm `core.pre_config()` để phục vụ schema của ứng dụng tại `/api/`, với header `Accept-Profile` và `Content-Profile`. Sau khi cài đặt, PostgREST nạp lại cấu hình và schema cache mà không khởi động lại.
-- Lệnh cài đặt tạo trên Keycloak các realm role của ứng dụng theo bản khai, kèm mô tả, và một public client trùng tên ứng dụng. Client chỉ dùng luồng Authorization Code với PKCE `S256` và chỉ chuyển hướng về địa chỉ `/apps/<tên>/`. Client tắt Full scope allowed, nên access token của ứng dụng chỉ mang realm role `authenticated` và các role của chính ứng dụng. Service `apps` giữ mật khẩu của tài khoản `admin` trong realm master, service `core` không có mật khẩu này.
-- Mỗi lần cài đặt, client và realm role của ứng dụng được đặt lại theo bản khai, kể cả khi đã bị sửa trong Admin Console. Khi Keycloak đã có client hoặc realm role trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu.
+- Lệnh cài đặt tạo trên Keycloak các realm role của ứng dụng theo bản khai báo, kèm mô tả, và một public client trùng tên ứng dụng. Client chỉ dùng luồng Authorization Code với PKCE `S256` và chỉ chuyển hướng về địa chỉ `/apps/<tên>/`. Client tắt Full scope allowed, nên access token của ứng dụng chỉ mang realm role `authenticated` và các role của chính ứng dụng. Service `apps` giữ mật khẩu của tài khoản `admin` trong realm master, service `core` không có mật khẩu này.
+- Mỗi lần cài đặt, client và realm role của ứng dụng được đặt lại theo bản khai báo, kể cả khi đã bị sửa trong Admin Console. Khi Keycloak đã có client hoặc realm role trùng tên mà không do SaigonOS tạo cho ứng dụng, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu.
 - Lời gọi API vào schema của một ứng dụng chỉ nhận access token được cấp cho client của ứng dụng đó. Access token của client khác nhận mã 403. Lời gọi không có access token vẫn chạy với role `anon`.
-- Lệnh cài đặt tạo trên APISIX route `app-<tên>` cho API của ứng dụng tại địa chỉ `/apps/<tên>/api/`. Route tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng, kiểm tra access token và giới hạn tần suất như địa chỉ `/api/`. Tài liệu OpenAPI ở địa chỉ `/apps/<tên>/api/` chỉ có bảng và hàm của ứng dụng. Mỗi lần cài đặt, route được đặt lại theo bản khai. Khi APISIX đã có route trùng tên mà không do SaigonOS tạo, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu. Service `apps` giữ thêm khóa Admin API của APISIX.
+- Lệnh cài đặt tạo trên APISIX route `app-<tên>` cho API của ứng dụng tại địa chỉ `/apps/<tên>/api/`. Route tự đặt header `Accept-Profile` và `Content-Profile` là schema của ứng dụng, kiểm tra access token và giới hạn tần suất như địa chỉ `/api/`. Tài liệu OpenAPI ở địa chỉ `/apps/<tên>/api/` chỉ có bảng và hàm của ứng dụng. Mỗi lần cài đặt, route được đặt lại theo bản khai báo. Khi APISIX đã có route trùng tên mà không do SaigonOS tạo, lệnh cài đặt dừng trước khi thay đổi cơ sở dữ liệu. Service `apps` giữ thêm khóa Admin API của APISIX.
 - Service `core` phục vụ giao diện của ứng dụng đã cài đặt tại địa chỉ `/apps/<tên>/`. Địa chỉ không khớp file nào và không có phần mở rộng trả về `index.html`. Mỗi trả lời có header `Content-Security-Policy`, `X-Content-Type-Options` và `Referrer-Policy`. File `index.html` không được cache, các file khác được hỏi lại bằng `ETag`. Địa chỉ có `..`, file có tên bắt đầu bằng dấu chấm, symlink và ứng dụng chưa cài đặt đều nhận mã 404.
 - PostgREST và service `core` niêm phong claims của mỗi lời gọi bằng HMAC-SHA256. Khi hàm SQL của ứng dụng đổi `request.jwt.claims`, các hàm `core.claims()`, `core.uid()`, `core.has_role()` và `core.unit()` trả về `NULL`. Do đó, mã của một ứng dụng không mạo danh được người dùng khác để đọc dữ liệu của ứng dụng khác.
 - Mỗi ứng dụng có thêm role `<schema>_user` để chạy lời gọi API mang access token của ứng dụng. Schema của ứng dụng chỉ được cấp cho role này và role `anon`. Hàm của ứng dụng được đổi thành hàm `SECURITY DEFINER` của role này và giữ quyền `EXECUTE` như file SQL đã cấp. Bên trong hàm như vậy, PostgreSQL không cho đổi role. Do đó, hàm của một ứng dụng không đọc được dữ liệu của ứng dụng khác, kể cả dữ liệu của chính người gọi.
 - Lệnh cài đặt triển khai các file BPMN của ứng dụng vào Operaton, trong tenant trùng tên ứng dụng và với nguồn `app:<tên>`. File không thay đổi thì không tạo phiên bản mới. File đã sửa tạo một phiên bản mới, còn quy trình đang chạy vẫn dùng phiên bản cũ. Service `apps` dùng tài khoản `core` của Operaton để triển khai.
-- Lệnh soát ứng dụng kiểm tra các file BPMN. Mã quy trình có dạng `<schema>.<tên quy trình>`. Nhóm ứng viên của việc và nhóm được bắt đầu quy trình chỉ gồm role của ứng dụng. Bước máy làm chỉ gọi hàm trong schema của ứng dụng. File chạy mã bên trong Operaton bị từ chối, ví dụ script task, listener, class Java, delegate expression và connector. Expression chỉ được gồm tên biến, giá trị, phép so sánh và phép logic. Mỗi lỗi có tên file và số dòng. File thiếu phần hình vẽ (BPMNDI) nhận cảnh báo, vì Cockpit không vẽ được quy trình.
+- Việc kiểm tra ứng dụng bao gồm cả các file BPMN. Mã quy trình có dạng `<schema>.<tên quy trình>`. Nhóm ứng viên của việc và nhóm được bắt đầu quy trình chỉ gồm role của ứng dụng. Bước máy làm chỉ gọi hàm trong schema của ứng dụng. File chạy mã bên trong Operaton bị từ chối, ví dụ script task, listener, class Java, delegate expression và connector. Expression chỉ được gồm tên biến, giá trị, phép so sánh và phép logic. Mỗi lỗi có tên file và số dòng. File thiếu phần hình vẽ (BPMNDI) nhận cảnh báo, vì Cockpit không vẽ được quy trình.
 - Service `core` lọc quy trình và việc theo client của access token. Access token của một ứng dụng chỉ thấy, nhận, hoàn thành và bắt đầu quy trình của ứng dụng đó. Access token của client khác, kể cả của ứng dụng khác, nhận mã 404 khi gọi tới quy trình hoặc việc của ứng dụng.
 - Bước máy làm của quy trình trong một ứng dụng chỉ gọi được hàm trong schema của ứng dụng đó. Quy trình không thuộc ứng dụng nào không gọi được hàm của ứng dụng. Bước máy làm sai quy tắc này trở thành incident. Hàm của ứng dụng được khai báo cho bước máy làm bằng lệnh `GRANT EXECUTE` cho role `workflow`.
 - Mã của ứng dụng gọi được `core.notify`, `core.publish` và `core.send_email`. Thông báo do ứng dụng gửi thuộc về ứng dụng đó và được gửi tới kênh `user:<tên ứng dụng>.<sub>`. Access token của ứng dụng chỉ thấy thông báo của ứng dụng đó, access token của client khác chỉ thấy thông báo không thuộc ứng dụng nào. Hàm SQL của ứng dụng cũng chỉ đọc được thông báo của chính ứng dụng. Khóa chống trùng của thông báo và email có hiệu lực riêng trong từng ứng dụng.
 - Mã của ứng dụng chỉ gửi được tin vào kênh `role:<tên ứng dụng>.<vai trò>`, `public:<tên ứng dụng>.<tên>` và `user:<tên ứng dụng>.<sub>`. Lời gọi `POST /core/realtime/token` cấp token kênh cho kênh `user:<tên ứng dụng>.<sub>` khi access token được cấp cho client của ứng dụng đó và `<sub>` là mã của người gọi. Do đó, giao diện của ứng dụng khác không nghe được kênh này.
 - Lệnh cài đặt ứng dụng chỉ in những gì đã thay đổi. Chạy lại khi ứng dụng không đổi thì lệnh in `Không có gì thay đổi.`
-- Lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt sau khi các service sẵn sàng. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai. Service `apps` có lệnh `apply --all` cho việc này.
+- Lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt sau khi các service sẵn sàng. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai báo. Service `apps` có lệnh `apply --all` cho việc này.
 - Lệnh `saigonos remove <tên>` gỡ route, client, giao diện và quy trình của ứng dụng, rồi bỏ schema của ứng dụng khỏi API. Schema, dữ liệu, role và việc gán role được giữ lại. Cài đặt lại thì dùng tiếp dữ liệu cũ và chạy lại các quy trình đã tạm dừng. Tùy chọn `--purge` xóa hẳn ứng dụng sau khi hỏi lại.
 - Lệnh `saigonos doctor` có thêm một dòng cho mỗi ứng dụng, kiểm tra API và giao diện của ứng dụng.
 
@@ -253,7 +262,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
-- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng đĩa vì có thêm Operaton.
+- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng ổ cứng vì có thêm Operaton.
 
 ### Sửa
 
@@ -296,7 +305,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
-- Hệ thống cần Docker Buildx để build image của service `core`. Hệ thống cũng cần khoảng 2,5 GB RAM và 5 GB dung lượng đĩa vì có thêm SeaweedFS, ClamAV và service `core`. Ở phiên bản 0.2.0, hệ thống cần khoảng 1 GB RAM và 2 GB dung lượng đĩa.
+- Hệ thống cần Docker Buildx để build image của service `core`. Hệ thống cũng cần khoảng 2,5 GB RAM và 5 GB dung lượng ổ cứng vì có thêm SeaweedFS, ClamAV và service `core`. Ở phiên bản 0.2.0, hệ thống cần khoảng 1 GB RAM và 2 GB dung lượng ổ cứng.
 - Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật. Service chỉ đăng nhập bằng mật khẩu, nên không bật OTP cho tài khoản này.
 - Admin Console của realm master có địa chỉ mới là http://localhost:9280/auth/admin/master/console/ trên máy cài đặt. Admin Console của realm `saigonos` vẫn mở qua API Gateway tại `/auth/admin/saigonos/console/`.
 - Lời gọi `/api` không có access token chạy với role `anon`. Ở phiên bản 0.2.0, API Gateway trả về mã 401 cho lời gọi này. Khi dùng một bảng hoặc hàm chưa cấp cho `anon`, lời gọi nhận mã 401. Access token giả hoặc hết hạn vẫn nhận mã 401. Giới hạn tần suất gọi áp dụng cho cả lời gọi không có access token.
@@ -373,7 +382,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.1.0
 [1.0.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
 [0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0

@@ -77,7 +77,7 @@ Sau đó, mỗi lần một dòng của bảng được thêm, sửa hoặc xóa
 | `db_role` | Role của cơ sở dữ liệu đã thực hiện thay đổi, ví dụ `authenticated`, `anon` hoặc `postgres` |
 | `table_schema`, `table_name` | Schema và tên của bảng có thay đổi |
 | `operation` | Thao tác `INSERT`, `UPDATE` hoặc `DELETE` |
-| `old_row`, `new_row` | Giá trị của dòng trước và sau thay đổi ở dạng JSON |
+| `old_row`, `new_row` | Giá trị của dòng trước và sau thay đổi ở dạng JSON. Ngày giờ trong JSON luôn theo giờ UTC, để mã băm không phụ thuộc múi giờ |
 | `hash` | Mã băm SHA-256 của dòng audit log |
 
 Hàm `core.audit_hash()` tính mã băm của một dòng từ mã băm của dòng trước và nội dung của dòng đó. Do đó, các dòng audit log nối thành một chuỗi. Khi một dòng audit log bị sửa hoặc bị xóa, chuỗi mã băm không còn khớp.

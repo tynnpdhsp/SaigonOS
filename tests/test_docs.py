@@ -486,7 +486,7 @@ def test_docs_example_of_manifest_is_valid():
 def test_docs_lists_every_manifest_field():
     rows = re.findall(
         r"^\| `([^`]+)` \| (Có|Không) \|",
-        section("docs/apps/manifest.md", "Bản khai"),
+        section("docs/apps/manifest.md", "Bản khai báo"),
         re.MULTILINE,
     )
 

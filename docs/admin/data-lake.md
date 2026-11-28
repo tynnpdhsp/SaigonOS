@@ -1,13 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Hồ dữ liệu
 
-Hồ dữ liệu giữ dữ liệu lịch sử của các ứng dụng dưới dạng file Parquet trong bucket `lake` của SeaweedFS. Dữ liệu vào hồ bằng hai việc lưu trữ và chốt số liệu, do ứng dụng khai trong bản khai như ở trang [Lưu trữ và chốt số liệu](../apps/archive.md). Chỉ service `core` đọc được bucket `lake`. Người quản trị đọc hồ bằng các lệnh ở trang này.
+Hồ dữ liệu giữ dữ liệu lịch sử của các ứng dụng dưới dạng file Parquet trong bucket `lake` của SeaweedFS. Dữ liệu vào hồ bằng hai việc lưu trữ và chốt số liệu, do ứng dụng khai trong bản khai báo như ở trang [Lưu trữ và chốt số liệu](../apps/archive.md). Chỉ service `core` đọc được bucket `lake`. Người quản trị đọc hồ bằng các lệnh ở trang này.
 
-Tháng của dữ liệu được tính theo múi giờ `Asia/Ho_Chi_Minh`. Để dùng múi giờ khác, thêm dòng sau vào file `.env` rồi chạy `saigonos up`:
-
-```
-SAIGONOS_TIMEZONE=Asia/Bangkok
-```
+Tháng của dữ liệu được tính theo [múi giờ của hệ thống](configuration.md#múi-giờ), mặc định là `Asia/Ho_Chi_Minh`.
 
 ## File trong hồ
 
@@ -20,11 +16,11 @@ Mỗi file chỉ được ghi một lần. Giá trị của cột giữ đúng k
 
 ## Phả hệ
 
-Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm luật chất lượng. Bảng chỉ cho thêm dòng. Mỗi dòng mới cũng được ghi vào audit log. Các cột của bảng như sau:
+Bảng `core.lineage` ghi phả hệ của từng file và kết quả của từng lần kiểm tra luật chất lượng. Bảng chỉ cho thêm dòng. Mỗi dòng mới cũng được ghi vào audit log. Các cột của bảng như sau:
 
 | Cột | Ý nghĩa |
 |---|---|
-| `kind` | `check` cho một lần kiểm luật chất lượng, `file` cho một file trong hồ |
+| `kind` | `check` cho một lần kiểm tra luật chất lượng, `file` cho một file trong hồ |
 | `job` | `archive` cho lưu trữ, `snapshot` cho chốt số liệu |
 | `started_by` | `timer` khi hẹn giờ của service `core` chạy, `command` khi chạy bằng lệnh |
 | `app`, `source` | Tên ứng dụng và bảng hoặc view nguồn, dạng `<schema>.<tên>` |

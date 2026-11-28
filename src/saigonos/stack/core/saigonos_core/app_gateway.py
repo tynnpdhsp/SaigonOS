@@ -100,8 +100,8 @@ def wanted_route(manifest: Manifest) -> dict[str, Any]:
         "name": route_of(app),
         "desc": (
             f"PostgREST: API của ứng dụng {app}, tự đặt header Accept-Profile và "
-            f"Content-Profile là {schema}. Do lệnh apply của SaigonOS tạo theo bản khai, "
-            "mọi thay đổi trên route này bị đặt lại khi cài đặt lại ứng dụng"
+            f"Content-Profile là {schema}. Do lệnh apply của SaigonOS tạo theo bản khai báo, "
+            "mọi thay đổi bị đặt lại khi cài đặt lại ứng dụng"
         ),
         "uris": [f"/apps/{app}/api", f"/apps/{app}/api/*"],
         "labels": labels,

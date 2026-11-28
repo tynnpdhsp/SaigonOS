@@ -937,7 +937,7 @@ def test_old_rows_move_to_lake_by_local_month_and_new_rows_stay(stack, tmp_path)
     ]
     assert stack.sql(
         f"SELECT time_from, time_to FROM core.lineage WHERE app = '{name}' AND period = '2025-04'"
-    ) == [["2025-03-31 17:00:00+00", "2025-04-30 17:00:00+00"]]
+    ) == [["2025-04-01 00:00:00+07", "2025-05-01 00:00:00+07"]]
     assert stack.sql(
         "SELECT count(*) FROM core.audit_log WHERE db_role = 'lake' AND operation = 'DELETE' "
         f"AND table_schema = '{schema}'"
@@ -1404,7 +1404,7 @@ def test_docker_compose_path_needs_folder_named_after_app(stack):
     assert result.returncode == 1, result.stdout + result.stderr
     assert printed_last(
         result.stdout,
-        f"Thư mục sai-ten chứa bản khai của ứng dụng {name}. "
+        f"Thư mục sai-ten chứa bản khai báo của ứng dụng {name}. "
         "Tên thư mục phải trùng tên ứng dụng.\n",
     )
 

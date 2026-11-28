@@ -339,7 +339,7 @@ def test_manifest_changed_after_check_is_refused(home, source, cli, steps, conte
     result = cli("apply", source, "--home", home)
 
     assert result.exit_code == 1
-    assert "Không đọc được bản khai của ứng dụng:" in result.output
+    assert "Không đọc được bản khai báo của ứng dụng:" in result.output
     assert reason in result.output
     assert steps.calls == [run_call(home, source)]
     assert list((home / "apps").iterdir()) == []

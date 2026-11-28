@@ -456,7 +456,7 @@ def role_errors(items: list[Any], app: str | None) -> list[InitErrorDetails]:
 class Manifest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
-        title="Bản khai ứng dụng SaigonOS",
+        title="Bản khai báo ứng dụng SaigonOS",
         json_schema_extra={"description": f"Nội dung của file {MANIFEST}."},
     )
 
@@ -464,8 +464,8 @@ class Manifest(BaseModel):
         None,
         alias="$schema",
         description=(
-            "Địa chỉ JSON Schema của bản khai. "
-            "Trình soạn thảo dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai."
+            "Địa chỉ JSON Schema của bản khai báo. "
+            "Trình soạn thảo dùng địa chỉ này để kiểm tra và gợi ý khi viết bản khai báo."
         ),
     )
     name: str = Field(
@@ -693,7 +693,7 @@ def message(error: Any) -> str:
     if kind in CUSTOM_ERRORS:
         return error["msg"]
     if kind == "model_type" and not error["loc"]:
-        return "Nội dung của bản khai phải là một đối tượng JSON."
+        return "Nội dung của bản khai báo phải là một đối tượng JSON."
     if kind == "string_pattern_mismatch":
         return RULES[
             tuple(part for part in without_rule_kind(error["loc"]) if isinstance(part, str))

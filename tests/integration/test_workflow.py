@@ -968,7 +968,7 @@ def test_start_form_gives_variables_types_of_fields(stack, requests_process):
         "so_luong": ("Long", 2),
         "khan": ("Boolean", False),
         "muc_uu_tien": ("String", "cao"),
-        "han_xu_ly": ("Date", "2026-11-20T02:00:00.000+0000"),
+        "han_xu_ly": ("Date", "2026-11-20T09:00:00.000+0700"),
     }
 
 
@@ -1329,7 +1329,7 @@ def test_function_gets_variables_and_runs_as_workflow(stack, machine_steps):
     assert state == "COMPLETED"
     assert (found["vai_tro"], found["role"]) == ("workflow", "workflow")
     assert json.loads(found["bien"]) == variables | dict.fromkeys(INITIATORS, starter.id) | {
-        "han_xu_ly": "2026-11-20T02:00:00.000+0000"
+        "han_xu_ly": "2026-11-20T09:00:00.000+0700"
     }
 
 
