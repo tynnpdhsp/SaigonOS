@@ -219,7 +219,7 @@ SLOW = """\
 CREATE FUNCTION api.{name}() RETURNS text
 LANGUAGE sql STABLE
 AS $$ SELECT pg_sleep(20)::text $$;
-GRANT EXECUTE ON FUNCTION api.{name}() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION api.{name}() TO authenticated;
 """
 
 
@@ -525,9 +525,10 @@ def test_api_call_running_longer_than_limit_is_cancelled(stack):
     stack.add_migration(f"9009_{name}.sql", SLOW.format(name=name))
     assert stack.up().returncode == 0
     served(stack, f"/rpc/{name}")
+    token = stack.token(stack.new_user())
 
     began = time.monotonic()
-    reply = stack.call("GET", f"{stack.url}/api/rpc/{name}")
+    reply = stack.call("GET", f"{stack.url}/api/rpc/{name}", token=token)
     elapsed = time.monotonic() - began
 
     assert (reply.status, json.loads(reply.body)["code"]) == (500, "57014")
