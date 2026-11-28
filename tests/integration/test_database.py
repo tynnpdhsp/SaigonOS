@@ -522,7 +522,7 @@ def test_role_over_its_connection_limit_is_refused_while_other_roles_connect(sta
 
 def test_api_call_running_longer_than_limit_is_cancelled(stack):
     name = unique("slow")
-    stack.add_migration(f"9007_{name}.sql", SLOW.format(name=name))
+    stack.add_migration(f"9009_{name}.sql", SLOW.format(name=name))
     assert stack.up().returncode == 0
     served(stack, f"/rpc/{name}")
 
