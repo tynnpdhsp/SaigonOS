@@ -62,7 +62,7 @@ Tên biến bắt đầu bằng chữ cái không dấu hoặc dấu gạch dư�
 | `string` | Chuỗi tối đa 4.000 ký tự | `String` |
 | `long` | Số nguyên từ -2^63 tới 2^63 - 1 | `Long` |
 | `boolean` | `true` hoặc `false` | `Boolean` |
-| `date` | Chuỗi ngày giờ theo ISO 8601 có múi giờ, ví dụ `2026-12-01T07:00:00+07:00` | `Date`, lưu theo giờ UTC |
+| `date` | Chuỗi ngày giờ theo ISO 8601 có múi giờ, ví dụ `2026-12-01T07:00:00+07:00` | `Date` |
 | `enum` | Chuỗi bằng thuộc tính `id` của một thẻ `operaton:value` trong trường | `String` |
 
 Trường không bắt buộc nhận thêm giá trị `null`. Các ràng buộc của trường nằm trong phần `operaton:validation`:
@@ -180,7 +180,7 @@ Bước máy làm là một service task gọi một hàm trong schema của ứ
 </bpmn:serviceTask>
 ```
 
-Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình. Biến kiểu ngày giờ được truyền dưới dạng chuỗi theo giờ UTC, ví dụ `2026-12-01T00:00:00.000+0000`. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình, với tên theo quy tắc ở mục [Form](#form). Giá trị là chuỗi tối đa 4.000 ký tự, số, `true`, `false` hoặc `null`. Ví dụ, hàm `ghi_don` trong file `database/0004_quy_trinh.sql` trả về ba biến mà các bước sau của quy trình dùng:
+Hàm nhận đúng một tham số kiểu `jsonb` và trả về kiểu `jsonb`. Tham số là một object chứa mọi biến của quy trình. Biến kiểu ngày giờ được truyền dưới dạng chuỗi theo [múi giờ của hệ thống](../admin/configuration.md#múi-giờ), ví dụ `2026-12-01T07:00:00.000+0700`. Hàm trả về một object hoặc `null`. Mỗi khóa của object trở thành một biến của quy trình, với tên theo quy tắc ở mục [Form](#form). Giá trị là chuỗi tối đa 4.000 ký tự, số, `true`, `false` hoặc `null`. Ví dụ, hàm `ghi_don` trong file `database/0004_quy_trinh.sql` trả về ba biến mà các bước sau của quy trình dùng:
 
 ```sql
 RETURN jsonb_build_object(
@@ -216,4 +216,4 @@ Hẹn giờ gắn trên biên của một việc cho phép quy trình rẽ sang 
 
 Thuộc tính `attachedToRef` nêu việc được gắn hẹn giờ. Biến `han_duyet` do hàm `ghi_don` trả về. Thuộc tính `operaton:dueDate` của việc `duyet` cũng lấy biến này, nên hạn được ghi vào trường `due` của việc. Với `cancelActivity="false"`, việc duyệt vẫn còn sau khi hẹn giờ chạy. Khi không có thuộc tính này, Operaton hủy việc lúc tới hạn, kể cả khi việc đã có người nhận. Lời gọi hoàn thành việc đã bị hủy nhận mã 404.
 
-Job executor của Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần. Hẹn giờ được lưu trong cơ sở dữ liệu, nên vẫn chạy sau khi Operaton khởi động lại. Operaton chạy theo giờ UTC. Do đó, ngày giờ không ghi múi giờ và biểu thức cron được tính theo giờ UTC. Ví dụ, `2026-12-01T08:00:00` là 15:00 giờ Việt Nam. Để đặt hẹn giờ theo giờ Việt Nam, ghi ngày giờ kèm múi giờ, ví dụ `2026-12-01T08:00:00+07:00`.
+Job executor của Operaton tìm các hẹn giờ đã tới hạn 2 giây một lần. Hẹn giờ được lưu trong cơ sở dữ liệu, nên vẫn chạy sau khi Operaton khởi động lại. Operaton chạy theo [múi giờ của hệ thống](../admin/configuration.md#múi-giờ), mặc định là giờ Việt Nam. Do đó, ngày giờ không ghi múi giờ và biểu thức cron được tính theo múi giờ này. Ví dụ, `2026-12-01T08:00:00` là 8 giờ sáng giờ Việt Nam. Ngày giờ có ghi múi giờ, ví dụ `2026-12-01T08:00:00+07:00`, không phụ thuộc thiết lập này.

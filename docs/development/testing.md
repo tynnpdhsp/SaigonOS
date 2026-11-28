@@ -16,7 +16,7 @@ Các nhóm kiểm thử nằm trong thư mục [`tests/integration`](https://git
 
 | File | Nội dung |
 |---|---|
-| `test_stack.py` | Hệ thống với cấu hình mặc định, API Gateway và tường lửa ứng dụng web |
+| `test_stack.py` | Hệ thống với cấu hình mặc định, múi giờ, API Gateway và tường lửa ứng dụng web |
 | `test_database.py` | Service `migrate`, Row-Level Security, role `anon`, audit log và bảng sự đồng ý |
 | `test_storage.py` | SeaweedFS và ClamAV |
 | `test_core.py` | Service `core`, access token giả, access token hết hạn và việc đổi khóa ký |

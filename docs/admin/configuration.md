@@ -24,7 +24,7 @@ Một số giá trị không có tùy chọn riêng mà được ghi thẳng và
 - Cấu hình [Telegram và email](notifications.md).
 - Dải mạng được mở [trang quản trị](access-rules.md#trang-quản-trị).
 - Chế độ của [tường lửa ứng dụng web](waf.md#chế-độ-chỉ-ghi-log).
-- Múi giờ của [hồ dữ liệu](data-lake.md).
+- [Múi giờ](#múi-giờ) của hệ thống.
 
 Ví dụ, để đổi cổng HTTP thành 8080:
 
@@ -55,3 +55,22 @@ Hai lệnh `saigonos up` và `saigonos down` gọi Docker Compose trong thư m�
 | Dừng và xóa dữ liệu | `saigonos down --volumes` | `docker compose down --volumes` |
 
 Sau khi các service sẵn sàng, lệnh `saigonos up` cài đặt lại mọi ứng dụng đã cài đặt. Do đó, phần của ứng dụng bị sửa tay trên Keycloak, APISIX hay Operaton được đặt lại theo bản khai báo.
+
+## Múi giờ
+
+Mọi service chạy theo múi giờ `Asia/Ho_Chi_Minh`. Để dùng múi giờ khác, thêm dòng sau vào file `.env` rồi chạy `saigonos up`:
+
+```
+SAIGONOS_TIMEZONE=Asia/Bangkok
+```
+
+Giá trị là tên múi giờ trong cơ sở dữ liệu múi giờ IANA. Múi giờ này được dùng cho:
+
+- Giờ ghi trong log của các service. Riêng Loki luôn ghi log theo giờ UTC.
+- Ngày giờ mà PostgreSQL trả về, ví dụ trong kết quả của API, và các hàm như `current_date`.
+- Biểu thức cron và ngày giờ không ghi múi giờ trong [hẹn giờ](../apps/workflow.md#hẹn-giờ) của Operaton.
+- Tháng của dữ liệu trong [hồ dữ liệu](data-lake.md).
+
+Image của APISIX, PostgREST, SeaweedFS, Centrifugo và Socket Proxy không có dữ liệu múi giờ. Mỗi lần chạy `saigonos up`, service `zoneinfo` chép dữ liệu này từ image của PostgreSQL vào volume `zoneinfo` cho các service đó. Khi tên múi giờ không hợp lệ, service `zoneinfo` kết thúc với mã lỗi 1 và lệnh `saigonos up` dừng trước khi khởi động PostgreSQL. Lệnh `docker compose logs zoneinfo` cho biết lý do.
+
+Operaton lưu ngày giờ theo múi giờ của hệ thống mà không ghi kèm múi giờ. Do đó, sau khi đổi múi giờ, hạn của việc, hẹn giờ và lịch sử mà Operaton đã lưu bị lệch đúng bằng độ lệch giữa hai múi giờ. Nên chọn múi giờ trước khi chạy quy trình đầu tiên.

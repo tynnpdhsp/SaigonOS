@@ -106,6 +106,7 @@ BÌNH THƯỜNG    realm         đã chạy xong
 BÌNH THƯỜNG    routes        đã chạy xong
 BÌNH THƯỜNG    seaweedfs     đang chạy
 BÌNH THƯỜNG    waf           đã chạy xong
+BÌNH THƯỜNG    zoneinfo      đã chạy xong
 BÌNH THƯỜNG    Đăng nhập     Keycloak trả lời tại http://localhost:9080/auth
 BÌNH THƯỜNG    API           PostgREST trả lời, access token không hợp lệ bị từ chối
 BÌNH THƯỜNG    Core API      service core trả lời, access token không hợp lệ bị từ chối

@@ -47,6 +47,8 @@ ENVIRONMENT = re.compile(r'<script id="environment" type="application/json">(.*?
 WAF_BLOCKED = "Tường lửa ứng dụng web đã chặn lời gọi này vì có dấu hiệu tấn công."
 WAF_TOO_BIG = "Nội dung của lời gọi lớn hơn 1 MB nên tường lửa ứng dụng web không kiểm tra được."
 SQL_INJECTION = "/api/?id=1%27%20OR%201%3D1--"
+ZONE = "Asia/Ho_Chi_Minh"
+POSTGREST_LOG_TIME = re.compile(r"^\d\d/[A-Z][a-z]{2}/\d{4}:\d\d:\d\d:\d\d \+0700: ", re.MULTILINE)
 ATTACKS = {
     "sql-injection": ("GET", SQL_INJECTION, None),
     "xss": ("GET", "/core/health?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", None),
@@ -178,6 +180,33 @@ def test_doctor_reports_working_stack(stack):
     assert "Hệ thống hoạt động bình thường." in result.stdout
     assert re.search(r"^BÌNH THƯỜNG +opa +đang chạy$", result.stdout, re.MULTILINE)
     assert re.search(r"^BÌNH THƯỜNG +policies +đã chạy xong$", result.stdout, re.MULTILINE)
+
+
+def test_postgres_uses_time_zone_of_system(stack):
+    assert stack.sql("SHOW timezone") == [[ZONE]]
+    assert stack.sql("SHOW log_timezone") == [[ZONE]]
+
+
+@pytest.mark.parametrize(
+    "service",
+    ["postgres", "keycloak", "apisix", "seaweedfs", "clamav", "core", "operaton", "centrifugo"],
+)
+def test_service_tells_time_in_time_zone_of_system(stack, service):
+    result = stack.exec(service, "date", "+%z")
+
+    assert (result.returncode, result.stdout.strip()) == (0, "+0700"), result.stderr
+
+
+def test_postgrest_logs_time_in_time_zone_of_system(stack):
+    assert POSTGREST_LOG_TIME.search(stack.logs("postgrest"))
+
+
+@pytest.mark.parametrize("zone", ["Asia/Sai_Gon", "Asia", "../etc/passwd"])
+def test_zoneinfo_refuses_unknown_time_zone(stack, zone):
+    result = stack.compose_result("run", "--rm", "-T", "-e", f"TZ={zone}", "zoneinfo")
+
+    assert result.returncode == 1
+    assert f"Múi giờ {zone} trong SAIGONOS_TIMEZONE không hợp lệ." in result.stderr
 
 
 def test_gateway_ports_listen_on_loopback_only(stack):

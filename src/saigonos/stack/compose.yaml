@@ -1,9 +1,32 @@
 # SPDX-License-Identifier: Apache-2.0
 services:
+  zoneinfo:
+    image: postgres:18.6-alpine
+    restart: "no"
+    network_mode: none
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
+    volumes:
+      - zoneinfo:/zoneinfo
+      - ./config/zoneinfo/copy.sh:/config/copy.sh:ro
+    tmpfs:
+      - /var/lib/postgresql
+    entrypoint: ["sh", "/config/copy.sh"]
+
   postgres:
     image: postgres:18.6-alpine
     restart: unless-stopped
+    depends_on:
+      zoneinfo:
+        condition: service_completed_successfully
+    command:
+      - postgres
+      - -c
+      - timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
+      - -c
+      - log_timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       POSTGRES_DB: saigonos
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
@@ -27,6 +50,7 @@ services:
         condition: service_healthy
     command: ["start", "--import-realm"]
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
@@ -63,6 +87,8 @@ services:
       - --data-dir=/etcd-data
       - --listen-client-urls=http://0.0.0.0:2379
       - --advertise-client-urls=http://etcd:2379
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     volumes:
       - etcd-data:/etcd-data
     healthcheck:
@@ -77,6 +103,7 @@ services:
     image: postgres:18.6-alpine
     restart: "no"
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       CORAZA_VERSION: "0.6.0"
       CORAZA_ZIP_SHA256: cca4e3c75cf6b2e615907f936a1b6dcd0955250e0fb7d3b1c2ecef807d84603c
       CORAZA_WASM_SHA256: f36e710529167482df820b790981230092da098d26d21aebb16f1d9c8c4e26d5
@@ -97,7 +124,10 @@ services:
         condition: service_healthy
       waf:
         condition: service_completed_successfully
+      zoneinfo:
+        condition: service_completed_successfully
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
       SAIGONOS_HTTP_PORT: ${SAIGONOS_HTTP_PORT:?}
       SAIGONOS_MAX_FILE_SIZE: ${SAIGONOS_MAX_FILE_SIZE:?}
@@ -116,6 +146,7 @@ services:
       - ./config/apisix/saigonos-dns.lua:/usr/local/apisix/saigonos/saigonos-dns.lua:ro
       - ./config/apisix/saigonos-waf.lua:/usr/local/apisix/saigonos/apisix/plugins/saigonos-waf.lua:ro
       - wasm:/usr/local/apisix/wasm:ro
+      - zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7085 && printf 'GET /status/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
       interval: 30s
@@ -129,6 +160,7 @@ services:
     restart: "no"
     network_mode: none
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       SAIGONOS_ADMIN_NETWORKS: ${SAIGONOS_ADMIN_NETWORKS:-}
     volumes:
       - ./config/opa:/policies:ro
@@ -157,6 +189,7 @@ services:
       - --log-level=error
       - /policies
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       SAIGONOS_ADMIN_NETWORKS: ${SAIGONOS_ADMIN_NETWORKS:-}
     networks:
       - policy
@@ -177,6 +210,7 @@ services:
       apisix:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       APISIX_ADMIN_URL: http://apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?}
       SAIGONOS_URL: ${SAIGONOS_URL:?}
@@ -194,6 +228,7 @@ services:
       keycloak:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       KEYCLOAK_URL: http://keycloak:8080/auth
       MASTER_FRONTEND_URL: http://localhost:${SAIGONOS_KEYCLOAK_PORT:?}/auth
       KEYCLOAK_ADMIN_USERNAME: admin
@@ -215,6 +250,7 @@ services:
       keycloak:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
       PGHOST: postgres
       PGDATABASE: saigonos
@@ -237,6 +273,7 @@ services:
       databases:
         condition: service_completed_successfully
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       PGHOST: postgres
       PGDATABASE: saigonos
       PGUSER: postgres
@@ -256,6 +293,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       PGHOST: postgres
       PGDATABASE: postgres
       PGUSER: postgres
@@ -282,7 +320,10 @@ services:
         condition: service_completed_successfully
       routes:
         condition: service_completed_successfully
+      zoneinfo:
+        condition: service_completed_successfully
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       PGHOST: postgres
       PGDATABASE: saigonos
       PGUSER: authenticator
@@ -301,6 +342,7 @@ services:
       PGRST_ADMIN_SERVER_PORT: 3001
     volumes:
       - jwks:/jwks:ro
+      - zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "postgrest", "--ready"]
       interval: 30s
@@ -312,6 +354,9 @@ services:
   seaweedfs:
     image: chrislusf/seaweedfs:4.54
     restart: unless-stopped
+    depends_on:
+      zoneinfo:
+        condition: service_completed_successfully
     command:
       - mini
       - -ip=seaweedfs
@@ -323,6 +368,7 @@ services:
       - -s3.port.lance=0
       - -admin.port.legacy=0
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       S3_BUCKET: quarantine,clean,lake
       AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:?}
       AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:?}
@@ -336,6 +382,7 @@ services:
     volumes:
       - seaweedfs-data:/data
       - ./config/seaweedfs:/config:ro
+      - zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "sh", "/config/healthcheck.sh"]
       interval: 30s
@@ -349,6 +396,8 @@ services:
     restart: unless-stopped
     # clamd là tiến trình chính để container tự chạy lại khi clamd dừng
     command: ["clamd", "--foreground"]
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     networks:
       - scan
     volumes:
@@ -369,6 +418,8 @@ services:
       clamav:
         condition: service_started
     command: ["freshclam", "--daemon", "--foreground"]
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     networks:
       - updates
     volumes:
@@ -396,6 +447,7 @@ services:
       processes:
         condition: service_completed_successfully
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       JWT_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
       JWKS_URL: http://keycloak:8080/auth/realms/saigonos/protocol/openid-connect/certs
       PUBLIC_URL: ${SAIGONOS_URL:?}/core
@@ -452,6 +504,7 @@ services:
     # tini gửi SIGINT cho cả nhóm tiến trình, run.sh của image chờ Java tắt xong rồi mới thoát
     stop_signal: SIGINT
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       SAIGONOS_URL: ${SAIGONOS_URL:?}
       OPERATON_DB_PASSWORD: ${OPERATON_DB_PASSWORD:?}
       OPERATON_CLIENT_SECRET: ${OPERATON_CLIENT_SECRET:?}
@@ -477,6 +530,7 @@ services:
       operaton:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       OPERATON_URL: http://operaton:8080/operaton/engine-rest
       CORE_OPERATON_PASSWORD: ${CORE_OPERATON_PASSWORD:?}
     volumes:
@@ -492,8 +546,11 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      zoneinfo:
+        condition: service_completed_successfully
     command: ["centrifugo", "--config", "/centrifugo/config.yaml"]
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       CENTRIFUGO_CLIENT_TOKEN_ISSUER: ${SAIGONOS_URL:?}/auth/realms/saigonos
       CENTRIFUGO_CLIENT_SUBSCRIPTION_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_SUBSCRIPTION_KEY:?}
       CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGIN:?}
@@ -507,6 +564,7 @@ services:
         target: 9000
     volumes:
       - ./config/centrifugo/config.yaml:/centrifugo/config.yaml:ro
+      - zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/health"]
       interval: 30s
@@ -524,6 +582,7 @@ services:
       apisix:
         condition: service_healthy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       SAIGONOS_URL: ${SAIGONOS_URL:?}
       SAIGONOS_HTTP_PORT: ${SAIGONOS_HTTP_PORT:?}
       CADDY_HTTP_PORT: ${CADDY_HTTP_PORT:-80}
@@ -542,6 +601,9 @@ services:
     image: wollomatic/socket-proxy:1.13.2
     profiles: ["monitoring"]
     restart: unless-stopped
+    depends_on:
+      zoneinfo:
+        condition: service_completed_successfully
     # root không có capability nào vẫn mở được Docker socket vì socket thuộc root
     user: "0:0"
     read_only: true
@@ -556,10 +618,13 @@ services:
       - -watchdoginterval=60
       - -stoponwatchdog
       - -loglevel=WARN
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     networks:
       - docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 30s
@@ -578,6 +643,7 @@ services:
         condition: service_healthy
     entrypoint: ["python", "-m", "saigonos_core.exporter"]
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       DOCKER_URL: http://socket-proxy:2375
       COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}
     networks:
@@ -617,6 +683,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=7d
       - --storage.tsdb.retention.size=2GB
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     networks:
       - default
       - monitoring
@@ -636,6 +704,8 @@ services:
     profiles: ["monitoring"]
     restart: "no"
     network_mode: none
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     volumes:
       - probe:/probe
     command: ["sh", "-c", "cp /bin/busybox /probe/.busybox && mv -f /probe/.busybox /probe/busybox"]
@@ -648,6 +718,8 @@ services:
       loki-probe:
         condition: service_completed_successfully
     command: ["-config.file=/etc/loki/config.yaml"]
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     networks:
       - monitoring
     volumes:
@@ -680,6 +752,7 @@ services:
       - --disable-reporting
       - /etc/alloy/config.alloy
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}
     networks:
       - docker
@@ -700,6 +773,7 @@ services:
     profiles: ["monitoring"]
     restart: unless-stopped
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       GF_SERVER_ROOT_URL: ${SAIGONOS_URL:?}/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
@@ -759,6 +833,8 @@ services:
     profiles: ["backup"]
     restart: "no"
     network_mode: none
+    environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
     volumes:
       - seaweedfs-data:/seaweedfs
     entrypoint: ["tar"]
@@ -770,6 +846,7 @@ services:
     restart: "no"
     entrypoint: ["python", "-m", "saigonos_core.apps"]
     environment:
+      TZ: ${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       PGHOST: postgres
       PGDATABASE: saigonos
       PGUSER: postgres
@@ -786,6 +863,7 @@ services:
       - ./apps:/apps:ro
 
 volumes:
+  zoneinfo:
   postgres-data:
   etcd-data:
   wasm:
