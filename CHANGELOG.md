@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.2.0] - 2026-11-28
+
 ### Thay đổi
 
 - Mỗi lời gọi tới REST API của dữ liệu, tức `/api/` và `/apps/<tên ứng dụng>/api/`, chạy tối đa 15 giây. Khi quá thời gian này, PostgreSQL dừng truy vấn và lời gọi nhận mã 500 với mã lỗi `57014`.
@@ -390,7 +392,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.1.0...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.2.0
 [1.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.1.0
 [1.0.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
