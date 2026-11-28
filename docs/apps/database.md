@@ -67,4 +67,6 @@ await fetch("/apps/phong-may/api/phong?ma=eq.PM2", {
 });
 ```
 
+Mỗi lời gọi chỉ được chạy trong một thời gian giới hạn, như ở trang [Tài liệu API](../reference/api.md#rest-api-của-dữ-liệu).
+
 Tài liệu OpenAPI của ứng dụng nằm ở địa chỉ `/apps/<tên ứng dụng>/api/`. Tài liệu chỉ gồm các bảng và hàm trong schema của ứng dụng mà người gọi được dùng. Lời gọi tới địa chỉ này cũng đi qua [luật truy cập của ứng dụng](access-rules.md).

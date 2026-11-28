@@ -125,3 +125,19 @@ Khi ghi sự đồng ý, cần tuân theo các quy tắc sau:
 - `subject` là một mã, không phải họ tên, số điện thoại hay email. Bảng chỉ cho phép thêm dòng, nên dữ liệu trong bảng không xóa được khi người dùng yêu cầu xóa dữ liệu cá nhân.
 - Ghi sự đồng ý trong cùng transaction với dữ liệu mà người dùng gửi. Nhờ đó, dữ liệu và sự đồng ý cùng được lưu hoặc cùng bị hủy.
 - Không lấy thời điểm đồng ý từ trình duyệt. Cột `given_at` dùng giá trị mặc định do máy chủ ghi.
+
+## Số kết nối
+
+PostgreSQL nhận tối đa 100 kết nối, đặt bằng tham số `max_connections` trong `compose.yaml`. Khi gần hết, 3 kết nối cuối chỉ dành cho superuser. Mỗi role đăng nhập của một service có giới hạn số kết nối riêng, đặt trong file [`0029_connection_limits.sql`](https://github.com/tynnpdhsp/SaigonOS/blob/main/src/saigonos/stack/config/postgres/migrations/0029_connection_limits.sql). Service mở quá giới hạn của role nhận lỗi `too many connections for role`, còn các service khác vẫn kết nối được.
+
+| Service | Role | Số kết nối tối đa của service | Giới hạn của role |
+|---|---|---|---|
+| Keycloak | `keycloak` | 20, đặt bằng `KC_DB_POOL_MAX_SIZE` | 25 |
+| PostgREST | `authenticator` | 10, đặt bằng `PGRST_DB_POOL`, thêm 1 kết nối LISTEN và 1 kết nối của service `jwks` | 15 |
+| Operaton | `operaton` | 10, đặt bằng `hikari.maximum-pool-size` trong `config/operaton/production.yml` | 15 |
+| Core API | `core_service` | 10, đặt bằng `POOL_SIZE` trong `saigonos_core/database.py`, thêm 1 kết nối LISTEN và 1 kết nối của lệnh `saigonos lake` | 15 |
+| Centrifugo | `centrifugo` | 4, đặt bằng `pool_max_conns` trong DSN | 6 |
+
+Tổng giới hạn của các role là 76. Phần còn lại dành cho superuser và role tạm của ứng dụng khi chạy `saigonos apply`. Khi đổi số kết nối của một service, sửa cả giới hạn của role bằng một migration mới. Kiểm thử `test_connection_pools_fit_limits_of_roles_and_max_connections` trong [`tests/test_compose_file.py`](https://github.com/tynnpdhsp/SaigonOS/blob/main/tests/test_compose_file.py) kiểm tra mỗi service mở ít kết nối hơn giới hạn của role, và tổng giới hạn còn chỗ cho superuser.
+
+Role `authenticator` có `statement_timeout` 15 giây, nên mỗi lời gọi REST API chạy tối đa 15 giây. Role `core_service` không có giới hạn chung này và không có `idle_in_transaction_session_timeout`, vì hồ dữ liệu ghi file Parquet lên SeaweedFS trong một transaction dài. Hàm của bước máy làm vẫn có giới hạn riêng 20 giây.

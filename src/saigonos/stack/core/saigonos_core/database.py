@@ -13,11 +13,12 @@ SEAL_CLAIMS = "SELECT core.seal_claims()"
 UNAVAILABLE = (OSError, TimeoutError, asyncpg.PostgresError, asyncpg.InterfaceError)
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 30
+POOL_SIZE = 10
 SERVER_SETTINGS = {"application_name": "saigonos-core"}
 
 
 class Database:
-    def __init__(self, max_size: int = 10) -> None:
+    def __init__(self, max_size: int = POOL_SIZE) -> None:
         self.max_size = max_size
         self.pool: asyncpg.Pool
 

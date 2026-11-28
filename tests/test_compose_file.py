@@ -7,6 +7,7 @@ from itertools import takewhile
 import pytest
 
 from saigonos.home import MONITORING_PROFILE, OPTIONAL_SERVICES
+from saigonos_core.database import POOL_SIZE
 
 COMPOSE = (files("saigonos") / "stack" / "compose.yaml").read_text(encoding="utf-8")
 
@@ -93,6 +94,8 @@ def test_postgres_waits_for_time_zone_check_and_uses_time_zone_of_system():
     assert postgres[postgres.index("zoneinfo:") + 1] == "condition: service_completed_successfully"
     assert block("postgres", "command") == [
         "- postgres",
+        "- -c",
+        "- max_connections=100",
         "- -c",
         "- timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}",
         "- -c",
@@ -293,6 +296,44 @@ def test_grafana_logs_only_warnings_so_queries_of_dashboard_do_not_flood_logs():
 
 
 CONFIG = files("saigonos") / "stack" / "config"
+SUPERUSER_RESERVED = 3
+ADMIN_HEADROOM = 10
+EXTRA_CONNECTIONS = {"authenticator": 2, "core_service": 2}
+
+
+def setting(name, key):
+    [line] = [line for line in services()[name] if line.startswith(f"{key}:")]
+    return line.split(":", 1)[1].strip().strip('"')
+
+
+def connection_limits():
+    limits = {}
+    for migration in sorted(path.name for path in (CONFIG / "postgres" / "migrations").iterdir()):
+        text = (CONFIG / "postgres" / "migrations" / migration).read_text(encoding="utf-8")
+        limits |= {
+            role: int(limit)
+            for role, limit in re.findall(r"^ALTER ROLE (\w+) CONNECTION LIMIT (\d+);$", text, re.M)
+        }
+    return limits
+
+
+def test_connection_pools_fit_limits_of_roles_and_max_connections():
+    operaton = (CONFIG / "operaton" / "production.yml").read_text(encoding="utf-8")
+    dsn = setting("centrifugo", "CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN")
+    pools = {
+        "keycloak": int(setting("keycloak", "KC_DB_POOL_MAX_SIZE")),
+        "authenticator": int(setting("postgrest", "PGRST_DB_POOL")),
+        "operaton": int(re.search(r"\n      maximum-pool-size: (\d+)\n", operaton)[1]),
+        "core_service": POOL_SIZE,
+        "centrifugo": int(re.fullmatch(r"postgresql://\S+\?pool_max_conns=(\d+)", dsn)[1]),
+    }
+    limits = connection_limits()
+    [maximum] = [line for line in block("postgres", "command") if "max_connections=" in line]
+
+    assert set(limits) == set(pools)
+    for role, pool in pools.items():
+        assert pool + EXTRA_CONNECTIONS.get(role, 0) < limits[role], role
+    assert sum(limits.values()) + SUPERUSER_RESERVED + ADMIN_HEADROOM <= int(maximum.split("=")[1])
 
 
 def test_prometheus_keeps_seven_days_and_reads_metrics_of_services():
