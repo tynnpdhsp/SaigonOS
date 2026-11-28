@@ -10,7 +10,7 @@ saigonos init --monitoring
 saigonos up
 ```
 
-Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB đĩa. RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB, rồi tăng dần theo lượng metrics và log.
+Ở lần bật đầu tiên, Docker tải khoảng 920 MB image. Các image này chiếm khoảng 3,6 GB dung lượng ổ cứng. RAM của cả hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB, rồi tăng dần theo lượng metrics và log.
 
 Khi giám sát bật, lệnh `saigonos doctor` có thêm dòng của các service giám sát và dòng sau:
 

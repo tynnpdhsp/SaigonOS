@@ -98,14 +98,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Route có label `saigonos.profile` chỉ được service `routes` nạp khi profile đó được bật và được gỡ khi profile bị tắt. Service `realm` cũng tạo client `grafana` khi bật giám sát và xóa client này khi tắt.
 - Lệnh `saigonos doctor` có thêm dòng `Giám sát` khi giám sát được bật. Dòng này kiểm tra Grafana qua API Gateway và các target của Prometheus. Ngay sau khi khởi động, lệnh chờ tối đa 30 giây để Prometheus đọc metrics của mọi target lần đầu.
 - Lời gọi bị tường lửa chặn có thêm header `X-SaigonOS-Denied-By: waf`. Lời gọi bị luật OPA từ chối có thêm header `X-SaigonOS-Denied-By: opa`.
-- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ đĩa, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
+- Bảng theo dõi SaigonOS là trang chủ của Grafana, nạp từ file. Bảng có số request, số lỗi, số request bị tường lửa chặn, số request bị OPA từ chối, CPU, RAM, phần trăm đã dùng của ổ cứng, trạng thái của từng service, biểu đồ request theo mã trạng thái và khung log lọc theo service.
 - README có mục Giám sát.
 
 ### Thay đổi
 
 - Tên `grafana` được dành riêng cho lõi, nên ứng dụng không dùng được tên này.
 - Bước 3 của mục Cài đặt trong README dùng lệnh `saigonos up`, giống lệnh mà `saigonos init` gợi ý.
-- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB đĩa cho image.
+- README nêu mức RAM nên có là 5 GB khi bật giám sát. Lúc mới khởi động, giám sát làm RAM của hệ thống tăng từ khoảng 2,6 GB lên 3,1 GB và cần thêm khoảng 3,6 GB dung lượng ổ cứng cho image.
 
 ### Sửa
 
@@ -153,7 +153,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Luồng đăng nhập `saigonos operaton` được tạo lại một lần khi cập nhật, để bước mật khẩu và bước OTP được ghi vào claim `amr`.
 - Tên `auth-admin` được thêm vào danh sách tên mà ứng dụng không được dùng.
 - Địa chỉ `/api/` chỉ phục vụ schema `api`. API Gateway ghi đè header `Accept-Profile` và `Content-Profile` của lời gọi tới địa chỉ này. Schema của ứng dụng chỉ gọi được qua địa chỉ `/apps/<tên>/api/`, nên không đi vòng được luật truy cập của ứng dụng.
-- README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng đĩa bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
+- README hướng dẫn cài Miniforge khi máy chưa có conda, kích hoạt môi trường `saigonos` ở mỗi terminal mới, kiểm tra và mở rộng dung lượng ổ cứng bằng `lvextend`, kiểm tra và tạo swap. Mức RAM tối thiểu là 2 GB kèm ít nhất 2 GB swap, mức nên dùng vẫn là 3 GB. Máy có 1 GB RAM không được hỗ trợ.
 
 ## [0.6.0] - 2026-11-22
 
@@ -253,7 +253,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
-- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng đĩa vì có thêm Operaton.
+- Hệ thống cần khoảng 3 GB RAM và 6 GB dung lượng ổ cứng vì có thêm Operaton.
 
 ### Sửa
 
@@ -296,7 +296,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
-- Hệ thống cần Docker Buildx để build image của service `core`. Hệ thống cũng cần khoảng 2,5 GB RAM và 5 GB dung lượng đĩa vì có thêm SeaweedFS, ClamAV và service `core`. Ở phiên bản 0.2.0, hệ thống cần khoảng 1 GB RAM và 2 GB dung lượng đĩa.
+- Hệ thống cần Docker Buildx để build image của service `core`. Hệ thống cũng cần khoảng 2,5 GB RAM và 5 GB dung lượng ổ cứng vì có thêm SeaweedFS, ClamAV và service `core`. Ở phiên bản 0.2.0, hệ thống cần khoảng 1 GB RAM và 2 GB dung lượng ổ cứng.
 - Lệnh `saigonos up` cần đăng nhập được Keycloak bằng tài khoản `admin` của realm master. Service `realm` dùng tài khoản này với mật khẩu `KEYCLOAK_ADMIN_PASSWORD` trong file `.env`. Nếu mật khẩu của tài khoản đã được đổi trong Admin Console, cần ghi mật khẩu mới vào file `.env` trước khi cập nhật. Service chỉ đăng nhập bằng mật khẩu, nên không bật OTP cho tài khoản này.
 - Admin Console của realm master có địa chỉ mới là http://localhost:9280/auth/admin/master/console/ trên máy cài đặt. Admin Console của realm `saigonos` vẫn mở qua API Gateway tại `/auth/admin/saigonos/console/`.
 - Lời gọi `/api` không có access token chạy với role `anon`. Ở phiên bản 0.2.0, API Gateway trả về mã 401 cho lời gọi này. Khi dùng một bảng hoặc hàm chưa cấp cho `anon`, lời gọi nhận mã 401. Access token giả hoặc hết hạn vẫn nhận mã 401. Giới hạn tần suất gọi áp dụng cho cả lời gọi không có access token.

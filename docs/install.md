@@ -10,11 +10,11 @@ Trang này trình bày cách cài đặt SaigonOS trên một máy Linux và cá
 - Docker Engine 25.0 trở lên, Docker Compose 2.20.2 trở lên và Docker Buildx. Tài khoản cài đặt chạy được lệnh `docker` mà không cần `sudo`.
 - Git và kết nối Internet.
 - 4 GB RAM, hoặc 5 GB khi bật giám sát. Máy có 2 GB RAM cần thêm ít nhất 2 GB swap.
-- 6 GB đĩa còn trống, chưa tính các file được tải lên. Khi bật giám sát, cần thêm khoảng 5,6 GB.
+- 6 GB dung lượng ổ cứng còn trống, chưa tính các file được tải lên. Khi bật giám sát, cần thêm khoảng 5,6 GB.
 
-### Dung lượng đĩa
+### Dung lượng ổ cứng
 
-Lệnh `df -h /` cho biết dung lượng còn trống của thư mục gốc. Bộ cài Ubuntu Server dùng LVM thường chỉ cấp khoảng một nửa đĩa cho thư mục gốc. Phần chưa cấp nằm ở cột `VFree` của lệnh `sudo vgs`. Để cấp phần này cho thư mục gốc, thay đường dẫn trong lệnh sau bằng giá trị ở cột `Filesystem` của lệnh `df -h /`:
+Lệnh `df -h /` cho biết dung lượng còn trống của thư mục gốc. Bộ cài Ubuntu Server dùng LVM thường chỉ cấp khoảng một nửa ổ cứng cho thư mục gốc. Phần chưa cấp nằm ở cột `VFree` của lệnh `sudo vgs`. Để cấp phần này cho thư mục gốc, thay đường dẫn trong lệnh sau bằng giá trị ở cột `Filesystem` của lệnh `df -h /`:
 
 ```bash
 sudo lvextend --resizefs --extents +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
