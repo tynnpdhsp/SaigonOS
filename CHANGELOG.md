@@ -16,7 +16,7 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ### Thay đổi
 
-- Mọi service chạy theo múi giờ trong biến `SAIGONOS_TIMEZONE` của file `.env`, mặc định là `Asia/Ho_Chi_Minh`. Trước đây, các service chạy theo giờ UTC và biến này chỉ dùng cho hồ dữ liệu. Giờ trong log, ngày giờ mà PostgreSQL trả về và hàm `current_date` đều theo múi giờ này. Biểu thức cron và ngày giờ không ghi múi giờ trong hẹn giờ của Operaton cũng được tính theo múi giờ này.
+- Mọi service chạy theo múi giờ trong biến `SAIGONOS_TIMEZONE` của file `.env`, mặc định là `Asia/Ho_Chi_Minh`. Trước đây, các service chạy theo giờ UTC và biến này chỉ dùng cho hồ dữ liệu. Giờ trong log, ngày giờ mà PostgreSQL trả về và hàm `current_date` đều theo múi giờ này. Biểu thức cron và ngày giờ không ghi múi giờ trong hẹn giờ của Operaton cũng được tính theo múi giờ này. Audit log vẫn ghi ngày giờ trong `old_row` và `new_row` theo giờ UTC.
 - Biến kiểu ngày giờ được truyền cho hàm của bước máy làm theo múi giờ của hệ thống, ví dụ `2026-12-01T07:00:00.000+0700`.
 - Khi nâng cấp từ phiên bản 1.0.1 trở về trước, hạn của việc, hẹn giờ và lịch sử mà Operaton đã lưu bị đọc sớm hơn 7 giờ, vì các phiên bản này chạy Operaton theo giờ UTC. Nên hoàn tất các quy trình đang chạy trước khi nâng cấp.
 
