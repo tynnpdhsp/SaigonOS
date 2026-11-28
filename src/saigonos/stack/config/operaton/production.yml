@@ -11,6 +11,8 @@ spring:
     url: jdbc:postgresql://postgres:5432/operaton
     username: operaton
     password: ${OPERATON_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
   web:
     resources:
       static-locations: NULL

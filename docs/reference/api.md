@@ -14,6 +14,8 @@ Các API của lõi đều nằm sau API Gateway. Lời gọi cần đăng nhậ
 
 PostgREST tự sinh tài liệu OpenAPI 2.0 cho REST API. Tài liệu mở được bằng trình duyệt hoặc nạp được vào các công cụ hỗ trợ OpenAPI 2.0, ví dụ Swagger UI. Tài liệu chỉ liệt kê các bảng, view và hàm mà người gọi được dùng. Lời gọi không có access token nhận tài liệu theo quyền của role `anon`. Các địa chỉ trong tài liệu được lấy từ địa chỉ truy cập của hệ thống, ví dụ `https://dx.example.com/api`.
 
+Mỗi lời gọi tới `/api/` và `/apps/<tên ứng dụng>/api/` chạy tối đa 15 giây. Khi quá thời gian này, PostgreSQL dừng truy vấn và lời gọi nhận mã 500 với mã lỗi `57014`.
+
 ## API của service core
 
 Service `core` cung cấp các API mà PostgREST không đảm nhận, ví dụ tải file lên và bắt đầu quy trình. Tài liệu OpenAPI 3.1 ở địa chỉ `/core/openapi.json` không cần đăng nhập. Các API trong tài liệu cần access token, trừ `/core/health` và đường dẫn [tải file về](../apps/files.md#tải-file-về). Ví dụ, lời gọi `GET /core/me` trả về mã người dùng, đơn vị và role mà cơ sở dữ liệu nhận được từ access token của người gọi.

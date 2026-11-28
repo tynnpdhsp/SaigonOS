@@ -202,6 +202,24 @@ FROM unnest(ARRAY[
 ORDER BY position;
 """
 CONSENTS_SIZE = "SELECT count(*) FROM core.consents"
+CONNECTION_LIMITS = {
+    "authenticator": "15",
+    "centrifugo": "6",
+    "core_service": "15",
+    "keycloak": "25",
+    "operaton": "15",
+}
+HOLD_CONNECTIONS = (
+    "for i in 1 2 3 4 5 6 7; do "
+    'psql -h 127.0.0.1 -U centrifugo -d saigonos -Atc "SELECT pg_sleep(3)" & '
+    "done; wait"
+)
+SLOW = """\
+CREATE FUNCTION api.{name}() RETURNS text
+LANGUAGE sql STABLE
+AS $$ SELECT pg_sleep(20)::text $$;
+GRANT EXECUTE ON FUNCTION api.{name}() TO anon, authenticated;
+"""
 
 
 def unique(prefix):
@@ -459,6 +477,60 @@ def test_postgrest_serves_view_from_new_file_without_restart(stack):
     assert json.loads(reply.body) == [{"one": 1}]
     assert stack.container("postgrest") == postgrest
     assert stack.inspect(postgrest, "{{.State.StartedAt}}") == started
+
+
+def test_login_roles_of_services_have_connection_limits(stack):
+    names = ", ".join(f"'{name}'" for name in CONNECTION_LIMITS)
+    limits = stack.sql(f"SELECT rolname, rolconnlimit FROM pg_roles WHERE rolname IN ({names})")
+    timeout = "SELECT setconfig FROM pg_db_role_setting WHERE setrole = 'authenticator'::regrole"
+
+    assert dict(limits) == CONNECTION_LIMITS
+    assert stack.sql("SHOW max_connections") == [["100"]]
+    assert stack.sql(timeout) == [["{statement_timeout=15s}"]]
+
+
+def test_role_over_its_connection_limit_is_refused_while_other_roles_connect(stack):
+    env = stack.env
+
+    def login(password, *command):
+        return stack.compose_result("exec", "-T", "-e", f"PGPASSWORD={password}", *command)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        held = pool.submit(
+            login, env["CENTRIFUGO_DB_PASSWORD"], "postgres", "sh", "-c", HOLD_CONNECTIONS
+        )
+        time.sleep(1)
+        other = login(
+            env["POSTGREST_DB_PASSWORD"],
+            "postgres",
+            "psql",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            "authenticator",
+            "-d",
+            "saigonos",
+            "-Atc",
+            "SELECT 1",
+        )
+        result = held.result()
+
+    assert (other.returncode, other.stdout.strip()) == (0, "1"), other.stderr
+    assert 'too many connections for role "centrifugo"' in result.stdout + result.stderr
+
+
+def test_api_call_running_longer_than_limit_is_cancelled(stack):
+    name = unique("slow")
+    stack.add_migration(f"9007_{name}.sql", SLOW.format(name=name))
+    assert stack.up().returncode == 0
+    served(stack, f"/rpc/{name}")
+
+    began = time.monotonic()
+    reply = stack.call("GET", f"{stack.url}/api/rpc/{name}")
+    elapsed = time.monotonic() - began
+
+    assert (reply.status, json.loads(reply.body)["code"]) == (500, "57014")
+    assert 14 < elapsed < 19
 
 
 def test_claim_functions_trust_only_sealed_claims(stack):

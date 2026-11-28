@@ -22,6 +22,8 @@ services:
     command:
       - postgres
       - -c
+      - max_connections=100
+      - -c
       - timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
       - -c
       - log_timezone=${SAIGONOS_TIMEZONE:-Asia/Ho_Chi_Minh}
@@ -55,6 +57,7 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+      KC_DB_POOL_MAX_SIZE: "20"
       KC_HTTP_ENABLED: "true"
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HOSTNAME: ${SAIGONOS_URL:?}/auth
@@ -329,6 +332,7 @@ services:
       PGUSER: authenticator
       PGPASSWORD: ${POSTGREST_DB_PASSWORD:?}
       PGRST_DB_SCHEMAS: api
+      PGRST_DB_POOL: "10"
       PGRST_DB_PRE_CONFIG: core.pre_config
       PGRST_DB_ANON_ROLE: anon
       PGRST_DB_PRE_REQUEST: core.pre_request
@@ -557,7 +561,7 @@ services:
       CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?}
       CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:?}
       CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:?}
-      CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN: postgresql://centrifugo:${CENTRIFUGO_DB_PASSWORD:?}@postgres:5432/saigonos
+      CENTRIFUGO_CONSUMERS_OUTBOX_POSTGRESQL_DSN: postgresql://centrifugo:${CENTRIFUGO_DB_PASSWORD:?}@postgres:5432/saigonos?pool_max_conns=4
     ports:
       - host_ip: 127.0.0.1
         published: ${SAIGONOS_CENTRIFUGO_PORT:?}

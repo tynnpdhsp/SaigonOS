@@ -7,6 +7,14 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+### Thay đổi
+
+- Mỗi lời gọi tới REST API của dữ liệu, tức `/api/` và `/apps/<tên ứng dụng>/api/`, chạy tối đa 15 giây. Khi quá thời gian này, PostgreSQL dừng truy vấn và lời gọi nhận mã 500 với mã lỗi `57014`.
+
+### Sửa
+
+- Keycloak mở được tới 100 kết nối, bằng số kết nối tối đa của PostgreSQL. Do đó, lúc nhiều người đăng nhập cùng lúc, các service khác có thể không kết nối được PostgreSQL. Keycloak nay mở tối đa 20 kết nối. Mỗi role đăng nhập của các service có giới hạn số kết nối riêng, nên service mở quá phần của mình không làm service khác mất kết nối.
+
 ## [1.1.0] - 2026-11-28
 
 ### Thêm
