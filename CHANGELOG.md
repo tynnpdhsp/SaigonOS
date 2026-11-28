@@ -7,6 +7,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 
 ## [Chưa phát hành]
 
+## [1.1.0] - 2026-11-28
+
 ### Thêm
 
 - README có link tới trang web https://www.saigonos.org. Trang có tài liệu và tin tức về các bản phát hành.
@@ -380,7 +382,8 @@ Mục "Chưa phát hành" ghi các thay đổi đã có trên `main` nhưng chư
 - Lệnh `saigonos doctor` kiểm tra trạng thái từng service và API Gateway.
 - Hướng dẫn cài đặt bằng pip và Docker Compose trong README.
 
-[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.0.1...HEAD
+[Chưa phát hành]: https://github.com/tynnpdhsp/SaigonOS/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.1.0
 [1.0.1]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v1.0.0
 [0.12.0]: https://github.com/tynnpdhsp/SaigonOS/releases/tag/v0.12.0
